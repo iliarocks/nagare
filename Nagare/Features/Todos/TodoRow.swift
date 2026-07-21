@@ -14,8 +14,14 @@ struct TodoRow: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel("Complete \(todo.title)")
 
-            Text(todo.title)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            NavigationLink {
+                TodoNotesView(todo: todo)
+            } label: {
+                Text(todo.title)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
     }

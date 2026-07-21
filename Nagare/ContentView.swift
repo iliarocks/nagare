@@ -12,34 +12,32 @@ struct ContentView: View {
     @State private var isCreatingTodo = false
 
     var body: some View {
-        TabView(selection: sectionSelection) {
-            Tab(value: Section.today) {
-                NavigationStack {
+        NavigationStack {
+            TabView(selection: sectionSelection) {
+                Tab(value: Section.today) {
                     TodayView()
+                } label: {
+                    Label("Today", systemImage: "sun.max")
+                        .labelStyle(.iconOnly)
                 }
-            } label: {
-                Label("Today", systemImage: "sun.max")
-                    .labelStyle(.iconOnly)
-            }
 
-            Tab(value: Section.upcoming) {
-                NavigationStack {
+                Tab(value: Section.upcoming) {
                     UpcomingView()
+                } label: {
+                    Label("Upcoming", systemImage: "calendar")
+                        .labelStyle(.iconOnly)
                 }
-            } label: {
-                Label("Upcoming", systemImage: "calendar")
-                    .labelStyle(.iconOnly)
-            }
 
-            Tab(value: Section.create, role: .prominent) {
-                EmptyView()
-            } label: {
-                Label("New Todo", systemImage: "plus")
-                    .labelStyle(.iconOnly)
+                Tab(value: Section.create, role: .prominent) {
+                    EmptyView()
+                } label: {
+                    Label("New Todo", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                }
             }
-        }
-        .sheet(isPresented: $isCreatingTodo) {
-            TodoFormView()
+            .sheet(isPresented: $isCreatingTodo) {
+                TodoFormView()
+            }
         }
     }
 
