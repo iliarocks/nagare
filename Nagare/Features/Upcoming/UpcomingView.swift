@@ -7,6 +7,7 @@ struct UpcomingView: View {
     @Query(sort: \Todo.scheduledDate)
     private var todos: [Todo]
 
+    @State private var todoBeingRescheduled: Todo?
     @State private var errorMessage: String?
 
     private var todoGroups: [TodoGroup] {
@@ -55,6 +56,14 @@ struct UpcomingView: View {
                                 TodoRow(todo: todo) {
                                     complete(todo)
                                 }
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        todoBeingRescheduled = todo
+                                    } label: {
+                                        Image(systemName: "calendar")
+                                    }
+                                    .tint(.blue)
+                                }
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
                                         delete(todo)
@@ -76,6 +85,10 @@ struct UpcomingView: View {
                     }
                 }
             }
+        }
+        .sheet(item: $todoBeingRescheduled) { todo in
+            TodoDateEditor(todo: todo)
+                .presentationDetents([.medium])
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
