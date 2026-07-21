@@ -8,15 +8,29 @@ enum TodoMaintenance {
         calendar: Calendar = .autoupdatingCurrent
     ) throws {
         let today = calendar.startOfDay(for: .now)
-        let descriptor = FetchDescriptor<Todo>(
+        var descriptor = FetchDescriptor<Todo>(
             predicate: #Predicate { todo in
                 todo.completedAt == nil && todo.scheduledDate < today
             }
         )
+        descriptor.sortBy = [
+            SortDescriptor(\Todo.scheduledDate),
+            SortDescriptor(\Todo.sortOrder),
+            SortDescriptor(\Todo.createdAt)
+        ]
 
         do {
-            for todo in try context.fetch(descriptor) {
+            let overdueTodos = try context.fetch(descriptor)
+            var nextOrder = try ItemOrdering.nextSortOrder(
+                on: today,
+                in: context,
+                calendar: calendar
+            )
+
+            for todo in overdueTodos {
                 todo.scheduledDate = today
+                todo.sortOrder = nextOrder
+                nextOrder += ItemOrdering.spacing
             }
 
             if context.hasChanges {

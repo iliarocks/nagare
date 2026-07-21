@@ -7,10 +7,15 @@ struct UpcomingView: View {
     @Query(sort: \Todo.scheduledDate)
     private var todos: [Todo]
 
+    @Query(sort: \Event.startDate)
+    private var events: [Event]
+
     @State private var todoBeingRescheduled: Todo?
+    @State private var eventBeingRescheduled: Event?
+    @State private var notesDestination: NotesDestination?
     @State private var errorMessage: String?
 
-    private var todoGroups: [TodoGroup] {
+    private var itemGroups: [ItemGroup] {
         let calendar = Calendar.autoupdatingCurrent
         guard let tomorrow = calendar.date(
             byAdding: .day,
@@ -20,29 +25,41 @@ struct UpcomingView: View {
             return []
         }
 
-        let upcomingTodos = todos
-            .filter { todo in
-                todo.completedAt == nil && todo.scheduledDate >= tomorrow
+        let upcomingTodos = todos.filter { todo in
+            todo.completedAt == nil && todo.scheduledDate >= tomorrow
+        }
+
+        let upcomingEvents = events.filter { event in
+            event.startDate >= tomorrow
+        }
+
+        let dates = Set(
+            upcomingTodos.map { calendar.startOfDay(for: $0.scheduledDate) }
+                + upcomingEvents.map { calendar.startOfDay(for: $0.startDate) }
+        )
+
+        return dates.map { date in
+            let todosForDate = upcomingTodos.filter {
+                calendar.isDate($0.scheduledDate, inSameDayAs: date)
             }
-            .sorted { first, second in
-                if first.scheduledDate == second.scheduledDate {
-                    return first.createdAt < second.createdAt
-                }
-                return first.scheduledDate < second.scheduledDate
+            let eventsForDate = upcomingEvents.filter {
+                calendar.isDate($0.startDate, inSameDayAs: date)
             }
 
-        return Dictionary(grouping: upcomingTodos) { todo in
-            calendar.startOfDay(for: todo.scheduledDate)
-        }
-        .map { date, todos in
-            TodoGroup(date: date, todos: todos)
+            return ItemGroup(
+                date: date,
+                items: ScheduledItem.ordered(
+                    todos: todosForDate,
+                    events: eventsForDate
+                )
+            )
         }
         .sorted { $0.date < $1.date }
     }
 
     var body: some View {
         Group {
-            if todoGroups.isEmpty {
+            if itemGroups.isEmpty {
                 ContentUnavailableView(
                     "Nothing upcoming",
                     systemImage: "calendar",
@@ -50,27 +67,52 @@ struct UpcomingView: View {
                 )
             } else {
                 List {
-                    ForEach(todoGroups) { group in
+                    ForEach(itemGroups) { group in
                         Section {
-                            ForEach(group.todos) { todo in
-                                TodoRow(todo: todo) {
-                                    complete(todo)
-                                }
-                                .swipeActions(edge: .leading) {
-                                    Button {
-                                        todoBeingRescheduled = todo
-                                    } label: {
-                                        Image(systemName: "calendar")
+                            ForEach(group.items) { item in
+                                switch item {
+                                case .todo(let todo):
+                                    TodoRow(
+                                        todo: todo,
+                                        onOpen: { notesDestination = .todo(todo) },
+                                        onComplete: { complete(todo) }
+                                    )
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) {
+                                            delete(todo)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                                .labelStyle(.iconOnly)
+                                        }
+
+                                        Button {
+                                            todoBeingRescheduled = todo
+                                        } label: {
+                                            Image(systemName: "calendar")
+                                        }
+                                        .tint(.blue)
                                     }
-                                    .tint(.blue)
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        delete(todo)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                            .labelStyle(.iconOnly)
-                                    }
+
+                                case .event(let event):
+                                    EventRow(
+                                        event: event,
+                                        onOpen: { notesDestination = .event(event) }
+                                    )
+                                        .swipeActions(edge: .trailing) {
+                                            Button(role: .destructive) {
+                                                delete(event)
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                                    .labelStyle(.iconOnly)
+                                            }
+
+                                            Button {
+                                                eventBeingRescheduled = event
+                                            } label: {
+                                                Image(systemName: "calendar")
+                                            }
+                                            .tint(.blue)
+                                        }
                                 }
                             }
                         } header: {
@@ -89,6 +131,18 @@ struct UpcomingView: View {
         .sheet(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
                 .presentationDetents([.medium])
+        }
+        .sheet(item: $eventBeingRescheduled) { event in
+            EventScheduleEditor(event: event)
+                .presentationDetents([.medium])
+        }
+        .navigationDestination(item: $notesDestination) { destination in
+            switch destination {
+            case .todo(let todo):
+                ItemNotesView(item: todo)
+            case .event(let event):
+                ItemNotesView(item: event)
+            }
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -120,6 +174,11 @@ struct UpcomingView: View {
         saveChanges()
     }
 
+    private func delete(_ event: Event) {
+        modelContext.delete(event)
+        saveChanges()
+    }
+
     private func saveChanges() {
         do {
             try modelContext.save()
@@ -130,9 +189,9 @@ struct UpcomingView: View {
     }
 }
 
-private struct TodoGroup: Identifiable {
+private struct ItemGroup: Identifiable {
     let date: Date
-    let todos: [Todo]
+    let items: [ScheduledItem]
 
     var id: Date { date }
 }

@@ -8,7 +8,12 @@ struct TodayView: View {
     @Query(sort: \Todo.scheduledDate)
     private var todos: [Todo]
 
+    @Query(sort: \Event.startDate)
+    private var events: [Event]
+
     @State private var todoBeingRescheduled: Todo?
+    @State private var eventBeingRescheduled: Event?
+    @State private var notesDestination: NotesDestination?
     @State private var errorMessage: String?
 
     private var todayTodos: [Todo] {
@@ -31,50 +36,105 @@ struct TodayView: View {
             }
     }
 
+    private var todayEvents: [Event] {
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: .now)
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+
+        return events.filter { event in
+            event.startDate >= today && event.startDate < tomorrow
+        }
+    }
+
+    private var todayItems: [ScheduledItem] {
+        ScheduledItem.ordered(todos: todayTodos, events: todayEvents)
+    }
+
     var body: some View {
         Group {
-            if todayTodos.isEmpty {
+            if todayTodos.isEmpty && todayEvents.isEmpty {
                 ContentUnavailableView(
                     "Nothing for today",
                     systemImage: "checkmark.circle",
-                    description: Text("Add a todo when something comes to mind.")
+                    description: Text("Add an item when something comes to mind.")
                 )
             } else {
                 List {
-                    ForEach(todayTodos) { todo in
-                        TodoRow(todo: todo) {
-                            complete(todo)
-                        }
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                todoBeingRescheduled = todo
-                            } label: {
-                                Image(systemName: "calendar")
+                    ForEach(todayItems) { item in
+                        switch item {
+                        case .todo(let todo):
+                            TodoRow(
+                                todo: todo,
+                                onOpen: { notesDestination = .todo(todo) },
+                                onComplete: { complete(todo) }
+                            )
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    delete(todo)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                        .labelStyle(.iconOnly)
+                                }
+
+                                Button {
+                                    todoBeingRescheduled = todo
+                                } label: {
+                                    Image(systemName: "calendar")
+                                }
+                                .tint(.blue)
                             }
-                            .tint(.blue)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                delete(todo)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                                    .labelStyle(.iconOnly)
-                            }
+
+                        case .event(let event):
+                            EventRow(
+                                event: event,
+                                onOpen: { notesDestination = .event(event) }
+                            )
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        delete(event)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                            .labelStyle(.iconOnly)
+                                    }
+
+                                    Button {
+                                        eventBeingRescheduled = event
+                                    } label: {
+                                        Image(systemName: "calendar")
+                                    }
+                                    .tint(.blue)
+                                }
                         }
                     }
+                    .reorderable()
                 }
+                .reorderContainer(for: ScheduledItem.self, move: reorder)
             }
         }
         .sheet(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
                 .presentationDetents([.medium])
         }
+        .sheet(item: $eventBeingRescheduled) { event in
+            EventScheduleEditor(event: event)
+                .presentationDetents([.medium])
+        }
+        .navigationDestination(item: $notesDestination) { destination in
+            switch destination {
+            case .todo(let todo):
+                ItemNotesView(item: todo)
+            case .event(let event):
+                ItemNotesView(item: event)
+            }
+        }
         .task {
-            rollUnfinishedTodosForward()
+            performMaintenance()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                rollUnfinishedTodosForward()
+                performMaintenance()
             }
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
@@ -107,9 +167,42 @@ struct TodayView: View {
         saveChanges()
     }
 
-    private func rollUnfinishedTodosForward() {
+    private func delete(_ event: Event) {
+        modelContext.delete(event)
+        saveChanges()
+    }
+
+    private func reorder(
+        _ difference: ReorderDifference<
+            ScheduledItemID,
+            ReorderableSingleCollectionIdentifier
+        >
+    ) {
+        let destinationID: ScheduledItemID?
+        switch difference.destination.position {
+        case .before(let itemID):
+            destinationID = itemID
+        case .end:
+            destinationID = nil
+        }
+
+        do {
+            try ItemOrdering.move(
+                difference.sources,
+                before: destinationID,
+                in: todayItems,
+                context: modelContext
+            )
+        } catch {
+            modelContext.rollback()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func performMaintenance() {
         do {
             try TodoMaintenance.rollUnfinishedTodosForward(in: modelContext)
+            try EventMaintenance.deletePastEvents(in: modelContext)
         } catch {
             errorMessage = error.localizedDescription
         }

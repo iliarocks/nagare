@@ -1,20 +1,20 @@
 import SwiftData
 import SwiftUI
 
-struct TodoNotesView: View {
+struct ItemNotesView<Item: NoteEditable>: View {
     @Environment(\.modelContext) private var modelContext
 
-    let todo: Todo
+    let item: Item
 
     @State private var title: String
     @State private var notes: String
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
 
-    init(todo: Todo) {
-        self.todo = todo
-        _title = State(initialValue: todo.title)
-        _notes = State(initialValue: todo.notes ?? "")
+    init(item: Item) {
+        self.item = item
+        _title = State(initialValue: item.title)
+        _notes = State(initialValue: item.notes ?? "")
     }
 
     var body: some View {
@@ -50,7 +50,7 @@ struct TodoNotesView: View {
             pendingSave?.cancel()
             save()
         }
-        .alert("Todo Couldn't Be Saved", isPresented: isShowingError) {
+        .alert("Item Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
             }
@@ -93,12 +93,12 @@ struct TodoNotesView: View {
             ? nil
             : notes
 
-        guard todo.title != trimmedTitle || todo.notes != savedNotes else {
+        guard item.title != trimmedTitle || item.notes != savedNotes else {
             return
         }
 
-        todo.title = trimmedTitle
-        todo.notes = savedNotes
+        item.title = trimmedTitle
+        item.notes = savedNotes
 
         do {
             try modelContext.save()

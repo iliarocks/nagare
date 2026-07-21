@@ -2,10 +2,18 @@ import SwiftUI
 
 struct TodoRow: View {
     let todo: Todo
+    let onOpen: () -> Void
     let onComplete: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
+            Button(action: onOpen) {
+                Text(todo.title)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             Button(action: onComplete) {
                 Image(systemName: "circle")
                     .font(.title3)
@@ -13,15 +21,6 @@ struct TodoRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .accessibilityLabel("Complete \(todo.title)")
-
-            NavigationLink {
-                TodoNotesView(todo: todo)
-            } label: {
-                Text(todo.title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
     }

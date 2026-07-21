@@ -9,7 +9,7 @@ struct ContentView: View {
     }
 
     @State private var selectedSection = Section.today
-    @State private var isCreatingTodo = false
+    @State private var isCreatingItem = false
 
     var body: some View {
         NavigationStack {
@@ -31,12 +31,12 @@ struct ContentView: View {
                 Tab(value: Section.create, role: .prominent) {
                     EmptyView()
                 } label: {
-                    Label("New Todo", systemImage: "plus")
+                    Label("New Item", systemImage: "plus")
                         .labelStyle(.iconOnly)
                 }
             }
-            .sheet(isPresented: $isCreatingTodo) {
-                TodoFormView()
+            .sheet(isPresented: $isCreatingItem) {
+                ItemFormView()
             }
         }
     }
@@ -46,7 +46,7 @@ struct ContentView: View {
             get: { selectedSection },
             set: { section in
                 if section == .create {
-                    isCreatingTodo = true
+                    isCreatingItem = true
                 } else {
                     selectedSection = section
                 }
@@ -57,5 +57,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Todo.self, inMemory: true)
+        .modelContainer(for: [Todo.self, Event.self], inMemory: true)
 }

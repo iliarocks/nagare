@@ -64,9 +64,18 @@ struct TodoDateEditor: View {
     }
 
     private func save() {
-        todo.scheduledDate = Calendar.autoupdatingCurrent.startOfDay(for: scheduledDate)
+        let calendar = Calendar.autoupdatingCurrent
+        let newDate = calendar.startOfDay(for: scheduledDate)
 
         do {
+            if !calendar.isDate(todo.scheduledDate, inSameDayAs: newDate) {
+                todo.sortOrder = try ItemOrdering.nextSortOrder(
+                    on: newDate,
+                    in: modelContext,
+                    calendar: calendar
+                )
+            }
+            todo.scheduledDate = newDate
             try modelContext.save()
             dismiss()
         } catch {

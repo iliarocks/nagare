@@ -7,7 +7,7 @@ struct NagareApp: App {
 
     init() {
         do {
-            modelContainer = try ModelContainer(for: Todo.self)
+            modelContainer = try ModelContainer(for: Todo.self, Event.self)
         } catch {
             fatalError("Unable to create the model container: \(error)")
         }
