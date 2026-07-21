@@ -39,7 +39,11 @@ struct TodoFormView: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add", action: save)
+                    Button(action: save) {
+                        Label("Add Todo", systemImage: "checkmark")
+                    }
+                        .labelStyle(.iconOnly)
+                        .tint(.accentColor)
                         .disabled(trimmedTitle.isEmpty)
                 }
             }

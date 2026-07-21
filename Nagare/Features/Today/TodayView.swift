@@ -8,7 +8,6 @@ struct TodayView: View {
     @Query(sort: \Todo.scheduledDate)
     private var todos: [Todo]
 
-    @State private var isCreatingTodo = false
     @State private var errorMessage: String?
 
     private var todayTodos: [Todo] {
@@ -46,24 +45,16 @@ struct TodayView: View {
                             complete(todo)
                         }
                         .swipeActions(edge: .trailing) {
-                            Button("Delete", systemImage: "trash", role: .destructive) {
+                            Button(role: .destructive) {
                                 delete(todo)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                                    .labelStyle(.iconOnly)
                             }
                         }
                     }
                 }
             }
-        }
-        .navigationTitle("Today")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("New Todo", systemImage: "plus") {
-                    isCreatingTodo = true
-                }
-            }
-        }
-        .sheet(isPresented: $isCreatingTodo) {
-            TodoFormView()
         }
         .task {
             rollUnfinishedTodosForward()
@@ -118,26 +109,5 @@ struct TodayView: View {
             modelContext.rollback()
             errorMessage = error.localizedDescription
         }
-    }
-}
-
-private struct TodoRow: View {
-    let todo: Todo
-    let onComplete: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onComplete) {
-                Image(systemName: "circle")
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("Complete \(todo.title)")
-
-            Text(todo.title)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, 4)
     }
 }
