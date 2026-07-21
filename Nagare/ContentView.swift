@@ -1,7 +1,6 @@
 import SwiftUI
-import Playgrounds
 
-@main struct MyApp: App {
+@main struct Nagare: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -18,8 +17,4 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-}
-
-#Playground {
-    _ = 1 + 2
 }
