@@ -69,11 +69,7 @@ struct TodoDateEditor: View {
 
         do {
             if !calendar.isDate(todo.scheduledDate, inSameDayAs: newDate) {
-                todo.sortOrder = try ItemOrdering.nextSortOrder(
-                    on: newDate,
-                    in: modelContext,
-                    calendar: calendar
-                )
+                todo.order = try ItemOrdering.nextOrder(in: modelContext)
             }
             todo.scheduledDate = newDate
             try modelContext.save()

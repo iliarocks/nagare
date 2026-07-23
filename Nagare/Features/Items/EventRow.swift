@@ -12,7 +12,7 @@ struct EventRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 4) {
-                    Text(event.startDate, format: .dateTime.hour().minute())
+                    Text(event.scheduledDate, format: .dateTime.hour().minute())
 
                     if let endDate = event.endDate {
                         Text("–")

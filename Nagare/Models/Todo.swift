@@ -2,14 +2,14 @@ import Foundation
 import SwiftData
 
 @Model
-final class Todo: NoteEditable {
+final class Todo: Note {
     @Attribute(.unique) var id: UUID
     var title: String
     var notes: String?
     var scheduledDate: Date
     var completedAt: Date?
     var createdAt: Date
-    var sortOrder: Int64 = 0
+    var order: String
 
     init(
         id: UUID = UUID(),
@@ -18,7 +18,7 @@ final class Todo: NoteEditable {
         scheduledDate: Date = .now,
         completedAt: Date? = nil,
         createdAt: Date = .now,
-        sortOrder: Int64 = 0
+        order: String
     ) {
         self.id = id
         self.title = title
@@ -26,6 +26,6 @@ final class Todo: NoteEditable {
         self.scheduledDate = Calendar.autoupdatingCurrent.startOfDay(for: scheduledDate)
         self.completedAt = completedAt
         self.createdAt = createdAt
-        self.sortOrder = sortOrder
+        self.order = order
     }
 }

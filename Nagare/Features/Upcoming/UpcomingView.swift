@@ -7,15 +7,15 @@ struct UpcomingView: View {
     @Query(sort: \Todo.scheduledDate)
     private var todos: [Todo]
 
-    @Query(sort: \Event.startDate)
+    @Query(sort: \Event.scheduledDate)
     private var events: [Event]
 
-    @State private var todoBeingRescheduled: Todo?
-    @State private var eventBeingRescheduled: Event?
-    @State private var notesDestination: NotesDestination?
     @State private var errorMessage: String?
+    @State private var displayedItemIDsByDate: [Date: [ItemID]] = [:]
 
-    private var itemGroups: [ItemGroup] {
+    let onOpenNotes: (NotesDestination) -> Void
+
+    private var persistedItemGroups: [ReorderableItemGroup] {
         let calendar = Calendar.autoupdatingCurrent
         guard let tomorrow = calendar.date(
             byAdding: .day,
@@ -30,31 +30,58 @@ struct UpcomingView: View {
         }
 
         let upcomingEvents = events.filter { event in
-            event.startDate >= tomorrow
+            event.scheduledDate >= tomorrow
         }
 
-        let dates = Set(
+        let populatedDates = Set(
             upcomingTodos.map { calendar.startOfDay(for: $0.scheduledDate) }
-                + upcomingEvents.map { calendar.startOfDay(for: $0.startDate) }
+                + upcomingEvents.map { calendar.startOfDay(for: $0.scheduledDate) }
         )
-
-        return dates.map { date in
+        return populatedDates.map { date in
             let todosForDate = upcomingTodos.filter {
                 calendar.isDate($0.scheduledDate, inSameDayAs: date)
             }
             let eventsForDate = upcomingEvents.filter {
-                calendar.isDate($0.startDate, inSameDayAs: date)
+                calendar.isDate($0.scheduledDate, inSameDayAs: date)
             }
 
-            return ItemGroup(
+            return ReorderableItemGroup(
                 date: date,
-                items: ScheduledItem.ordered(
+                items: Item.ordered(
                     todos: todosForDate,
                     events: eventsForDate
                 )
             )
         }
         .sorted { $0.date < $1.date }
+    }
+
+    private var itemGroups: [ReorderableItemGroup] {
+        persistedItemGroups.map { group in
+            guard let displayedIDs = displayedItemIDsByDate[group.date] else {
+                return group
+            }
+
+            let itemsByID = Dictionary(
+                uniqueKeysWithValues: group.items.map { ($0.id, $0) }
+            )
+            let projectedItems = displayedIDs.compactMap { itemsByID[$0] }
+            let projectedIDs = Set(projectedItems.map(\.id))
+            return ReorderableItemGroup(
+                date: group.date,
+                items: projectedItems + group.items.filter {
+                    !projectedIDs.contains($0.id)
+                }
+            )
+        }
+    }
+
+    private var persistedItemIDsByDate: [Date: [ItemID]] {
+        Dictionary(
+            uniqueKeysWithValues: persistedItemGroups.map {
+                ($0.date, $0.items.map(\.id))
+            }
+        )
     }
 
     var body: some View {
@@ -66,83 +93,37 @@ struct UpcomingView: View {
                     description: Text("Future todos and events will appear here.")
                 )
             } else {
-                List {
-                    ForEach(itemGroups) { group in
-                        Section {
-                            ForEach(group.items) { item in
-                                switch item {
-                                case .todo(let todo):
-                                    TodoRow(
-                                        todo: todo,
-                                        onOpen: { notesDestination = .todo(todo) },
-                                        onComplete: { complete(todo) }
-                                    )
-                                    .swipeActions(edge: .trailing) {
-                                        Button(role: .destructive) {
-                                            delete(todo)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                                .labelStyle(.iconOnly)
-                                        }
-
-                                        Button {
-                                            todoBeingRescheduled = todo
-                                        } label: {
-                                            Image(systemName: "calendar")
-                                        }
-                                        .tint(.blue)
-                                    }
-
-                                case .event(let event):
-                                    EventRow(
-                                        event: event,
-                                        onOpen: { notesDestination = .event(event) }
-                                    )
-                                        .swipeActions(edge: .trailing) {
-                                            Button(role: .destructive) {
-                                                delete(event)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                                    .labelStyle(.iconOnly)
-                                            }
-
-                                            Button {
-                                                eventBeingRescheduled = event
-                                            } label: {
-                                                Image(systemName: "calendar")
-                                            }
-                                            .tint(.blue)
-                                        }
-                                }
-                            }
-                        } header: {
-                            Text(
-                                group.date,
-                                format: .dateTime
-                                    .weekday(.wide)
-                                    .month(.wide)
-                                    .day()
-                            )
-                        }
+                ReorderableItemList(
+                    groups: itemGroups,
+                    showsDateHeaders: true,
+                    onOpen: { onOpenNotes(NotesDestination($0)) },
+                    onComplete: complete,
+                    onMove: move
+                )
+            }
+        }
+        .onChange(of: persistedItemIDsByDate, initial: true) { _, itemIDsByDate in
+            displayedItemIDsByDate = itemIDsByDate
+        }
+        .overlay(alignment: .topLeading) {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--use-reorder-ui-test-store") {
+                Button("Test reorder upcoming last before first") {
+                    guard let group = itemGroups.first,
+                          group.items.count > 1 else {
+                        errorMessage = "Nagare couldn't prepare the upcoming reorder regression action. (ORDER-UI-009)"
+                        return
                     }
+                    move(
+                        on: group.date,
+                        from: IndexSet(integer: group.items.index(before: group.items.endIndex)),
+                        to: group.items.startIndex
+                    )
                 }
+                .font(.caption2)
+                .accessibilityIdentifier("Test reorder upcoming last before first")
             }
-        }
-        .sheet(item: $todoBeingRescheduled) { todo in
-            TodoDateEditor(todo: todo)
-                .presentationDetents([.medium])
-        }
-        .sheet(item: $eventBeingRescheduled) { event in
-            EventScheduleEditor(event: event)
-                .presentationDetents([.medium])
-        }
-        .navigationDestination(item: $notesDestination) { destination in
-            switch destination {
-            case .todo(let todo):
-                ItemNotesView(item: todo)
-            case .event(let event):
-                ItemNotesView(item: event)
-            }
+#endif
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -169,14 +150,35 @@ struct UpcomingView: View {
         saveChanges()
     }
 
-    private func delete(_ todo: Todo) {
-        modelContext.delete(todo)
-        saveChanges()
-    }
+    private func move(
+        on date: Date,
+        from sourceOffsets: IndexSet,
+        to destinationOffset: Int
+    ) {
+        do {
+            guard let group = itemGroups.first(where: { $0.date == date }) else {
+                throw ReorderProjection.ProjectionError.missingDestination
+            }
+            let newItemIDs = try ReorderProjection.applying(
+                sourceOffsets: sourceOffsets,
+                toOffset: destinationOffset,
+                to: group.items.map(\.id)
+            )
+            guard newItemIDs != displayedItemIDsByDate[date] else {
+                return
+            }
 
-    private func delete(_ event: Event) {
-        modelContext.delete(event)
-        saveChanges()
+            displayedItemIDsByDate[date] = newItemIDs
+            try ItemOrdering.saveDisplayedOrder(
+                newItemIDs,
+                on: date,
+                in: modelContext
+            )
+        } catch {
+            modelContext.rollback()
+            displayedItemIDsByDate = persistedItemIDsByDate
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func saveChanges() {
@@ -187,11 +189,4 @@ struct UpcomingView: View {
             errorMessage = error.localizedDescription
         }
     }
-}
-
-private struct ItemGroup: Identifiable {
-    let date: Date
-    let items: [ScheduledItem]
-
-    var id: Date { date }
 }

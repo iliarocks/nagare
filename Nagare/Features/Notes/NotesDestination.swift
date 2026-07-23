@@ -11,6 +11,15 @@ enum NotesDestination: Identifiable, Hashable {
         }
     }
 
+    init(_ item: Item) {
+        switch item {
+        case .todo(let todo):
+            self = .todo(todo)
+        case .event(let event):
+            self = .event(event)
+        }
+    }
+
     static func == (lhs: NotesDestination, rhs: NotesDestination) -> Bool {
         switch (lhs, rhs) {
         case (.todo(let lhsTodo), .todo(let rhsTodo)):

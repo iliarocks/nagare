@@ -10,7 +10,7 @@ enum EventMaintenance {
         let today = calendar.startOfDay(for: .now)
         let descriptor = FetchDescriptor<Event>(
             predicate: #Predicate { event in
-                event.startDate < today
+                event.scheduledDate < today
             }
         )
 

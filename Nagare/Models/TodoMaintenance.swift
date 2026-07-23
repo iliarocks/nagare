@@ -15,22 +15,18 @@ enum TodoMaintenance {
         )
         descriptor.sortBy = [
             SortDescriptor(\Todo.scheduledDate),
-            SortDescriptor(\Todo.sortOrder),
+            SortDescriptor(\Todo.order),
             SortDescriptor(\Todo.createdAt)
         ]
 
         do {
             let overdueTodos = try context.fetch(descriptor)
-            var nextOrder = try ItemOrdering.nextSortOrder(
-                on: today,
-                in: context,
-                calendar: calendar
-            )
+            var nextOrder = try ItemOrdering.nextOrder(in: context)
 
             for todo in overdueTodos {
                 todo.scheduledDate = today
-                todo.sortOrder = nextOrder
-                nextOrder += ItemOrdering.spacing
+                todo.order = nextOrder
+                nextOrder = FractionalIndex.between(nextOrder, nil) ?? nextOrder + "i"
             }
 
             if context.hasChanges {

@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-struct ItemFormView: View {
+struct CreateView: View {
     private enum ItemType: String, CaseIterable, Identifiable {
         case todo
         case event
@@ -31,33 +31,35 @@ struct ItemFormView: View {
     @State private var scheduledDate = Date.now
     @State private var startTime = Date.now
     @State private var includesEndTime = false
-    @State private var endTime = Calendar.autoupdatingCurrent.date(
-        byAdding: .hour,
-        value: 1,
-        to: .now
-    ) ?? .now
+    @State private var endTime =
+        Calendar.autoupdatingCurrent.date(
+            byAdding: .hour,
+            value: 1,
+            to: .now
+        ) ?? .now
     @State private var errorMessage: String?
+    @FocusState private var isTitleFocused: Bool
 
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var eventStartDate: Date {
-        date(on: scheduledDate, withTimeFrom: startTime)
+    private var eventScheduledDate: Date {
+        ScheduleDateTime.combining(scheduledDate, with: startTime)
     }
 
     private var eventEndDate: Date? {
         guard includesEndTime else {
             return nil
         }
-        return date(on: scheduledDate, withTimeFrom: endTime)
+        return ScheduleDateTime.combining(scheduledDate, with: endTime)
     }
 
     private var isScheduleValid: Bool {
         guard let eventEndDate else {
             return true
         }
-        return eventEndDate > eventStartDate
+        return eventEndDate > eventScheduledDate
     }
 
     var body: some View {
@@ -77,50 +79,24 @@ struct ItemFormView: View {
                         itemType == .todo ? "What needs doing?" : "What's happening?",
                         text: $title
                     )
+                    .focused($isTitleFocused)
                     .submitLabel(.done)
                     .onSubmit(save)
 
-                    DatePicker(
-                        "Date",
-                        selection: $scheduledDate,
-                        in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
-                        displayedComponents: .date
-                    )
-
                     if itemType == .event {
-                        LabeledContent("Time") {
-                            HStack(spacing: 8) {
-                                DatePicker(
-                                    "Start Time",
-                                    selection: $startTime,
-                                    displayedComponents: .hourAndMinute
-                                )
-                                .labelsHidden()
-
-                                if includesEndTime {
-                                    Text("–")
-                                        .foregroundStyle(.secondary)
-
-                                    DatePicker(
-                                        "End Time",
-                                        selection: $endTime,
-                                        displayedComponents: .hourAndMinute
-                                    )
-                                    .labelsHidden()
-                                }
-
-                                Button {
-                                    includesEndTime.toggle()
-                                } label: {
-                                    Label(
-                                        includesEndTime ? "Remove End Time" : "Add End Time",
-                                        systemImage: includesEndTime ? "minus.circle.fill" : "plus.circle"
-                                    )
-                                    .labelStyle(.iconOnly)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                        ScheduleFields(
+                            date: $scheduledDate,
+                            startTime: $startTime,
+                            includesEndTime: $includesEndTime,
+                            endTime: $endTime
+                        )
+                    } else {
+                        DatePicker(
+                            "Date",
+                            selection: $scheduledDate,
+                            in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
+                            displayedComponents: .date
+                        )
                     }
                 } footer: {
                     if itemType == .event && !isScheduleValid {
@@ -158,6 +134,9 @@ struct ItemFormView: View {
             } message: {
                 Text(errorMessage ?? "An unknown error occurred.")
             }
+            .task {
+                isTitleFocused = true
+            }
         }
     }
 
@@ -180,28 +159,22 @@ struct ItemFormView: View {
         do {
             switch itemType {
             case .todo:
-                let sortOrder = try ItemOrdering.nextSortOrder(
-                    on: scheduledDate,
-                    in: modelContext
-                )
+                let order = try ItemOrdering.nextOrder(in: modelContext)
                 modelContext.insert(
                     Todo(
                         title: trimmedTitle,
                         scheduledDate: scheduledDate,
-                        sortOrder: sortOrder
+                        order: order
                     )
                 )
             case .event:
-                let sortOrder = try ItemOrdering.nextSortOrder(
-                    on: eventStartDate,
-                    in: modelContext
-                )
+                let order = try ItemOrdering.nextOrder(in: modelContext)
                 modelContext.insert(
                     Event(
                         title: trimmedTitle,
-                        startDate: eventStartDate,
+                        scheduledDate: eventScheduledDate,
                         endDate: eventEndDate,
-                        sortOrder: sortOrder
+                        order: order
                     )
                 )
             }
@@ -214,15 +187,4 @@ struct ItemFormView: View {
         }
     }
 
-    private func date(on day: Date, withTimeFrom time: Date) -> Date {
-        let calendar = Calendar.autoupdatingCurrent
-        let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
-
-        return calendar.date(
-            bySettingHour: timeComponents.hour ?? 0,
-            minute: timeComponents.minute ?? 0,
-            second: 0,
-            of: day
-        ) ?? day
-    }
 }

@@ -2,30 +2,30 @@ import Foundation
 import SwiftData
 
 @Model
-final class Event: NoteEditable {
+final class Event: Note {
     @Attribute(.unique) var id: UUID
     var title: String
     var notes: String?
-    var startDate: Date
+    var scheduledDate: Date
     var endDate: Date?
     var createdAt: Date
-    var sortOrder: Int64 = 0
+    var order: String
 
     init(
         id: UUID = UUID(),
         title: String,
         notes: String? = nil,
-        startDate: Date,
+        scheduledDate: Date,
         endDate: Date? = nil,
         createdAt: Date = .now,
-        sortOrder: Int64 = 0
+        order: String
     ) {
         self.id = id
         self.title = title
         self.notes = notes
-        self.startDate = startDate
+        self.scheduledDate = scheduledDate
         self.endDate = endDate
         self.createdAt = createdAt
-        self.sortOrder = sortOrder
+        self.order = order
     }
 }

@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-struct ItemNotesView<Item: NoteEditable>: View {
+struct NotesView<Item: Note>: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     let item: Item
@@ -10,6 +11,10 @@ struct ItemNotesView<Item: NoteEditable>: View {
     @State private var notes: String
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
+    @State private var todoBeingRescheduled: Todo?
+    @State private var eventBeingRescheduled: Event?
+    @State private var isConfirmingDelete = false
+    @State private var isDeleted = false
 
     init(item: Item) {
         self.item = item
@@ -40,6 +45,26 @@ struct ItemNotesView<Item: NoteEditable>: View {
         .padding()
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(action: presentScheduleEditor) {
+                        Label(scheduleActionTitle, systemImage: "calendar")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        isConfirmingDelete = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Label("Item Actions", systemImage: "ellipsis")
+                        .labelStyle(.iconOnly)
+                }
+            }
+        }
         .onChange(of: title) {
             scheduleSave()
         }
@@ -48,7 +73,27 @@ struct ItemNotesView<Item: NoteEditable>: View {
         }
         .onDisappear {
             pendingSave?.cancel()
-            save()
+            if !isDeleted {
+                save()
+            }
+        }
+        .sheet(item: $todoBeingRescheduled) { todo in
+            TodoDateEditor(todo: todo)
+                .presentationDetents([.medium])
+        }
+        .sheet(item: $eventBeingRescheduled) { event in
+            EventScheduleEditor(event: event)
+                .presentationDetents([.medium])
+        }
+        .confirmationDialog(
+            "Delete this item?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive, action: delete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone.")
         }
         .alert("Item Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -68,6 +113,42 @@ struct ItemNotesView<Item: NoteEditable>: View {
                 }
             }
         )
+    }
+
+    private var scheduleActionTitle: String {
+        item is Event ? "Change Schedule" : "Change Date"
+    }
+
+    private func presentScheduleEditor() {
+        if let todo = item as? Todo {
+            todoBeingRescheduled = todo
+        } else if let event = item as? Event {
+            eventBeingRescheduled = event
+        } else {
+            errorMessage = "Nagare couldn't identify this item's schedule editor. (ITEM-001)"
+        }
+    }
+
+    private func delete() {
+        pendingSave?.cancel()
+
+        if let todo = item as? Todo {
+            modelContext.delete(todo)
+        } else if let event = item as? Event {
+            modelContext.delete(event)
+        } else {
+            errorMessage = "Nagare couldn't identify the item to delete. (ITEM-002)"
+            return
+        }
+
+        do {
+            try modelContext.save()
+            isDeleted = true
+            dismiss()
+        } catch {
+            modelContext.rollback()
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func scheduleSave() {
