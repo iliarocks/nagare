@@ -1,6 +1,7 @@
 enum NotesDestination: Identifiable, Hashable {
     case todo(Todo)
     case event(Event)
+    case template(RecurrenceTemplate)
 
     var id: String {
         switch self {
@@ -8,6 +9,8 @@ enum NotesDestination: Identifiable, Hashable {
             "todo-\(todo.id)"
         case .event(let event):
             "event-\(event.id)"
+        case .template(let template):
+            "template-\(template.id)"
         }
     }
 
@@ -26,6 +29,8 @@ enum NotesDestination: Identifiable, Hashable {
             lhsTodo.id == rhsTodo.id
         case (.event(let lhsEvent), .event(let rhsEvent)):
             lhsEvent.id == rhsEvent.id
+        case (.template(let lhsTemplate), .template(let rhsTemplate)):
+            lhsTemplate.id == rhsTemplate.id
         default:
             false
         }
@@ -39,6 +44,9 @@ enum NotesDestination: Identifiable, Hashable {
         case .event(let event):
             hasher.combine("event")
             hasher.combine(event.id)
+        case .template(let template):
+            hasher.combine("template")
+            hasher.combine(template.id)
         }
     }
 }

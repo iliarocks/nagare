@@ -56,9 +56,15 @@ struct RootView: View {
             .navigationDestination(for: NotesDestination.self) { destination in
                 switch destination {
                 case .todo(let todo):
-                    NotesView(item: todo)
+                    NotesView(item: todo) { template in
+                        notesPath.append(.template(template))
+                    }
                 case .event(let event):
-                    NotesView(item: event)
+                    NotesView(item: event) { template in
+                        notesPath.append(.template(template))
+                    }
+                case .template(let template):
+                    NotesView(item: template)
                 }
             }
         }
@@ -67,5 +73,8 @@ struct RootView: View {
 
 #Preview {
     RootView()
-        .modelContainer(for: [Todo.self, Event.self], inMemory: true)
+        .modelContainer(
+            for: [Todo.self, Event.self, RecurrenceTemplate.self],
+            inMemory: true
+        )
 }

@@ -10,6 +10,8 @@ final class Todo: Note {
     var completedAt: Date?
     var createdAt: Date
     var order: String
+    var recurrenceSequence: Int?
+    var recurrenceTemplate: RecurrenceTemplate?
 
     init(
         id: UUID = UUID(),
@@ -18,14 +20,17 @@ final class Todo: Note {
         scheduledDate: Date = .now,
         completedAt: Date? = nil,
         createdAt: Date = .now,
-        order: String
+        order: String,
+        calendar: Calendar = .autoupdatingCurrent
     ) {
         self.id = id
         self.title = title
         self.notes = notes
-        self.scheduledDate = Calendar.autoupdatingCurrent.startOfDay(for: scheduledDate)
+        self.scheduledDate = calendar.startOfDay(for: scheduledDate)
         self.completedAt = completedAt
         self.createdAt = createdAt
         self.order = order
+        self.recurrenceSequence = nil
+        self.recurrenceTemplate = nil
     }
 }

@@ -37,6 +37,7 @@ struct CreateView: View {
             value: 1,
             to: .now
         ) ?? .now
+    @State private var recurrence = RecurrenceFormState.disabled
     @State private var errorMessage: String?
     @FocusState private var isTitleFocused: Bool
 
@@ -60,6 +61,14 @@ struct CreateView: View {
             return true
         }
         return eventEndDate > eventScheduledDate
+    }
+
+    private var recurrenceItemType: RecurrenceItemType {
+        itemType == .todo ? .todo : .event
+    }
+
+    private var isFormValid: Bool {
+        !trimmedTitle.isEmpty && isScheduleValid && recurrence.isValid
     }
 
     var body: some View {
@@ -104,6 +113,14 @@ struct CreateView: View {
                             .foregroundStyle(.red)
                     }
                 }
+
+                RecurrenceFields(
+                    state: $recurrence,
+                    itemType: recurrenceItemType,
+                    referenceDate: itemType == .todo
+                        ? scheduledDate
+                        : eventScheduledDate
+                )
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -124,7 +141,7 @@ struct CreateView: View {
                             .labelStyle(.iconOnly)
                     }
                     .tint(.accentColor)
-                    .disabled(trimmedTitle.isEmpty || !isScheduleValid)
+                    .disabled(!isFormValid)
                 }
             }
             .alert("\(itemType.title) Couldn't Be Created", isPresented: isShowingError) {
@@ -136,6 +153,28 @@ struct CreateView: View {
             }
             .task {
                 isTitleFocused = true
+            }
+            .onChange(of: itemType) {
+                let referenceDate = itemType == .todo
+                    ? scheduledDate
+                    : eventScheduledDate
+                recurrence.prepare(
+                    for: recurrenceItemType,
+                    referenceDate: referenceDate
+                )
+                recurrence.rebaseReference(to: referenceDate)
+            }
+            .onChange(of: scheduledDate) {
+                guard itemType == .todo else {
+                    return
+                }
+                recurrence.rebaseReference(to: scheduledDate)
+            }
+            .onChange(of: eventScheduledDate) {
+                guard itemType == .event else {
+                    return
+                }
+                recurrence.rebaseReference(to: eventScheduledDate)
             }
         }
     }
@@ -152,34 +191,55 @@ struct CreateView: View {
     }
 
     private func save() {
-        guard !trimmedTitle.isEmpty && isScheduleValid else {
+        guard isFormValid else {
+            errorMessage = "Complete the title, schedule, and repeat settings before saving. (CREATE-001)"
             return
         }
 
         do {
+            let referenceDate = itemType == .todo
+                ? scheduledDate
+                : eventScheduledDate
+            let rule = try recurrence.rule(referenceDate: referenceDate)
+
             switch itemType {
             case .todo:
                 let order = try ItemOrdering.nextOrder(in: modelContext)
-                modelContext.insert(
-                    Todo(
-                        title: trimmedTitle,
-                        scheduledDate: scheduledDate,
-                        order: order
-                    )
+                let todo = Todo(
+                    title: trimmedTitle,
+                    scheduledDate: scheduledDate,
+                    order: order
                 )
+                modelContext.insert(todo)
+                if let rule {
+                    _ = try RecurrencePersistence.createTemplate(
+                        for: todo,
+                        rule: rule,
+                        in: modelContext
+                    )
+                } else {
+                    try modelContext.save()
+                }
             case .event:
                 let order = try ItemOrdering.nextOrder(in: modelContext)
-                modelContext.insert(
-                    Event(
-                        title: trimmedTitle,
-                        scheduledDate: eventScheduledDate,
-                        endDate: eventEndDate,
-                        order: order
-                    )
+                let event = Event(
+                    title: trimmedTitle,
+                    scheduledDate: eventScheduledDate,
+                    endDate: eventEndDate,
+                    order: order
                 )
+                modelContext.insert(event)
+                if let rule {
+                    _ = try RecurrencePersistence.createTemplate(
+                        for: event,
+                        rule: rule,
+                        in: modelContext
+                    )
+                } else {
+                    try modelContext.save()
+                }
             }
 
-            try modelContext.save()
             dismiss()
         } catch {
             modelContext.rollback()

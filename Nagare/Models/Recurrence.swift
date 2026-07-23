@@ -1,11 +1,11 @@
 import Foundation
 
-enum RecurrenceMode: String, Codable, Sendable {
+enum RecurrenceMode: String, CaseIterable, Codable, Sendable {
     case relative
     case absolute
 }
 
-enum RecurrenceUnit: String, Codable, Sendable {
+enum RecurrenceUnit: String, CaseIterable, Codable, Sendable {
     case day
     case week
     case month

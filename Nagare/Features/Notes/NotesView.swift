@@ -6,6 +6,7 @@ struct NotesView<Item: Note>: View {
     @Environment(\.modelContext) private var modelContext
 
     let item: Item
+    let onOpenTemplate: (RecurrenceTemplate) -> Void
 
     @State private var title: String
     @State private var notes: String
@@ -13,11 +14,17 @@ struct NotesView<Item: Note>: View {
     @State private var errorMessage: String?
     @State private var todoBeingRescheduled: Todo?
     @State private var eventBeingRescheduled: Event?
+    @State private var recurrenceTarget: RecurrenceEditorTarget?
     @State private var isConfirmingDelete = false
+    @State private var isConfirmingStop = false
     @State private var isDeleted = false
 
-    init(item: Item) {
+    init(
+        item: Item,
+        onOpenTemplate: @escaping (RecurrenceTemplate) -> Void = { _ in }
+    ) {
         self.item = item
+        self.onOpenTemplate = onOpenTemplate
         _title = State(initialValue: item.title)
         _notes = State(initialValue: item.notes ?? "")
     }
@@ -26,6 +33,7 @@ struct NotesView<Item: Note>: View {
         VStack(alignment: .leading, spacing: 16) {
             TextField("Title", text: $title, axis: .vertical)
                 .font(.title2.weight(.semibold))
+                .accessibilityIdentifier("Item Title")
 
             Divider()
 
@@ -48,16 +56,43 @@ struct NotesView<Item: Note>: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button(action: presentScheduleEditor) {
-                        Label(scheduleActionTitle, systemImage: "calendar")
+                    if !(item is RecurrenceTemplate) {
+                        Button(action: presentScheduleEditor) {
+                            Label(scheduleActionTitle, systemImage: "calendar")
+                        }
                     }
 
-                    Divider()
+                    Button(action: presentRecurrenceEditor) {
+                        Label(repeatActionTitle, systemImage: "repeat")
+                    }
 
-                    Button(role: .destructive) {
-                        isConfirmingDelete = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+                    if let recurrenceTemplate,
+                       !(item is RecurrenceTemplate) {
+                        Button {
+                            openFutureItems(recurrenceTemplate)
+                        } label: {
+                            Label("Edit Future Items", systemImage: "text.append")
+                        }
+                    }
+
+                    if recurrenceTemplate != nil {
+                        Divider()
+
+                        Button(role: .destructive) {
+                            isConfirmingStop = true
+                        } label: {
+                            Label("Stop Repeating", systemImage: "repeat")
+                        }
+                    }
+
+                    if !(item is RecurrenceTemplate) {
+                        Divider()
+
+                        Button(role: .destructive) {
+                            isConfirmingDelete = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 } label: {
                     Label("Item Actions", systemImage: "ellipsis")
@@ -85,6 +120,10 @@ struct NotesView<Item: Note>: View {
             EventScheduleEditor(event: event)
                 .presentationDetents([.medium])
         }
+        .sheet(item: $recurrenceTarget) { target in
+            RecurrenceEditor(target: target)
+                .presentationDetents([.medium, .large])
+        }
         .confirmationDialog(
             "Delete this item?",
             isPresented: $isConfirmingDelete,
@@ -93,9 +132,19 @@ struct NotesView<Item: Note>: View {
             Button("Delete", role: .destructive, action: delete)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This action cannot be undone.")
+            Text(deleteConfirmationMessage)
         }
-        .alert("Item Couldn't Be Saved", isPresented: isShowingError) {
+        .confirmationDialog(
+            "Stop repeating?",
+            isPresented: $isConfirmingStop,
+            titleVisibility: .visible
+        ) {
+            Button("Stop Repeating", role: .destructive, action: stopRepeating)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The current item and completed history will remain. Future virtual items will disappear.")
+        }
+        .alert("Nagare Couldn't Complete That Action", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
             }
@@ -119,7 +168,34 @@ struct NotesView<Item: Note>: View {
         item is Event ? "Change Schedule" : "Change Date"
     }
 
+    private var recurrenceTemplate: RecurrenceTemplate? {
+        if let template = item as? RecurrenceTemplate {
+            return template
+        }
+        if let todo = item as? Todo {
+            return todo.recurrenceTemplate
+        }
+        if let event = item as? Event {
+            return event.recurrenceTemplate
+        }
+        return nil
+    }
+
+    private var repeatActionTitle: String {
+        recurrenceTemplate == nil ? "Add Repeat" : "Edit Repeat"
+    }
+
+    private var deleteConfirmationMessage: String {
+        if recurrenceTemplate != nil {
+            return "The current occurrence will be removed and the next occurrence will be generated."
+        }
+        return "This action cannot be undone."
+    }
+
     private func presentScheduleEditor() {
+        guard prepareItemForAction() else {
+            return
+        }
         if let todo = item as? Todo {
             todoBeingRescheduled = todo
         } else if let event = item as? Event {
@@ -129,24 +205,69 @@ struct NotesView<Item: Note>: View {
         }
     }
 
-    private func delete() {
-        pendingSave?.cancel()
-
-        if let todo = item as? Todo {
-            modelContext.delete(todo)
+    private func presentRecurrenceEditor() {
+        guard prepareItemForAction() else {
+            return
+        }
+        if let template = item as? RecurrenceTemplate {
+            recurrenceTarget = .template(template)
+        } else if let todo = item as? Todo {
+            recurrenceTarget = .todo(todo)
         } else if let event = item as? Event {
-            modelContext.delete(event)
+            recurrenceTarget = .event(event)
         } else {
-            errorMessage = "Nagare couldn't identify the item to delete. (ITEM-002)"
+            errorMessage = "Nagare couldn't identify the item to repeat. (RECURRENCE-UI-004)"
+        }
+    }
+
+    private func stopRepeating() {
+        pendingSave?.cancel()
+        if !(item is RecurrenceTemplate) {
+            guard prepareItemForAction() else {
+                return
+            }
+        }
+        guard let recurrenceTemplate else {
+            errorMessage = "Nagare couldn't find this item's recurrence template. (RECURRENCE-UI-005)"
             return
         }
 
         do {
-            try modelContext.save()
+            try RecurrencePersistence.deleteTemplate(
+                recurrenceTemplate,
+                in: modelContext
+            )
+            if item is RecurrenceTemplate {
+                isDeleted = true
+                dismiss()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func delete() {
+        pendingSave?.cancel()
+
+        do {
+            if let todo = item as? Todo {
+                try RecurrencePersistence.delete(
+                    todo,
+                    in: modelContext
+                )
+            } else if let event = item as? Event {
+                try RecurrencePersistence.delete(
+                    event,
+                    in: modelContext
+                )
+            } else {
+                errorMessage = "Nagare couldn't identify the item to delete. (ITEM-002)"
+                return
+            }
+
             isDeleted = true
             dismiss()
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }
@@ -160,14 +281,31 @@ struct NotesView<Item: Note>: View {
                 return
             }
 
-            save()
+            _ = save()
         }
     }
 
-    private func save() {
+    private func openFutureItems(_ template: RecurrenceTemplate) {
+        guard prepareItemForAction() else {
+            return
+        }
+        onOpenTemplate(template)
+    }
+
+    private func prepareItemForAction() -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
-            return
+            errorMessage = "Give this item a title before continuing. (ITEM-003)"
+            return false
+        }
+        return save()
+    }
+
+    @discardableResult
+    private func save() -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            return false
         }
 
         let savedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -175,7 +313,7 @@ struct NotesView<Item: Note>: View {
             : notes
 
         guard item.title != trimmedTitle || item.notes != savedNotes else {
-            return
+            return true
         }
 
         item.title = trimmedTitle
@@ -183,9 +321,11 @@ struct NotesView<Item: Note>: View {
 
         do {
             try modelContext.save()
+            return true
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription
+            return false
         }
     }
 }

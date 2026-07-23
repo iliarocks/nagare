@@ -10,6 +10,8 @@ final class Event: Note {
     var endDate: Date?
     var createdAt: Date
     var order: String
+    var recurrenceSequence: Int?
+    var recurrenceTemplate: RecurrenceTemplate?
 
     init(
         id: UUID = UUID(),
@@ -27,5 +29,7 @@ final class Event: Note {
         self.endDate = endDate
         self.createdAt = createdAt
         self.order = order
+        self.recurrenceSequence = nil
+        self.recurrenceTemplate = nil
     }
 }

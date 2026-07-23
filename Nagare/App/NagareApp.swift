@@ -22,16 +22,25 @@ struct NagareApp: App {
                 }
                 let configuration = ModelConfiguration(
                     "ReorderRegression",
-                    schema: Schema([Todo.self, Event.self]),
+                    schema: Schema([
+                        Todo.self,
+                        Event.self,
+                        RecurrenceTemplate.self
+                    ]),
                     url: storeURL
                 )
                 modelContainer = try ModelContainer(
                     for: Todo.self,
                     Event.self,
+                    RecurrenceTemplate.self,
                     configurations: configuration
                 )
             } else {
-                modelContainer = try ModelContainer(for: Todo.self, Event.self)
+                modelContainer = try ModelContainer(
+                    for: Todo.self,
+                    Event.self,
+                    RecurrenceTemplate.self
+                )
             }
             try prepareReorderRegressionTestDataIfRequested(in: modelContainer.mainContext)
         } catch {
@@ -60,6 +69,9 @@ struct NagareApp: App {
         for event in try context.fetch(FetchDescriptor<Event>()) {
             context.delete(event)
         }
+        for template in try context.fetch(FetchDescriptor<RecurrenceTemplate>()) {
+            context.delete(template)
+        }
 
         let today = Calendar.autoupdatingCurrent.startOfDay(for: .now)
         guard let tomorrow = Calendar.autoupdatingCurrent.date(
@@ -75,6 +87,24 @@ struct NagareApp: App {
         context.insert(Todo(title: "Upcoming First", scheduledDate: tomorrow, order: "9"))
         context.insert(Todo(title: "Upcoming Second", scheduledDate: tomorrow, order: "i"))
         context.insert(Todo(title: "Upcoming Third", scheduledDate: tomorrow, order: "r"))
+
+        let recurringTodo = Todo(
+            title: "Recurring Current UI",
+            scheduledDate: today,
+            order: "1"
+        )
+        context.insert(recurringTodo)
+        let dailyRule = try RecurrenceRule.absolute(
+            every: 1,
+            unit: .day,
+            reference: today
+        )
+        let recurringTemplate = try RecurrencePersistence.createTemplate(
+            for: recurringTodo,
+            rule: dailyRule,
+            in: context
+        )
+        recurringTemplate.title = "Recurring Future UI"
         try context.save()
 #endif
     }

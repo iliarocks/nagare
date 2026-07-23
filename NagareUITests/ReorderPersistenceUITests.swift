@@ -100,4 +100,40 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
     }
 
+    @MainActor
+    func testUpcomingVirtualItemOpensFutureTemplate() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let upcomingTab = app.buttons["Upcoming"]
+        XCTAssertTrue(upcomingTab.waitForExistence(timeout: 5))
+        upcomingTab.tap()
+
+        let virtualItem = app.buttons.matching(
+            NSPredicate(
+                format: "label CONTAINS %@",
+                "Recurring Future UI"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            virtualItem.waitForExistence(timeout: 5),
+            "Upcoming should project the future title from the recurrence template"
+        )
+        virtualItem.tap()
+
+        let titleField = app.textFields["Item Title"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        XCTAssertEqual(titleField.value as? String, "Recurring Future UI")
+
+        let actionsMenu = app.buttons["Item Actions"]
+        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 2))
+        actionsMenu.tap()
+        XCTAssertTrue(app.buttons["Edit Repeat"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Stop Repeating"].waitForExistence(timeout: 2))
+    }
+
 }

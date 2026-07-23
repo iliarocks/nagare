@@ -3,6 +3,7 @@ import SwiftUI
 
 struct UpcomingView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query(sort: \Todo.scheduledDate)
     private var todos: [Todo]
@@ -10,10 +11,19 @@ struct UpcomingView: View {
     @Query(sort: \Event.scheduledDate)
     private var events: [Event]
 
+    @Query(sort: \RecurrenceTemplate.createdAt)
+    private var recurrenceTemplates: [RecurrenceTemplate]
+
     @State private var errorMessage: String?
     @State private var displayedItemIDsByDate: [Date: [ItemID]] = [:]
+    @State private var virtualItems: [VirtualItem] = []
 
     let onOpenNotes: (NotesDestination) -> Void
+
+    @MainActor
+    private var recurrenceProjectionRevisions: [RecurrenceProjectionRevision] {
+        recurrenceTemplates.map(RecurrenceProjectionRevision.init)
+    }
 
     private var persistedItemGroups: [ReorderableItemGroup] {
         let calendar = Calendar.autoupdatingCurrent
@@ -36,6 +46,7 @@ struct UpcomingView: View {
         let populatedDates = Set(
             upcomingTodos.map { calendar.startOfDay(for: $0.scheduledDate) }
                 + upcomingEvents.map { calendar.startOfDay(for: $0.scheduledDate) }
+                + virtualItems.map { calendar.startOfDay(for: $0.date) }
         )
         return populatedDates.map { date in
             let todosForDate = upcomingTodos.filter {
@@ -44,13 +55,24 @@ struct UpcomingView: View {
             let eventsForDate = upcomingEvents.filter {
                 calendar.isDate($0.scheduledDate, inSameDayAs: date)
             }
+            let virtualItemsForDate = virtualItems.filter {
+                calendar.isDate($0.date, inSameDayAs: date)
+            }
+            .sorted {
+                if $0.order != $1.order {
+                    return $0.order < $1.order
+                }
+                return $0.id.templateID.uuidString
+                    < $1.id.templateID.uuidString
+            }
 
             return ReorderableItemGroup(
                 date: date,
                 items: Item.ordered(
                     todos: todosForDate,
                     events: eventsForDate
-                )
+                ),
+                virtualItems: virtualItemsForDate
             )
         }
         .sorted { $0.date < $1.date }
@@ -71,7 +93,8 @@ struct UpcomingView: View {
                 date: group.date,
                 items: projectedItems + group.items.filter {
                     !projectedIDs.contains($0.id)
-                }
+                },
+                virtualItems: group.virtualItems
             )
         }
     }
@@ -97,6 +120,9 @@ struct UpcomingView: View {
                     groups: itemGroups,
                     showsDateHeaders: true,
                     onOpen: { onOpenNotes(NotesDestination($0)) },
+                    onOpenVirtual: {
+                        onOpenNotes(.template($0.template))
+                    },
                     onComplete: complete,
                     onMove: move
                 )
@@ -104,6 +130,17 @@ struct UpcomingView: View {
         }
         .onChange(of: persistedItemIDsByDate, initial: true) { _, itemIDsByDate in
             displayedItemIDsByDate = itemIDsByDate
+        }
+        .onChange(
+            of: recurrenceProjectionRevisions,
+            initial: true
+        ) {
+            refreshVirtualItems()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                refreshVirtualItems()
+            }
         }
         .overlay(alignment: .topLeading) {
 #if DEBUG
@@ -146,8 +183,47 @@ struct UpcomingView: View {
     }
 
     private func complete(_ todo: Todo) {
-        todo.completedAt = .now
-        saveChanges()
+        do {
+            try RecurrencePersistence.complete(
+                todo,
+                in: modelContext
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshVirtualItems() {
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: .now)
+        guard let tomorrow = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: today
+        ),
+        let horizon = calendar.date(
+            byAdding: .month,
+            value: 6,
+            to: today
+        ) else {
+            virtualItems = []
+            errorMessage = VirtualItemProjectionError
+                .horizonCalculationFailed
+                .localizedDescription
+            return
+        }
+
+        do {
+            virtualItems = try VirtualItemProjection.generate(
+                from: recurrenceTemplates,
+                starting: tomorrow,
+                through: horizon,
+                calendar: calendar
+            )
+        } catch {
+            virtualItems = []
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func move(
@@ -181,12 +257,4 @@ struct UpcomingView: View {
         }
     }
 
-    private func saveChanges() {
-        do {
-            try modelContext.save()
-        } catch {
-            modelContext.rollback()
-            errorMessage = error.localizedDescription
-        }
-    }
 }

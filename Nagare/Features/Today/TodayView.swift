@@ -146,8 +146,14 @@ struct TodayView: View {
     }
 
     private func complete(_ todo: Todo) {
-        todo.completedAt = .now
-        saveChanges()
+        do {
+            try RecurrencePersistence.complete(
+                todo,
+                in: modelContext
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func saveDisplayedOrder() {
@@ -170,15 +176,6 @@ struct TodayView: View {
             try TodoMaintenance.rollUnfinishedTodosForward(in: modelContext)
             try EventMaintenance.deletePastEvents(in: modelContext)
         } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func saveChanges() {
-        do {
-            try modelContext.save()
-        } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }
