@@ -71,23 +71,21 @@ struct TodayView: View {
                     description: Text("Add an item when something comes to mind.")
                 )
             } else {
-                GeometryReader { proxy in
-                    ReorderableItemList(
-                        groups: [
-                            ReorderableItemGroup(
-                                date: Calendar.autoupdatingCurrent.startOfDay(for: .now),
-                                items: todayItems
-                            )
-                        ],
-                        showsDateHeaders: false,
-                        topContentMargin: centeredTopMargin(for: proxy.size.height),
-                        onOpen: { onOpenNotes(NotesDestination($0)) },
-                        onComplete: complete,
-                        onMove: { _, sourceOffsets, destinationOffset in
-                            move(from: sourceOffsets, to: destinationOffset)
-                        }
-                    )
-                }
+                ReorderableItemList(
+                    groups: [
+                        ReorderableItemGroup(
+                            date: Calendar.autoupdatingCurrent.startOfDay(for: .now),
+                            items: todayItems
+                        )
+                    ],
+                    showsDateHeaders: false,
+                    onOpen: { onOpenNotes(NotesDestination($0)) },
+                    onComplete: complete,
+                    onDelete: delete,
+                    onMove: { _, sourceOffsets, destinationOffset in
+                        move(from: sourceOffsets, to: destinationOffset)
+                    }
+                )
             }
         }
         .task {
@@ -105,13 +103,26 @@ struct TodayView: View {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--use-reorder-ui-test-store") {
                 Button("Test reorder last before first") {
-                    guard todayItems.count > 1 else {
+                    guard
+                        let sourceIndex = todayItems.firstIndex(where: {
+                            guard case .todo(let todo) = $0 else {
+                                return false
+                            }
+                            return todo.title == "Reorder Third"
+                        }),
+                        let destinationIndex = todayItems.firstIndex(where: {
+                            guard case .todo(let todo) = $0 else {
+                                return false
+                            }
+                            return todo.title == "Reorder First"
+                        })
+                    else {
                         errorMessage = "Nagare couldn't prepare the reorder regression action. (ORDER-UI-006)"
                         return
                     }
                     move(
-                        from: IndexSet(integer: todayItems.index(before: todayItems.endIndex)),
-                        to: todayItems.startIndex
+                        from: IndexSet(integer: sourceIndex),
+                        to: destinationIndex
                     )
                 }
                 .font(.caption2)
@@ -139,18 +150,25 @@ struct TodayView: View {
         )
     }
 
-    private func centeredTopMargin(for availableHeight: CGFloat) -> CGFloat {
-        let estimatedRowHeight: CGFloat = 52
-        let itemsHeight = CGFloat(todayItems.count) * estimatedRowHeight
-        return max(0, (availableHeight - itemsHeight) / 2)
-    }
-
     private func complete(_ todo: Todo) {
         do {
             try RecurrencePersistence.complete(
                 todo,
                 in: modelContext
             )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func delete(_ item: Item) {
+        do {
+            switch item {
+            case .todo(let todo):
+                try RecurrencePersistence.delete(todo, in: modelContext)
+            case .event(let event):
+                try RecurrencePersistence.delete(event, in: modelContext)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

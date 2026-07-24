@@ -60,7 +60,8 @@ struct RecurrenceFields: View {
 
                 Stepper(value: $state.interval, in: 1...999) {
                     LabeledContent("Every") {
-                        Text(intervalDescription)
+                        Text(state.interval, format: .number)
+                            .monospacedDigit()
                     }
                 }
 
@@ -89,29 +90,6 @@ struct RecurrenceFields: View {
                     monthlyAnchors
                 }
             }
-        } footer: {
-            if state.isEnabled {
-                Text(helpText)
-            }
-        }
-    }
-
-    private var intervalDescription: String {
-        let unit = state.interval == 1
-            ? state.unit.singularTitle
-            : state.unit.pluralTitle
-        return "\(state.interval) \(unit)"
-    }
-
-    private var helpText: String {
-        if itemType == .event {
-            return "Events repeat on a fixed schedule. Future instances keep the template's time."
-        }
-        switch state.mode {
-        case .absolute:
-            return "On schedule keeps the selected calendar rhythm even when the current Todo moves."
-        case .relative:
-            return "After completion schedules the next Todo from the current Todo's date."
         }
     }
 

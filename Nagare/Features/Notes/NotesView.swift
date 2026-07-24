@@ -6,7 +6,6 @@ struct NotesView<Item: Note>: View {
     @Environment(\.modelContext) private var modelContext
 
     let item: Item
-    let onOpenTemplate: (RecurrenceTemplate) -> Void
 
     @State private var title: String
     @State private var notes: String
@@ -14,39 +13,45 @@ struct NotesView<Item: Note>: View {
     @State private var errorMessage: String?
     @State private var todoBeingRescheduled: Todo?
     @State private var eventBeingRescheduled: Event?
-    @State private var recurrenceTarget: RecurrenceEditorTarget?
+    @State private var recurrenceTemplateBeingEdited: RecurrenceTemplate?
     @State private var isConfirmingDelete = false
     @State private var isConfirmingStop = false
     @State private var isDeleted = false
 
-    init(
-        item: Item,
-        onOpenTemplate: @escaping (RecurrenceTemplate) -> Void = { _ in }
-    ) {
+    init(item: Item) {
         self.item = item
-        self.onOpenTemplate = onOpenTemplate
         _title = State(initialValue: item.title)
         _notes = State(initialValue: item.notes ?? "")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            TextField("Title", text: $title, axis: .vertical)
-                .font(.title2.weight(.semibold))
-                .accessibilityIdentifier("Item Title")
+            HStack(alignment: .center, spacing: 12) {
+                TextField("Title", text: $title, axis: .vertical)
+                    .font(.title.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
+                    .accessibilityIdentifier("Item Title")
 
-            Divider()
+                if let event = item as? Event {
+                    EventTimeLabel(
+                        startDate: event.scheduledDate,
+                        endDate: event.endDate
+                    )
+                    .accessibilityIdentifier("Event Time")
+                }
+            }
 
             ZStack(alignment: .topLeading) {
                 if notes.isEmpty {
                     Text("Notes")
                         .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 5)
                         .padding(.vertical, 8)
                 }
 
                 TextEditor(text: $notes)
                     .scrollContentBackground(.hidden)
+                    .padding(.horizontal, -5)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -62,32 +67,21 @@ struct NotesView<Item: Note>: View {
                         }
                     }
 
-                    Button(action: presentRecurrenceEditor) {
-                        Label(repeatActionTitle, systemImage: "repeat")
-                    }
-
-                    if let recurrenceTemplate,
-                       !(item is RecurrenceTemplate) {
-                        Button {
-                            openFutureItems(recurrenceTemplate)
-                        } label: {
-                            Label("Edit Future Items", systemImage: "text.append")
+                    if item is RecurrenceTemplate {
+                        Button(action: presentRecurrenceEditor) {
+                            Label("Edit Repeat", systemImage: "repeat")
                         }
-                    }
 
-                    if recurrenceTemplate != nil {
                         Divider()
 
                         Button(role: .destructive) {
                             isConfirmingStop = true
                         } label: {
-                            Label("Stop Repeating", systemImage: "repeat")
+                            Label("Stop Repeating", systemImage: "trash")
                         }
                     }
 
                     if !(item is RecurrenceTemplate) {
-                        Divider()
-
                         Button(role: .destructive) {
                             isConfirmingDelete = true
                         } label: {
@@ -120,8 +114,8 @@ struct NotesView<Item: Note>: View {
             EventScheduleEditor(event: event)
                 .presentationDetents([.medium])
         }
-        .sheet(item: $recurrenceTarget) { target in
-            RecurrenceEditor(target: target)
+        .sheet(item: $recurrenceTemplateBeingEdited) { template in
+            RecurrenceEditor(template: template)
                 .presentationDetents([.medium, .large])
         }
         .confirmationDialog(
@@ -181,10 +175,6 @@ struct NotesView<Item: Note>: View {
         return nil
     }
 
-    private var repeatActionTitle: String {
-        recurrenceTemplate == nil ? "Add Repeat" : "Edit Repeat"
-    }
-
     private var deleteConfirmationMessage: String {
         if recurrenceTemplate != nil {
             return "The current occurrence will be removed and the next occurrence will be generated."
@@ -209,38 +199,27 @@ struct NotesView<Item: Note>: View {
         guard prepareItemForAction() else {
             return
         }
-        if let template = item as? RecurrenceTemplate {
-            recurrenceTarget = .template(template)
-        } else if let todo = item as? Todo {
-            recurrenceTarget = .todo(todo)
-        } else if let event = item as? Event {
-            recurrenceTarget = .event(event)
-        } else {
-            errorMessage = "Nagare couldn't identify the item to repeat. (RECURRENCE-UI-004)"
+        guard let template = item as? RecurrenceTemplate else {
+            errorMessage = "Recurrence can only be edited from its template. (RECURRENCE-UI-004)"
+            return
         }
+        recurrenceTemplateBeingEdited = template
     }
 
     private func stopRepeating() {
         pendingSave?.cancel()
-        if !(item is RecurrenceTemplate) {
-            guard prepareItemForAction() else {
-                return
-            }
-        }
-        guard let recurrenceTemplate else {
-            errorMessage = "Nagare couldn't find this item's recurrence template. (RECURRENCE-UI-005)"
+        guard let template = item as? RecurrenceTemplate else {
+            errorMessage = "Recurrence can only be stopped from its template. (RECURRENCE-UI-005)"
             return
         }
 
         do {
             try RecurrencePersistence.deleteTemplate(
-                recurrenceTemplate,
+                template,
                 in: modelContext
             )
-            if item is RecurrenceTemplate {
-                isDeleted = true
-                dismiss()
-            }
+            isDeleted = true
+            dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -283,13 +262,6 @@ struct NotesView<Item: Note>: View {
 
             _ = save()
         }
-    }
-
-    private func openFutureItems(_ template: RecurrenceTemplate) {
-        guard prepareItemForAction() else {
-            return
-        }
-        onOpenTemplate(template)
     }
 
     private func prepareItemForAction() -> Bool {

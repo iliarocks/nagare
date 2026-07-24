@@ -1,28 +1,6 @@
 import SwiftData
 import SwiftUI
 
-enum RecurrenceEditorTarget: Identifiable {
-    case todo(Todo)
-    case event(Event)
-    case template(RecurrenceTemplate)
-
-    var id: String {
-        switch self {
-        case .todo(let todo): "todo-\(todo.id)"
-        case .event(let event): "event-\(event.id)"
-        case .template(let template): "template-\(template.id)"
-        }
-    }
-
-    var existingTemplate: RecurrenceTemplate? {
-        switch self {
-        case .todo(let todo): todo.recurrenceTemplate
-        case .event(let event): event.recurrenceTemplate
-        case .template(let template): template
-        }
-    }
-}
-
 struct RecurrenceEditor: View {
     private struct InitialValues {
         let form: RecurrenceFormState
@@ -37,7 +15,7 @@ struct RecurrenceEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
-    let target: RecurrenceEditorTarget
+    let template: RecurrenceTemplate
     private let itemType: RecurrenceItemType
     private let referenceDate: Date
     private let initialErrorMessage: String?
@@ -48,9 +26,9 @@ struct RecurrenceEditor: View {
     @State private var endTime: Date
     @State private var errorMessage: String?
 
-    init(target: RecurrenceEditorTarget) {
-        self.target = target
-        let values = Self.initialValues(for: target)
+    init(template: RecurrenceTemplate) {
+        self.template = template
+        let values = Self.initialValues(for: template)
         itemType = values.itemType
         referenceDate = values.referenceDate
         initialErrorMessage = values.errorMessage
@@ -120,9 +98,7 @@ struct RecurrenceEditor: View {
                     }
                 }
             }
-            .navigationTitle(
-                target.existingTemplate == nil ? "Add Repeat" : "Edit Repeat"
-            )
+            .navigationTitle("Edit Repeat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -197,30 +173,7 @@ struct RecurrenceEditor: View {
                 throw RecurrenceEditorError.missingRule
             }
 
-            switch target {
-            case .todo(let todo):
-                if let template = todo.recurrenceTemplate {
-                    try update(template, rule: rule)
-                } else {
-                    _ = try RecurrencePersistence.createTemplate(
-                        for: todo,
-                        rule: rule,
-                        in: modelContext
-                    )
-                }
-            case .event(let event):
-                if let template = event.recurrenceTemplate {
-                    try update(template, rule: rule)
-                } else {
-                    _ = try RecurrencePersistence.createTemplate(
-                        for: event,
-                        rule: rule,
-                        in: modelContext
-                    )
-                }
-            case .template(let template):
-                try update(template, rule: rule)
-            }
+            try update(template, rule: rule)
 
             dismiss()
         } catch {
@@ -256,27 +209,21 @@ struct RecurrenceEditor: View {
     }
 
     private static func initialValues(
-        for target: RecurrenceEditorTarget
+        for template: RecurrenceTemplate
     ) -> InitialValues {
         let calendar = Calendar.autoupdatingCurrent
         let now = Date.now
 
         do {
-            let itemType = try itemType(for: target)
-            let referenceDate = try referenceDate(for: target)
-            let form: RecurrenceFormState
-            if let template = target.existingTemplate {
-                form = try .existing(template, calendar: calendar)
-            } else {
-                form = .enabled(
-                    for: itemType,
-                    referenceDate: referenceDate,
-                    calendar: calendar
-                )
-            }
+            let itemType = try itemType(for: template)
+            let referenceDate = try referenceDate(for: template)
+            let form = try RecurrenceFormState.existing(
+                template,
+                calendar: calendar
+            )
 
             let times = try eventTimes(
-                for: target,
+                for: template,
                 itemType: itemType,
                 fallback: now,
                 calendar: calendar
@@ -310,53 +257,39 @@ struct RecurrenceEditor: View {
     }
 
     private static func itemType(
-        for target: RecurrenceEditorTarget
+        for template: RecurrenceTemplate
     ) throws -> RecurrenceItemType {
-        switch target {
-        case .todo:
-            return .todo
-        case .event:
-            return .event
-        case .template(let template):
-            guard let itemType = template.itemType else {
-                throw RecurrencePersistenceError.wrongItemType
-            }
-            return itemType
+        guard let itemType = template.itemType else {
+            throw RecurrencePersistenceError.wrongItemType
         }
+        return itemType
     }
 
     private static func referenceDate(
-        for target: RecurrenceEditorTarget
+        for template: RecurrenceTemplate
     ) throws -> Date {
-        switch target {
-        case .todo(let todo):
-            return todo.scheduledDate
-        case .event(let event):
-            return event.scheduledDate
-        case .template(let template):
-            switch template.itemType {
-            case .todo:
-                guard let todo = template.todoOccurrences.first(where: {
-                    $0.id == template.currentItemID && $0.completedAt == nil
-                }) else {
-                    throw VirtualItemProjectionError.missingCurrentOccurrence
-                }
-                return todo.scheduledDate
-            case .event:
-                guard let event = template.eventOccurrences.first(where: {
-                    $0.id == template.currentItemID
-                }) else {
-                    throw VirtualItemProjectionError.missingCurrentOccurrence
-                }
-                return event.scheduledDate
-            case nil:
-                throw RecurrencePersistenceError.wrongItemType
+        switch template.itemType {
+        case .todo:
+            guard let todo = template.todoOccurrences.first(where: {
+                $0.id == template.currentItemID && $0.completedAt == nil
+            }) else {
+                throw VirtualItemProjectionError.missingCurrentOccurrence
             }
+            return todo.scheduledDate
+        case .event:
+            guard let event = template.eventOccurrences.first(where: {
+                $0.id == template.currentItemID
+            }) else {
+                throw VirtualItemProjectionError.missingCurrentOccurrence
+            }
+            return event.scheduledDate
+        case nil:
+            throw RecurrencePersistenceError.wrongItemType
         }
     }
 
     private static func eventTimes(
-        for target: RecurrenceEditorTarget,
+        for template: RecurrenceTemplate,
         itemType: RecurrenceItemType,
         fallback: Date,
         calendar: Calendar
@@ -365,22 +298,15 @@ struct RecurrenceEditor: View {
             return (fallback, nil)
         }
 
-        if let template = target.existingTemplate {
-            guard let startSeconds = template.startTimeSeconds else {
-                throw RecurrencePersistenceError.missingEventStartTime
+        guard let startSeconds = template.startTimeSeconds else {
+            throw RecurrencePersistenceError.missingEventStartTime
+        }
+        return (
+            try timeDate(startSeconds, calendar: calendar),
+            try template.endTimeSeconds.map {
+                try timeDate($0, calendar: calendar)
             }
-            return (
-                try timeDate(startSeconds, calendar: calendar),
-                try template.endTimeSeconds.map {
-                    try timeDate($0, calendar: calendar)
-                }
-            )
-        }
-
-        guard case .event(let event) = target else {
-            throw RecurrencePersistenceError.wrongItemType
-        }
-        return (event.scheduledDate, event.endDate)
+        )
     }
 
     private static func timeDate(

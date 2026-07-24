@@ -8,24 +8,37 @@ struct EventRow: View {
         Button(action: onOpen) {
             HStack(spacing: 12) {
                 Text(event.title)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                HStack(spacing: 4) {
-                    Text(event.scheduledDate, format: .dateTime.hour().minute())
-
-                    if let endDate = event.endDate {
-                        Text("–")
-                        Text(endDate, format: .dateTime.hour().minute())
-                    }
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize()
+                EventTimeLabel(
+                    startDate: event.scheduledDate,
+                    endDate: event.endDate
+                )
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.vertical, 4)
+    }
+}
+
+struct EventTimeLabel: View {
+    let startDate: Date
+    let endDate: Date?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(startDate, format: .dateTime.hour().minute())
+
+            if let endDate {
+                Text("–")
+                Text(endDate, format: .dateTime.hour().minute())
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }

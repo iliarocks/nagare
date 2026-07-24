@@ -10,7 +10,6 @@ struct RootView: View {
     @State private var selectedSection = Section.today
     @State private var isCreatingItem = false
     @State private var notesPath: [NotesDestination] = []
-    @Namespace private var createTransition
 
     var body: some View {
         NavigationStack(path: $notesPath) {
@@ -41,28 +40,17 @@ struct RootView: View {
                         Label("New Item", systemImage: "plus")
                             .labelStyle(.iconOnly)
                     }
-                    .matchedTransitionSource(
-                        id: "create-item",
-                        in: createTransition
-                    )
                 }
             }
             .sheet(isPresented: $isCreatingItem) {
                 CreateView()
-                    .navigationTransition(
-                        .zoom(sourceID: "create-item", in: createTransition)
-                    )
             }
             .navigationDestination(for: NotesDestination.self) { destination in
                 switch destination {
                 case .todo(let todo):
-                    NotesView(item: todo) { template in
-                        notesPath.append(.template(template))
-                    }
+                    NotesView(item: todo)
                 case .event(let event):
-                    NotesView(item: event) { template in
-                        notesPath.append(.template(template))
-                    }
+                    NotesView(item: event)
                 case .template(let template):
                     NotesView(item: template)
                 }

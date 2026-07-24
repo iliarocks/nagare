@@ -21,27 +21,33 @@ struct ReorderableItemGroup: Identifiable {
 struct ReorderableItemList: View {
     let groups: [ReorderableItemGroup]
     let showsDateHeaders: Bool
-    let topContentMargin: CGFloat
     let onOpen: (Item) -> Void
     let onOpenVirtual: (VirtualItem) -> Void
     let onComplete: (Todo) -> Void
+    let onDelete: (Item) -> Void
+    let onDeleteTemplate: (RecurrenceTemplate) -> Void
     let onMove: (Date, IndexSet, Int) -> Void
+    @State private var todoBeingRescheduled: Todo?
+    @State private var eventBeingRescheduled: Event?
+    @State private var recurrenceTemplateBeingEdited: RecurrenceTemplate?
 
     init(
         groups: [ReorderableItemGroup],
         showsDateHeaders: Bool,
-        topContentMargin: CGFloat = 0,
         onOpen: @escaping (Item) -> Void,
         onOpenVirtual: @escaping (VirtualItem) -> Void = { _ in },
         onComplete: @escaping (Todo) -> Void,
+        onDelete: @escaping (Item) -> Void,
+        onDeleteTemplate: @escaping (RecurrenceTemplate) -> Void = { _ in },
         onMove: @escaping (Date, IndexSet, Int) -> Void
     ) {
         self.groups = groups
         self.showsDateHeaders = showsDateHeaders
-        self.topContentMargin = topContentMargin
         self.onOpen = onOpen
         self.onOpenVirtual = onOpenVirtual
         self.onComplete = onComplete
+        self.onDelete = onDelete
+        self.onDeleteTemplate = onDeleteTemplate
         self.onMove = onMove
     }
 
@@ -52,25 +58,47 @@ struct ReorderableItemList: View {
                     Section {
                         rows(for: group)
                     } header: {
-                        Text(
-                            group.date,
-                            format: .dateTime
-                                .weekday(.wide)
-                                .month(.wide)
-                                .day()
-                        )
+                        HStack {
+                            Text(
+                                group.date,
+                                format: .dateTime.weekday(.wide)
+                            )
+
+                            Spacer()
+
+                            Text(
+                                group.date,
+                                format: .dateTime
+                                    .month(.wide)
+                                    .day()
+                            )
+                        }
+                        .font(.caption)
+                        .fontWeight(.regular)
                     }
                 }
             } else if let group = groups.first {
                 rows(for: group)
             }
         }
-        .contentMargins(
-            .top,
-            topContentMargin,
-            for: .scrollContent
+        .listSectionSpacing(
+            showsDateHeaders ? .custom(48) : .default
         )
-        .environment(\.editMode, .constant(.active))
+        .reorderContainer(for: Item.self, in: Date.self) { difference in
+            apply(difference)
+        }
+        .sheet(item: $todoBeingRescheduled) { todo in
+            TodoDateEditor(todo: todo)
+                .presentationDetents([.medium])
+        }
+        .sheet(item: $eventBeingRescheduled) { event in
+            EventScheduleEditor(event: event)
+                .presentationDetents([.medium])
+        }
+        .sheet(item: $recurrenceTemplateBeingEdited) { template in
+            RecurrenceEditor(template: template)
+                .presentationDetents([.medium, .large])
+        }
     }
 
     @ViewBuilder
@@ -79,18 +107,69 @@ struct ReorderableItemList: View {
             ItemRow(
                 item: item,
                 onOpen: onOpen,
-                onComplete: onComplete
+                onComplete: onComplete,
+                onChangeSchedule: presentScheduleEditor,
+                onDelete: onDelete
             )
         }
-        .onMove { sourceOffsets, destinationOffset in
-            onMove(group.date, sourceOffsets, destinationOffset)
-        }
+        .reorderable(collectionID: group.date)
 
         ForEach(group.virtualItems) { item in
             VirtualItemRow(
                 item: item,
-                onOpen: { onOpenVirtual(item) }
+                onOpen: { onOpenVirtual(item) },
+                onChangeRepeat: {
+                    recurrenceTemplateBeingEdited = item.template
+                },
+                onDelete: {
+                    onDeleteTemplate(item.template)
+                }
             )
         }
+    }
+
+    private func presentScheduleEditor(_ item: Item) {
+        switch item {
+        case .todo(let todo):
+            todoBeingRescheduled = todo
+        case .event(let event):
+            eventBeingRescheduled = event
+        }
+    }
+
+    private func apply(
+        _ difference: ReorderDifference<ItemID, Date>
+    ) {
+        guard difference.sources.count == 1,
+              let sourceID = difference.sources.first,
+              let sourceGroup = groups.first(where: { group in
+                  group.items.contains(where: { $0.id == sourceID })
+              }),
+              sourceGroup.date == difference.destination.collectionID,
+              let sourceIndex = sourceGroup.items.firstIndex(
+                  where: { $0.id == sourceID }
+              ) else {
+            return
+        }
+
+        let destinationOffset: Int
+        switch difference.destination.position {
+        case .before(let destinationID):
+            guard let index = sourceGroup.items.firstIndex(
+                where: { $0.id == destinationID }
+            ) else {
+                return
+            }
+            destinationOffset = index
+
+        case .end:
+            destinationOffset = sourceGroup.items.endIndex
+        }
+
+        onMove(
+            sourceGroup.date,
+            IndexSet(integer: sourceIndex),
+            destinationOffset
+        )
     }
 }

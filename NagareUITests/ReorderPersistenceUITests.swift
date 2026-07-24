@@ -2,6 +2,251 @@ import XCTest
 
 final class ReorderPersistenceUITests: XCTestCase {
     @MainActor
+    func testStoreOpenFailureShowsRecoveryAlertInsteadOfCrashing() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--simulate-store-open-failure"]
+        app.launch()
+
+        let alert = app.alerts["Nagare Couldn't Open Your Items"]
+        XCTAssertTrue(
+            alert.waitForExistence(timeout: 5),
+            "A store-open failure should remain visible and actionable"
+        )
+        XCTAssertTrue(alert.buttons["OK"].exists)
+        XCTAssertTrue(
+            alert.staticTexts[
+                "Nagare left your data untouched. Close the app and try again. "
+                    + "If it still won't open, report error STORE-OPEN-001."
+            ].exists
+        )
+
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Store Startup Failure"].exists,
+            "Dismissing the alert must leave a persistent recovery screen"
+        )
+    }
+
+    @MainActor
+    func testRowDragReordersWithoutUsingAHandle() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let first = app.buttons["Reorder First"]
+        let third = app.buttons["Reorder Third"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(third.waitForExistence(timeout: 5))
+
+        dragRow(third, before: first)
+
+        XCTAssertLessThan(
+            third.frame.minY,
+            first.frame.minY,
+            "Dragging the row itself should move it before the first item"
+        )
+
+        app.terminate()
+
+        let relaunchedApp = XCUIApplication()
+        relaunchedApp.launchArguments = ["--use-reorder-ui-test-store"]
+        relaunchedApp.launch()
+
+        let relaunchedFirst = relaunchedApp.buttons["Reorder First"]
+        let relaunchedThird = relaunchedApp.buttons["Reorder Third"]
+        XCTAssertTrue(relaunchedFirst.waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunchedThird.waitForExistence(timeout: 5))
+        XCTAssertLessThan(
+            relaunchedThird.frame.minY,
+            relaunchedFirst.frame.minY,
+            "The order produced by a row drag should persist after relaunch"
+        )
+    }
+
+    @MainActor
+    func testUpcomingRowDragReordersWithinItsSectionWithoutUsingAHandle() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let upcomingTab = app.buttons["Upcoming"]
+        XCTAssertTrue(upcomingTab.waitForExistence(timeout: 5))
+        upcomingTab.tap()
+
+        let first = app.buttons["Upcoming First"]
+        let second = app.buttons["Upcoming Second"]
+        let third = app.buttons["Upcoming Third"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        XCTAssertTrue(third.waitForExistence(timeout: 5))
+
+        dragRow(third, before: first)
+
+        XCTAssertLessThan(
+            third.frame.minY,
+            second.frame.minY,
+            "Dragging an Upcoming row should change its position within the date section"
+        )
+
+        app.terminate()
+
+        let relaunchedApp = XCUIApplication()
+        relaunchedApp.launchArguments = ["--use-reorder-ui-test-store"]
+        relaunchedApp.launch()
+
+        let relaunchedUpcomingTab = relaunchedApp.buttons["Upcoming"]
+        XCTAssertTrue(relaunchedUpcomingTab.waitForExistence(timeout: 5))
+        relaunchedUpcomingTab.tap()
+
+        let relaunchedFirst = relaunchedApp.buttons["Upcoming First"]
+        let relaunchedSecond = relaunchedApp.buttons["Upcoming Second"]
+        let relaunchedThird = relaunchedApp.buttons["Upcoming Third"]
+        XCTAssertTrue(relaunchedFirst.waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunchedSecond.waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunchedThird.waitForExistence(timeout: 5))
+        XCTAssertLessThan(
+            relaunchedThird.frame.minY,
+            relaunchedSecond.frame.minY,
+            "The Upcoming order produced by a row drag should persist"
+        )
+    }
+
+    @MainActor
+    func testTodaySwipeActionsExposeDeleteAndChangeDate() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let todo = app.buttons["Reorder First"]
+        XCTAssertTrue(todo.waitForExistence(timeout: 5))
+        todo.swipeLeft()
+
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        let changeDate = app.buttons["Change Date"]
+        XCTAssertTrue(changeDate.waitForExistence(timeout: 2))
+        changeDate.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["Change Date"].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
+    func testEventScheduleEditorOpensFromSwipeAction() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let event = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
+        ).firstMatch
+        XCTAssertTrue(event.waitForExistence(timeout: 5))
+        event.swipeLeft()
+
+        let changeSchedule = app.buttons["Change Schedule"]
+        XCTAssertTrue(changeSchedule.waitForExistence(timeout: 2))
+        changeSchedule.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["Change Schedule"].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
+    func testLongEventTitleExpandsToMultipleLines() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let event = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
+        ).firstMatch
+        let singleLineTodo = app.buttons["Reorder First"]
+        XCTAssertTrue(event.waitForExistence(timeout: 5))
+        XCTAssertTrue(singleLineTodo.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(
+            event.frame.height,
+            singleLineTodo.frame.height,
+            "A long event title should expand its row instead of truncating"
+        )
+    }
+
+    @MainActor
+    func testEventNotesShowsTimeBesideTitle() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let event = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
+        ).firstMatch
+        XCTAssertTrue(event.waitForExistence(timeout: 5))
+        event.tap()
+
+        let title = app.textFields["Item Title"]
+        let eventTime = app.descendants(matching: .any)["Event Time"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertTrue(eventTime.waitForExistence(timeout: 2))
+        XCTAssertGreaterThan(
+            eventTime.frame.minX,
+            title.frame.minX,
+            "The event time should appear to the right of the title"
+        )
+        XCTAssertLessThan(
+            abs(eventTime.frame.midY - title.frame.midY),
+            12,
+            "The event time and title should share the same vertical line"
+        )
+    }
+
+    @MainActor
+    func testTemplateSwipeActionsExposeDeleteAndChangeRepeat() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let upcomingTab = app.buttons["Upcoming"]
+        XCTAssertTrue(upcomingTab.waitForExistence(timeout: 5))
+        upcomingTab.tap()
+
+        let template = app.buttons[
+            "Recurring Future UI, future repeating item"
+        ].firstMatch
+        XCTAssertTrue(template.waitForExistence(timeout: 5))
+        template.swipeLeft()
+
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        let changeRepeat = app.buttons["Change Repeat"]
+        XCTAssertTrue(changeRepeat.waitForExistence(timeout: 2))
+        changeRepeat.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["Edit Repeat"].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
     func testReorderedTodosKeepTheirPositionsAfterRelaunch() throws {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -79,6 +324,25 @@ final class ReorderPersistenceUITests: XCTestCase {
         )
     }
 
+    private func dragRow(
+        _ source: XCUIElement,
+        before destination: XCUIElement
+    ) {
+        let sourceCoordinate = source.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        )
+        let destinationCoordinate = destination.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)
+        )
+
+        sourceCoordinate.press(
+            forDuration: 1.5,
+            thenDragTo: destinationCoordinate,
+            withVelocity: .slow,
+            thenHoldForDuration: 1
+        )
+    }
+
     @MainActor
     func testNotesMenuContainsChangeDateAndDeleteActions() throws {
         let app = XCUIApplication()
@@ -98,6 +362,35 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["Change Date"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Add Repeat"].exists)
+        XCTAssertFalse(app.buttons["Edit Repeat"].exists)
+        XCTAssertFalse(app.buttons["Edit Future Items"].exists)
+        XCTAssertFalse(app.buttons["Stop Repeating"].exists)
+    }
+
+    @MainActor
+    func testCurrentRecurrenceInstanceDoesNotExposeTemplateControls() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let currentInstance = app.buttons["Recurring Current UI"]
+        XCTAssertTrue(currentInstance.waitForExistence(timeout: 5))
+        currentInstance.tap()
+
+        let actionsMenu = app.buttons["Item Actions"]
+        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 5))
+        actionsMenu.tap()
+
+        XCTAssertTrue(app.buttons["Change Date"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Add Repeat"].exists)
+        XCTAssertFalse(app.buttons["Edit Repeat"].exists)
+        XCTAssertFalse(app.buttons["Edit Future Items"].exists)
+        XCTAssertFalse(app.buttons["Stop Repeating"].exists)
     }
 
     @MainActor

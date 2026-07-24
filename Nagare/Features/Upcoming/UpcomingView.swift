@@ -124,6 +124,8 @@ struct UpcomingView: View {
                         onOpenNotes(.template($0.template))
                     },
                     onComplete: complete,
+                    onDelete: delete,
+                    onDeleteTemplate: deleteTemplate,
                     onMove: move
                 )
             }
@@ -193,6 +195,30 @@ struct UpcomingView: View {
         }
     }
 
+    private func delete(_ item: Item) {
+        do {
+            switch item {
+            case .todo(let todo):
+                try RecurrencePersistence.delete(todo, in: modelContext)
+            case .event(let event):
+                try RecurrencePersistence.delete(event, in: modelContext)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteTemplate(_ template: RecurrenceTemplate) {
+        do {
+            try RecurrencePersistence.deleteTemplate(
+                template,
+                in: modelContext
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func refreshVirtualItems() {
         let calendar = Calendar.autoupdatingCurrent
         let today = calendar.startOfDay(for: .now)
@@ -203,7 +229,7 @@ struct UpcomingView: View {
         ),
         let horizon = calendar.date(
             byAdding: .month,
-            value: 6,
+            value: 2,
             to: today
         ) else {
             virtualItems = []

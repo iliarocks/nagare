@@ -1,65 +1,104 @@
+import OSLog
 import SwiftData
 import SwiftUI
 
 @main
 struct NagareApp: App {
-    private let modelContainer: ModelContainer
+    private enum StartupState {
+        case ready(ModelContainer)
+        case failed
+    }
+
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Nagare",
+        category: "Startup"
+    )
+
+    private let startupState: StartupState
 
     init() {
+        let arguments = ProcessInfo.processInfo.arguments
+
         do {
-            let arguments = ProcessInfo.processInfo.arguments
-            if arguments.contains("--use-reorder-ui-test-store") {
-                let storeURL = URL.applicationSupportDirectory
-                    .appending(path: "reorder-regression.store")
-                if arguments.contains("--reset-and-seed-reorder-ui-test") {
-                    try? FileManager.default.removeItem(at: storeURL)
-                    try? FileManager.default.removeItem(
-                        at: URL(filePath: storeURL.path + "-wal")
-                    )
-                    try? FileManager.default.removeItem(
-                        at: URL(filePath: storeURL.path + "-shm")
-                    )
-                }
-                let configuration = ModelConfiguration(
-                    "ReorderRegression",
-                    schema: Schema([
-                        Todo.self,
-                        Event.self,
-                        RecurrenceTemplate.self
-                    ]),
-                    url: storeURL
-                )
-                modelContainer = try ModelContainer(
-                    for: Todo.self,
-                    Event.self,
-                    RecurrenceTemplate.self,
-                    configurations: configuration
-                )
-            } else {
-                modelContainer = try ModelContainer(
-                    for: Todo.self,
-                    Event.self,
-                    RecurrenceTemplate.self
-                )
+#if DEBUG
+            if arguments.contains("--simulate-store-open-failure") {
+                throw SimulatedStoreOpenError()
             }
-            try prepareReorderRegressionTestDataIfRequested(in: modelContainer.mainContext)
+#endif
+
+            let modelContainer = try Self.makeModelContainer(
+                arguments: arguments
+            )
+            try Self.prepareReorderRegressionTestDataIfRequested(
+                in: modelContainer.mainContext,
+                arguments: arguments
+            )
+            startupState = .ready(modelContainer)
         } catch {
-            fatalError("Unable to open Nagare's data store: \(error)")
+            Self.logger.fault(
+                "Unable to open Nagare's data store: \(error.localizedDescription, privacy: .public)"
+            )
+            startupState = .failed
         }
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            switch startupState {
+            case .ready(let modelContainer):
+                RootView()
+                    .modelContainer(modelContainer)
+            case .failed:
+                StoreStartupFailureView()
+            }
         }
-        .modelContainer(modelContainer)
     }
 
-    private func prepareReorderRegressionTestDataIfRequested(
-        in context: ModelContext
+    private static func makeModelContainer(
+        arguments: [String]
+    ) throws -> ModelContainer {
+        if arguments.contains("--use-reorder-ui-test-store") {
+            let storeURL = URL.applicationSupportDirectory
+                .appending(path: "reorder-regression.store")
+            if arguments.contains("--reset-and-seed-reorder-ui-test") {
+                try? FileManager.default.removeItem(at: storeURL)
+                try? FileManager.default.removeItem(
+                    at: URL(filePath: storeURL.path + "-wal")
+                )
+                try? FileManager.default.removeItem(
+                    at: URL(filePath: storeURL.path + "-shm")
+                )
+            }
+            let configuration = ModelConfiguration(
+                "ReorderRegression",
+                schema: Schema([
+                    Todo.self,
+                    Event.self,
+                    RecurrenceTemplate.self
+                ]),
+                url: storeURL
+            )
+            return try ModelContainer(
+                for: Todo.self,
+                Event.self,
+                RecurrenceTemplate.self,
+                configurations: configuration
+            )
+        }
+
+        return try ModelContainer(
+            for: Todo.self,
+            Event.self,
+            RecurrenceTemplate.self
+        )
+    }
+
+    private static func prepareReorderRegressionTestDataIfRequested(
+        in context: ModelContext,
+        arguments: [String]
     ) throws {
 #if DEBUG
-        guard ProcessInfo.processInfo.arguments.contains("--reset-and-seed-reorder-ui-test") else {
+        guard arguments.contains("--reset-and-seed-reorder-ui-test") else {
             return
         }
 
@@ -87,6 +126,17 @@ struct NagareApp: App {
         context.insert(Todo(title: "Upcoming First", scheduledDate: tomorrow, order: "9"))
         context.insert(Todo(title: "Upcoming Second", scheduledDate: tomorrow, order: "i"))
         context.insert(Todo(title: "Upcoming Third", scheduledDate: tomorrow, order: "r"))
+        context.insert(
+            Event(
+                title: "Schedule UI Event With A Deliberately Long Title That Wraps Onto Multiple Lines",
+                scheduledDate: Calendar.autoupdatingCurrent.date(
+                    byAdding: .hour,
+                    value: 10,
+                    to: today
+                ) ?? today,
+                order: "w"
+            )
+        )
 
         let recurringTodo = Todo(
             title: "Recurring Current UI",
@@ -107,5 +157,47 @@ struct NagareApp: App {
         recurringTemplate.title = "Recurring Future UI"
         try context.save()
 #endif
+    }
+
+#if DEBUG
+    private struct SimulatedStoreOpenError: LocalizedError {
+        var errorDescription: String? {
+            "Simulated store-open failure"
+        }
+    }
+#endif
+}
+
+private struct StoreStartupFailureView: View {
+    @State private var isShowingError = true
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(
+                "Nagare Couldn't Open Your Items",
+                systemImage: "exclamationmark.triangle"
+            )
+        } description: {
+            Text(
+                "Your data has not been deleted. Close Nagare and try again. "
+                    + "If the problem continues, report error STORE-OPEN-001."
+            )
+        } actions: {
+            Button("Show Error") {
+                isShowingError = true
+            }
+        }
+        .accessibilityIdentifier("Store Startup Failure")
+        .alert(
+            "Nagare Couldn't Open Your Items",
+            isPresented: $isShowingError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "Nagare left your data untouched. Close the app and try again. "
+                    + "If it still won't open, report error STORE-OPEN-001."
+            )
+        }
     }
 }

@@ -9,6 +9,7 @@ struct TodoRow: View {
         HStack(spacing: 12) {
             Button(action: onOpen) {
                 Text(todo.title)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }

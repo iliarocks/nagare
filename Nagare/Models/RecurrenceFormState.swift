@@ -218,8 +218,8 @@ extension RecurrenceMode: Identifiable {
 
     var title: String {
         switch self {
-        case .absolute: "On schedule"
-        case .relative: "After completion"
+        case .absolute: "Scheduled"
+        case .relative: "On completion"
         }
     }
 }
