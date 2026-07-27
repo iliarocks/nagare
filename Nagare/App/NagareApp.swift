@@ -76,7 +76,8 @@ struct NagareApp: App {
                     Event.self,
                     RecurrenceTemplate.self
                 ]),
-                url: storeURL
+                url: storeURL,
+                cloudKitDatabase: .none
             )
             return try ModelContainer(
                 for: Todo.self,
@@ -86,10 +87,19 @@ struct NagareApp: App {
             )
         }
 
-        return try ModelContainer(
-            for: Todo.self,
+        let schema = Schema([
+            Todo.self,
             Event.self,
             RecurrenceTemplate.self
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            groupContainer: .none,
+            cloudKitDatabase: .none
+        )
+        return try ModelContainer(
+            for: schema,
+            configurations: configuration
         )
     }
 

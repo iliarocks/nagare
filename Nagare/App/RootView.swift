@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftData
 import SwiftUI
 
@@ -55,6 +56,28 @@ struct RootView: View {
                     NotesView(item: template)
                 }
             }
+        }
+        .syncTodayWidget()
+        .onAppIntentExecution(OpenNagareIntent.self) { intent in
+            open(intent.target)
+        }
+        .onOpenURL { url in
+            guard let destination = NagareDeepLink.destination(
+                for: url
+            ) else {
+                return
+            }
+            open(destination)
+        }
+    }
+
+    private func open(_ destination: NagareAppDestination) {
+        switch destination {
+        case .today:
+            selectedSection = .today
+        case .quickAdd:
+            selectedSection = .today
+            isCreatingItem = true
         }
     }
 }
