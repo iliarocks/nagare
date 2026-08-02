@@ -3,6 +3,8 @@ import SwiftUI
 struct EventRow: View {
     let event: Event
     let onOpen: () -> Void
+    let onChangeSchedule: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         Button(action: onOpen) {
@@ -20,6 +22,8 @@ struct EventRow: View {
         }
         .buttonStyle(.plain)
         .padding(.vertical, 4)
+        .accessibilityAction(named: "Change Schedule", onChangeSchedule)
+        .accessibilityAction(named: "Delete", onDelete)
     }
 }
 

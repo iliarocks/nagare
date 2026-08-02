@@ -42,5 +42,11 @@ struct VirtualItemRow: View {
             .tint(.blue)
             .accessibilityLabel("Change Repeat")
         }
+        .accessibilityAction(named: "Change Repeat") {
+            onChangeRepeat()
+        }
+        .accessibilityAction(named: "Delete") {
+            onDelete()
+        }
     }
 }

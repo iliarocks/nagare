@@ -40,93 +40,91 @@ struct RecurrenceEditor: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                RecurrenceFields(
-                    state: $form,
-                    itemType: itemType,
-                    referenceDate: referenceDate,
-                    showsToggle: false
-                )
+        Form {
+            RecurrenceFields(
+                state: $form,
+                itemType: itemType,
+                referenceDate: referenceDate,
+                showsToggle: false
+            )
 
-                if itemType == .event {
-                    Section {
-                        LabeledContent("Time") {
-                            HStack(spacing: 8) {
+            if itemType == .event {
+                Section {
+                    LabeledContent("Time") {
+                        HStack(spacing: 8) {
+                            DatePicker(
+                                "Start Time",
+                                selection: $startTime,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .labelsHidden()
+
+                            if includesEndTime {
+                                Text("–")
+                                    .foregroundStyle(.secondary)
+
                                 DatePicker(
-                                    "Start Time",
-                                    selection: $startTime,
+                                    "End Time",
+                                    selection: $endTime,
                                     displayedComponents: .hourAndMinute
                                 )
                                 .labelsHidden()
-
-                                if includesEndTime {
-                                    Text("–")
-                                        .foregroundStyle(.secondary)
-
-                                    DatePicker(
-                                        "End Time",
-                                        selection: $endTime,
-                                        displayedComponents: .hourAndMinute
-                                    )
-                                    .labelsHidden()
-                                }
-
-                                Button {
-                                    includesEndTime.toggle()
-                                } label: {
-                                    Label(
-                                        includesEndTime
-                                            ? "Remove End Time"
-                                            : "Add End Time",
-                                        systemImage: includesEndTime
-                                            ? "minus.circle.fill"
-                                            : "plus.circle"
-                                    )
-                                    .labelStyle(.iconOnly)
-                                }
-                                .buttonStyle(.plain)
                             }
-                        }
-                    } header: {
-                        Text("Future Event Time")
-                    } footer: {
-                        if !isEventTimeValid {
-                            Text("The end time must not be earlier than the start time.")
-                                .foregroundStyle(.red)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Edit Repeat")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        Label("Save Repeat", systemImage: "checkmark")
-                            .labelStyle(.iconOnly)
+                            Button {
+                                includesEndTime.toggle()
+                            } label: {
+                                Label(
+                                    includesEndTime
+                                        ? "Remove End Time"
+                                        : "Add End Time",
+                                    systemImage: includesEndTime
+                                        ? "minus.circle.fill"
+                                        : "plus.circle"
+                                )
+                                .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .tint(.accentColor)
-                    .disabled(!canSave)
+                } header: {
+                    Text("Future Event Time")
+                } footer: {
+                    if !isEventTimeValid {
+                        Text("The end time must not be earlier than the start time.")
+                            .foregroundStyle(.red)
+                    }
                 }
             }
-            .alert("Repeat Couldn't Be Saved", isPresented: isShowingError) {
-                Button("OK", role: .cancel) {
-                    errorMessage = nil
+        }
+        .navigationTitle("Edit Repeat")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
                 }
-            } message: {
-                Text(errorMessage ?? "An unknown error occurred.")
             }
-            .task {
-                if let initialErrorMessage {
-                    errorMessage = initialErrorMessage
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button(action: save) {
+                    Label("Save Repeat", systemImage: "checkmark")
+                        .labelStyle(.iconOnly)
                 }
+                .tint(.accentColor)
+                .disabled(!canSave)
+            }
+        }
+        .alert("Repeat Couldn't Be Saved", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
+        }
+        .task {
+            if let initialErrorMessage {
+                errorMessage = initialErrorMessage
             }
         }
     }

@@ -10,24 +10,21 @@ struct RootView: View {
 
     @State private var selectedSection = Section.today
     @State private var isCreatingItem = false
-    @State private var notesPath: [NotesDestination] = []
+    @State private var notesDestination: NotesDestination?
+    @State private var notesDetent: PresentationDetent = .medium
 
     var body: some View {
-        NavigationStack(path: $notesPath) {
+        NavigationStack {
             TabView(selection: $selectedSection) {
                 Tab(value: Section.today) {
-                    TodayView { destination in
-                        notesPath.append(destination)
-                    }
+                    TodayView(onOpenNotes: openNotes)
                 } label: {
                     Label("Today", systemImage: "sun.max")
                         .labelStyle(.iconOnly)
                 }
 
                 Tab(value: Section.upcoming) {
-                    UpcomingView { destination in
-                        notesPath.append(destination)
-                    }
+                    UpcomingView(onOpenNotes: openNotes)
                 } label: {
                     Label("Upcoming", systemImage: "calendar")
                         .labelStyle(.iconOnly)
@@ -46,15 +43,15 @@ struct RootView: View {
             .sheet(isPresented: $isCreatingItem) {
                 CreateView()
             }
-            .navigationDestination(for: NotesDestination.self) { destination in
-                switch destination {
-                case .todo(let todo):
-                    NotesView(item: todo)
-                case .event(let event):
-                    NotesView(item: event)
-                case .template(let template):
-                    NotesView(item: template)
-                }
+            .sheet(
+                item: $notesDestination,
+                onDismiss: resetNotesSheet
+            ) { destination in
+                NotesSheet(
+                    destination: destination,
+                    detent: $notesDetent
+                )
+                    .id(destination.id)
             }
         }
         .syncTodayWidget()
@@ -78,6 +75,41 @@ struct RootView: View {
         case .quickAdd:
             selectedSection = .today
             isCreatingItem = true
+        }
+    }
+
+    private func openNotes(_ destination: NotesDestination) {
+        notesDetent = .medium
+        notesDestination = destination
+    }
+
+    private func resetNotesSheet() {
+        notesDetent = .medium
+    }
+}
+
+private struct NotesSheet: View {
+    let destination: NotesDestination
+    @Binding var detent: PresentationDetent
+
+    var body: some View {
+        notesView
+            .presentationDetents(
+                [.medium, .large],
+                selection: $detent
+            )
+            .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private var notesView: some View {
+        switch destination {
+        case .todo(let todo):
+            NotesView(item: todo)
+        case .event(let event):
+            NotesView(item: event)
+        case .template(let template):
+            NotesView(item: template)
         }
     }
 }

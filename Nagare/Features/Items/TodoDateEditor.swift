@@ -16,39 +16,39 @@ struct TodoDateEditor: View {
     }
 
     var body: some View {
-        NavigationStack {
-            DatePicker(
-                "Date",
-                selection: $scheduledDate,
-                in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-            .padding()
-            .navigationTitle("Change Date")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+        Form {
+            Section {
+                DatePicker(
+                    "Date",
+                    selection: $scheduledDate,
+                    in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
+                    displayedComponents: .date
+                )
+            }
+        }
+        .navigationTitle("Change Date")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
                 }
+            }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        Label("Save Date", systemImage: "checkmark")
-                            .labelStyle(.iconOnly)
-                    }
-                    .tint(.accentColor)
+            ToolbarItem(placement: .confirmationAction) {
+                Button(action: save) {
+                    Label("Save Date", systemImage: "checkmark")
+                        .labelStyle(.iconOnly)
                 }
+                .tint(.accentColor)
             }
-            .alert("Date Couldn't Be Changed", isPresented: isShowingError) {
-                Button("OK", role: .cancel) {
-                    errorMessage = nil
-                }
-            } message: {
-                Text(errorMessage ?? "An unknown error occurred.")
+        }
+        .alert("Date Couldn't Be Changed", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
             }
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
         }
     }
 

@@ -6,6 +6,7 @@ struct EventScheduleEditor: View {
     @Environment(\.modelContext) private var modelContext
 
     let event: Event
+    let navigationTitle: String
 
     @State private var scheduledDate: Date
     @State private var startTime: Date
@@ -13,8 +14,9 @@ struct EventScheduleEditor: View {
     @State private var endTime: Date
     @State private var errorMessage: String?
 
-    init(event: Event) {
+    init(event: Event, navigationTitle: String = "Change Schedule") {
         self.event = event
+        self.navigationTitle = navigationTitle
         _scheduledDate = State(initialValue: event.scheduledDate)
         _startTime = State(initialValue: event.scheduledDate)
         _includesEndTime = State(initialValue: event.endDate != nil)
@@ -48,47 +50,45 @@ struct EventScheduleEditor: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    ScheduleFields(
-                        date: $scheduledDate,
-                        startTime: $startTime,
-                        includesEndTime: $includesEndTime,
-                        endTime: $endTime
-                    )
-                } footer: {
-                    if !isScheduleValid {
-                        Text("The end time must be later than the start time.")
+        Form {
+            Section {
+                ScheduleFields(
+                    date: $scheduledDate,
+                    startTime: $startTime,
+                    includesEndTime: $includesEndTime,
+                    endTime: $endTime
+                )
+            } footer: {
+                if !isScheduleValid {
+                    Text("The end time must be later than the start time.")
                         .foregroundStyle(.red)
-                    }
                 }
             }
-            .navigationTitle("Change Schedule")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+        }
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
                 }
+            }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        Label("Save Schedule", systemImage: "checkmark")
-                            .labelStyle(.iconOnly)
-                    }
-                    .tint(.accentColor)
-                    .disabled(!isScheduleValid)
+            ToolbarItem(placement: .confirmationAction) {
+                Button(action: save) {
+                    Label("Save Schedule", systemImage: "checkmark")
+                        .labelStyle(.iconOnly)
                 }
+                .tint(.accentColor)
+                .disabled(!isScheduleValid)
             }
-            .alert("Schedule Couldn't Be Changed", isPresented: isShowingError) {
-                Button("OK", role: .cancel) {
-                    errorMessage = nil
-                }
-            } message: {
-                Text(errorMessage ?? "An unknown error occurred.")
+        }
+        .alert("Schedule Couldn't Be Changed", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
             }
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
         }
     }
 

@@ -15,12 +15,6 @@ struct CreateView: View {
             }
         }
 
-        var icon: String {
-            switch self {
-            case .todo: "checkmark.circle"
-            case .event: "clock"
-            }
-        }
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -28,6 +22,7 @@ struct CreateView: View {
 
     @State private var itemType = ItemType.todo
     @State private var title = ""
+    @State private var notes = ""
     @State private var scheduledDate = Date.now
     @State private var startTime = Date.now
     @State private var includesEndTime = false
@@ -43,6 +38,12 @@ struct CreateView: View {
 
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var savedNotes: String? {
+        notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : notes
     }
 
     private var eventScheduledDate: Date {
@@ -76,8 +77,7 @@ struct CreateView: View {
             Form {
                 Picker("Type", selection: $itemType) {
                     ForEach(ItemType.allCases) { type in
-                        Label(type.title, systemImage: type.icon)
-                            .labelStyle(.iconOnly)
+                        Text(type.title)
                             .tag(type)
                     }
                 }
@@ -88,10 +88,19 @@ struct CreateView: View {
                         itemType == .todo ? "What needs doing?" : "What's happening?",
                         text: $title
                     )
+                    .accessibilityIdentifier("Create Title")
                     .focused($isTitleFocused)
                     .submitLabel(.done)
-                    .onSubmit(save)
+                    .onSubmit {
+                        isTitleFocused = false
+                    }
 
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                        .accessibilityIdentifier("Create Notes")
+                }
+
+                Section {
                     if itemType == .event {
                         ScheduleFields(
                             date: $scheduledDate,
@@ -125,7 +134,7 @@ struct CreateView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("New \(itemType.title)")
+                    Text("New")
                         .font(.headline)
                 }
 
@@ -207,6 +216,7 @@ struct CreateView: View {
                 let order = try ItemOrdering.nextOrder(in: modelContext)
                 let todo = Todo(
                     title: trimmedTitle,
+                    notes: savedNotes,
                     scheduledDate: scheduledDate,
                     order: order
                 )
@@ -224,6 +234,7 @@ struct CreateView: View {
                 let order = try ItemOrdering.nextOrder(in: modelContext)
                 let event = Event(
                     title: trimmedTitle,
+                    notes: savedNotes,
                     scheduledDate: eventScheduledDate,
                     endDate: eventEndDate,
                     order: order

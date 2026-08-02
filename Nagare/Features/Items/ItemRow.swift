@@ -14,10 +14,17 @@ struct ItemRow: View {
                 TodoRow(
                     todo: todo,
                     onOpen: { onOpen(item) },
-                    onComplete: { onComplete(todo) }
+                    onComplete: { onComplete(todo) },
+                    onChangeDate: { onChangeSchedule(item) },
+                    onDelete: { onDelete(item) }
                 )
             case .event(let event):
-                EventRow(event: event, onOpen: { onOpen(item) })
+                EventRow(
+                    event: event,
+                    onOpen: { onOpen(item) },
+                    onChangeSchedule: { onChangeSchedule(item) },
+                    onDelete: { onDelete(item) }
+                )
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

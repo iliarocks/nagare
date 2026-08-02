@@ -88,16 +88,22 @@ struct ReorderableItemList: View {
             apply(difference)
         }
         .sheet(item: $todoBeingRescheduled) { todo in
-            TodoDateEditor(todo: todo)
-                .presentationDetents([.medium])
+            NavigationStack {
+                TodoDateEditor(todo: todo)
+            }
+            .presentationDetents([.medium])
         }
         .sheet(item: $eventBeingRescheduled) { event in
-            EventScheduleEditor(event: event)
-                .presentationDetents([.medium])
+            NavigationStack {
+                EventScheduleEditor(event: event)
+            }
+            .presentationDetents([.medium])
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
-            RecurrenceEditor(template: template)
-                .presentationDetents([.medium, .large])
+            NavigationStack {
+                RecurrenceEditor(template: template)
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 

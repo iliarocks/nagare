@@ -113,7 +113,7 @@ struct UpcomingView: View {
                 ContentUnavailableView(
                     "Nothing upcoming",
                     systemImage: "calendar",
-                    description: Text("Future todos and events will appear here.")
+                    description: Text("Future todos and events will appear here")
                 )
             } else {
                 ReorderableItemList(
@@ -186,10 +186,12 @@ struct UpcomingView: View {
 
     private func complete(_ todo: Todo) {
         do {
-            try RecurrencePersistence.complete(
-                todo,
-                in: modelContext
-            )
+            try withAnimation {
+                _ = try RecurrencePersistence.complete(
+                    todo,
+                    in: modelContext
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -4,6 +4,9 @@ struct TodoRow: View {
     let todo: Todo
     let onOpen: () -> Void
     let onComplete: () -> Void
+    let onChangeDate: () -> Void
+    let onDelete: () -> Void
+    @State private var isCompleting = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -14,15 +17,47 @@ struct TodoRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityAction(named: "Change Date", onChangeDate)
+            .accessibilityAction(named: "Delete", onDelete)
 
-            Button(action: onComplete) {
-                Image(systemName: "circle")
+            Button(action: complete) {
+                Image(
+                    systemName: isCompleting
+                        ? "checkmark.circle.fill"
+                        : "circle"
+                )
                     .font(.title3)
+                    .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(
+                isCompleting ? Color.accentColor : Color.secondary
+            )
+            .disabled(isCompleting)
             .accessibilityLabel("Complete \(todo.title)")
         }
         .padding(.vertical, 4)
+    }
+
+    private func complete() {
+        withAnimation(.snappy(duration: 0.2)) {
+            isCompleting = true
+        }
+
+        Task {
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+            } catch {
+                return
+            }
+
+            onComplete()
+
+            if todo.completedAt == nil {
+                withAnimation(.snappy(duration: 0.2)) {
+                    isCompleting = false
+                }
+            }
+        }
     }
 }

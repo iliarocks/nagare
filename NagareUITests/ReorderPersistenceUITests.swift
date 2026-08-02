@@ -2,6 +2,47 @@ import XCTest
 
 final class ReorderPersistenceUITests: XCTestCase {
     @MainActor
+    func testCreateTodoPersistsNotes() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let newItem = app.buttons["New Item"]
+        XCTAssertTrue(newItem.waitForExistence(timeout: 5))
+        newItem.tap()
+
+        let title = app.textFields["Create Title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Todo"].exists)
+        XCTAssertTrue(app.buttons["Event"].exists)
+        XCTAssertTrue(app.staticTexts["New"].exists)
+        title.typeText("Created With Notes UI")
+
+        let notes = app.textFields["Create Notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 2))
+        notes.tap()
+        notes.typeText("Notes entered while creating the todo")
+
+        let addTodo = app.buttons["Add Todo"]
+        XCTAssertTrue(addTodo.waitForExistence(timeout: 2))
+        addTodo.tap()
+
+        let createdTodo = app.buttons["Created With Notes UI"]
+        XCTAssertTrue(createdTodo.waitForExistence(timeout: 5))
+        createdTodo.tap()
+
+        let savedNotes = app.textViews["Item Notes"]
+        XCTAssertTrue(savedNotes.waitForExistence(timeout: 2))
+        XCTAssertEqual(
+            savedNotes.value as? String,
+            "Notes entered while creating the todo"
+        )
+    }
+
+    @MainActor
     func testStoreOpenFailureShowsRecoveryAlertInsteadOfCrashing() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--simulate-store-open-failure"]
@@ -187,7 +228,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testEventNotesShowsTimeBesideTitle() throws {
+    func testEventNotesShowsTimeInlineWithoutScheduleAction() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -202,19 +243,43 @@ final class ReorderPersistenceUITests: XCTestCase {
         event.tap()
 
         let title = app.textFields["Item Title"]
-        let eventTime = app.descendants(matching: .any)["Event Time"]
+        let time = app.descendants(matching: .any)["Event Time"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertTrue(eventTime.waitForExistence(timeout: 2))
+        XCTAssertTrue(time.waitForExistence(timeout: 2))
         XCTAssertGreaterThan(
-            eventTime.frame.minX,
+            time.frame.minX,
             title.frame.minX,
-            "The event time should appear to the right of the title"
+            "The event time should trail the title"
         )
-        XCTAssertLessThan(
-            abs(eventTime.frame.midY - title.frame.midY),
-            12,
-            "The event time and title should share the same vertical line"
-        )
+        XCTAssertLessThan(time.frame.minY, title.frame.maxY)
+        XCTAssertGreaterThan(time.frame.maxY, title.frame.minY)
+        XCTAssertFalse(app.buttons["Change Date"].exists)
+        XCTAssertFalse(app.buttons["Change Schedule"].exists)
+        XCTAssertFalse(app.buttons["Edit Repeat"].exists)
+        XCTAssertFalse(app.buttons["Delete Event"].exists)
+        XCTAssertFalse(app.buttons["Delete"].exists)
+        XCTAssertFalse(app.buttons["Close"].exists)
+        XCTAssertFalse(app.buttons["Item Actions"].exists)
+    }
+
+    @MainActor
+    func testNotesOpenInMediumSheet() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let todo = app.buttons["Reorder First"]
+        XCTAssertTrue(todo.waitForExistence(timeout: 5))
+        todo.tap()
+
+        let title = app.textFields["Item Title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let windowHeight = app.windows.firstMatch.frame.height
+        XCTAssertGreaterThan(title.frame.midY, windowHeight * 0.4)
+        XCTAssertLessThan(title.frame.midY, windowHeight * 0.7)
     }
 
     @MainActor
@@ -344,7 +409,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testNotesMenuContainsChangeDateAndDeleteActions() throws {
+    func testTodoNotesHasNoInlineManagementActions() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -356,12 +421,13 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(todo.waitForExistence(timeout: 5))
         todo.tap()
 
-        let actionsMenu = app.buttons["Item Actions"]
-        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 5))
-        actionsMenu.tap()
-
-        XCTAssertTrue(app.buttons["Change Date"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["Item Title"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Change Date"].exists)
+        XCTAssertFalse(app.buttons["Change Schedule"].exists)
+        XCTAssertFalse(app.buttons["Delete Todo"].exists)
+        XCTAssertFalse(app.buttons["Delete"].exists)
+        XCTAssertFalse(app.buttons["Close"].exists)
+        XCTAssertFalse(app.buttons["Item Actions"].exists)
         XCTAssertFalse(app.buttons["Add Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Future Items"].exists)
@@ -381,12 +447,12 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(currentInstance.waitForExistence(timeout: 5))
         currentInstance.tap()
 
-        let actionsMenu = app.buttons["Item Actions"]
-        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 5))
-        actionsMenu.tap()
-
-        XCTAssertTrue(app.buttons["Change Date"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["Item Title"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Change Date"].exists)
+        XCTAssertFalse(app.buttons["Delete Todo"].exists)
+        XCTAssertFalse(app.buttons["Delete"].exists)
+        XCTAssertFalse(app.buttons["Close"].exists)
+        XCTAssertFalse(app.buttons["Item Actions"].exists)
         XCTAssertFalse(app.buttons["Add Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Future Items"].exists)
@@ -422,11 +488,12 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(titleField.waitForExistence(timeout: 5))
         XCTAssertEqual(titleField.value as? String, "Recurring Future UI")
 
-        let actionsMenu = app.buttons["Item Actions"]
-        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 2))
-        actionsMenu.tap()
-        XCTAssertTrue(app.buttons["Edit Repeat"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Stop Repeating"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Stop Repeating"].exists)
+        XCTAssertFalse(app.buttons["Delete"].exists)
+        XCTAssertFalse(app.buttons["Edit Repeat"].exists)
+        XCTAssertFalse(app.buttons["Close"].exists)
+        XCTAssertFalse(app.buttons["Item Actions"].exists)
+
     }
 
 }

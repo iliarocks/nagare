@@ -68,7 +68,7 @@ struct TodayView: View {
                 ContentUnavailableView(
                     "Nothing for today",
                     systemImage: "checkmark.circle",
-                    description: Text("Add an item when something comes to mind.")
+                    description: Text("Add an item when something comes to mind")
                 )
             } else {
                 ReorderableItemList(
@@ -152,10 +152,12 @@ struct TodayView: View {
 
     private func complete(_ todo: Todo) {
         do {
-            try RecurrencePersistence.complete(
-                todo,
-                in: modelContext
-            )
+            try withAnimation {
+                _ = try RecurrencePersistence.complete(
+                    todo,
+                    in: modelContext
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
