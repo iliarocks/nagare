@@ -91,19 +91,18 @@ struct ReorderableItemList: View {
             NavigationStack {
                 TodoDateEditor(todo: todo)
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.fraction(0.38)])
         }
         .sheet(item: $eventBeingRescheduled) { event in
             NavigationStack {
                 EventScheduleEditor(event: event)
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.fraction(0.38)])
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
             NavigationStack {
                 RecurrenceEditor(template: template)
             }
-            .presentationDetents([.medium, .large])
         }
     }
 

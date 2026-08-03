@@ -58,6 +58,30 @@ struct RecurrenceTests {
         #expect(next == date(2025, 2, 28))
     }
 
+    @Test func relativeYearlyRecurrencePreservesMonthAndDay() throws {
+        let rule = try RecurrenceRule.relative(every: 1, unit: .year)
+
+        let next = try RecurrenceCalculator.nextDate(
+            after: date(2026, 8, 3),
+            using: rule,
+            calendar: calendar
+        )
+
+        #expect(next == date(2027, 8, 3))
+    }
+
+    @Test func relativeYearlyRecurrenceClampsLeapDay() throws {
+        let rule = try RecurrenceRule.relative(every: 1, unit: .year)
+
+        let next = try RecurrenceCalculator.nextDate(
+            after: date(2024, 2, 29),
+            using: rule,
+            calendar: calendar
+        )
+
+        #expect(next == date(2025, 2, 28))
+    }
+
     @Test func relativeRecurrenceExposesExactlyOneVirtualDate() throws {
         let rule = try RecurrenceRule.relative(every: 10, unit: .day)
 
@@ -158,6 +182,54 @@ struct RecurrenceTests {
         )
 
         #expect(next == date(2026, 1, 10))
+    }
+
+    @Test func absoluteYearlyRecurrencePreservesBirthdayPhase() throws {
+        let rule = try RecurrenceRule.absolute(
+            every: 2,
+            unit: .year,
+            reference: date(2026, 8, 3),
+            calendar: calendar
+        )
+
+        #expect(
+            try RecurrenceCalculator.nextDate(
+                after: date(2027, 10, 1),
+                using: rule,
+                calendar: calendar
+            ) == date(2028, 8, 3)
+        )
+        #expect(
+            try RecurrenceCalculator.nextDate(
+                after: date(2028, 8, 3),
+                using: rule,
+                calendar: calendar
+            ) == date(2030, 8, 3)
+        )
+    }
+
+    @Test func absoluteLeapDayRecurrenceReturnsToLeapDay() throws {
+        let rule = try RecurrenceRule.absolute(
+            every: 1,
+            unit: .year,
+            reference: date(2024, 2, 29),
+            calendar: calendar
+        )
+
+        #expect(
+            try RecurrenceCalculator.nextDate(
+                after: date(2024, 2, 29),
+                using: rule,
+                calendar: calendar
+            ) == date(2025, 2, 28)
+        )
+        #expect(
+            try RecurrenceCalculator.nextDate(
+                after: date(2027, 2, 28),
+                using: rule,
+                calendar: calendar
+            ) == date(2028, 2, 29)
+        )
     }
 
     @Test func zeroBasedWeeklyAnchorsStartOnMonday() throws {
@@ -513,6 +585,15 @@ struct RecurrenceTests {
             try RecurrenceRule.absolute(
                 every: 1,
                 unit: .day,
+                anchors: [0],
+                reference: date(2026, 1, 1),
+                calendar: calendar
+            )
+        }
+        #expect(throws: RecurrenceError.self) {
+            try RecurrenceRule.absolute(
+                every: 1,
+                unit: .year,
                 anchors: [0],
                 reference: date(2026, 1, 1),
                 calendar: calendar

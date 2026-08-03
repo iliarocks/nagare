@@ -256,6 +256,25 @@ enum RecurrencePersistence {
         }
     }
 
+    /// Deletes the current Event together with its recurrence template. Since
+    /// Nagare persists only the current Event occurrence, this removes this
+    /// and every future occurrence represented by the series.
+    static func deleteSeries(
+        containing event: Event,
+        in context: ModelContext
+    ) throws {
+        try perform(in: context) {
+            guard let template = event.recurrenceTemplate else {
+                context.delete(event)
+                return
+            }
+
+            try validateCurrent(event, for: template)
+            context.delete(event)
+            context.delete(template)
+        }
+    }
+
     /// Removes every past occurrence represented by the current Event and
     /// advances its template until the persisted current occurrence is on or
     /// after `date`. The entire catch-up is saved as one transition.

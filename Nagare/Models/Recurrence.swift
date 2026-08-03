@@ -9,6 +9,7 @@ enum RecurrenceUnit: String, CaseIterable, Codable, Sendable {
     case day
     case week
     case month
+    case year
 }
 
 struct RecurrenceRule: Equatable, Sendable {
@@ -62,7 +63,7 @@ struct RecurrenceRule: Equatable, Sendable {
 
         let canonicalAnchors: [Int]
         switch unit {
-        case .day:
+        case .day, .year:
             guard anchors.isEmpty else {
                 throw RecurrenceError.unexpectedAnchors(unit)
             }
@@ -134,6 +135,8 @@ enum RecurrenceCalculator {
             return try startOfMonday(containing: reference, calendar: calendar)
         case .month:
             return try startOfMonth(containing: reference, calendar: calendar)
+        case .year:
+            return calendar.startOfDay(for: reference)
         }
     }
 
@@ -180,6 +183,13 @@ enum RecurrenceCalculator {
                     reference: reference,
                     interval: rule.interval,
                     anchors: rule.anchors,
+                    calendar: calendar
+                )
+            case .year:
+                return try nextAbsoluteYearDate(
+                    after: date,
+                    reference: reference,
+                    interval: rule.interval,
                     calendar: calendar
                 )
             }
@@ -260,6 +270,12 @@ enum RecurrenceCalculator {
             )
         case .month:
             return try addingMonths(
+                interval,
+                to: date,
+                calendar: calendar
+            )
+        case .year:
+            return try addingYears(
                 interval,
                 to: date,
                 calendar: calendar
@@ -430,6 +446,44 @@ enum RecurrenceCalculator {
         )
     }
 
+    private static func nextAbsoluteYearDate(
+        after date: Date,
+        reference: Date,
+        interval: Int,
+        calendar: Calendar
+    ) throws -> Date {
+        let reference = calendar.startOfDay(for: reference)
+        guard date >= reference else {
+            return reference
+        }
+
+        guard let elapsedYears = calendar.dateComponents(
+            [.year],
+            from: reference,
+            to: date
+        ).year else {
+            throw RecurrenceError.dateCalculationFailed
+        }
+
+        var intervalsElapsed = max(elapsedYears / interval, 0)
+        var candidate = try addingYears(
+            (intervalsElapsed + 1) * interval,
+            to: reference,
+            calendar: calendar
+        )
+
+        while candidate <= date {
+            intervalsElapsed += 1
+            candidate = try addingYears(
+                (intervalsElapsed + 1) * interval,
+                to: reference,
+                calendar: calendar
+            )
+        }
+
+        return candidate
+    }
+
     private static func startOfMonday(
         containing date: Date,
         calendar: Calendar
@@ -480,6 +534,54 @@ enum RecurrenceCalculator {
             to: currentMonth,
             calendar: calendar
         )
+        return try dateInMonth(
+            inMonthStarting: targetMonth,
+            zeroBasedDay: originalDay - 1,
+            calendar: calendar
+        )
+    }
+
+    private static func addingYears(
+        _ years: Int,
+        to date: Date,
+        calendar: Calendar
+    ) throws -> Date {
+        let originalMonth = calendar.component(.month, from: date)
+        let originalDay = calendar.component(.day, from: date)
+
+        var yearComponents = calendar.dateComponents(
+            [.era, .year],
+            from: date
+        )
+        yearComponents.month = 1
+        yearComponents.day = 1
+        yearComponents.hour = 0
+        yearComponents.minute = 0
+        yearComponents.second = 0
+
+        guard let currentYear = calendar.date(from: yearComponents) else {
+            throw RecurrenceError.dateCalculationFailed
+        }
+        let targetYear = try adding(
+            .year,
+            value: years,
+            to: currentYear,
+            calendar: calendar
+        )
+
+        var monthComponents = calendar.dateComponents(
+            [.era, .year],
+            from: targetYear
+        )
+        monthComponents.month = originalMonth
+        monthComponents.day = 1
+        monthComponents.hour = 0
+        monthComponents.minute = 0
+        monthComponents.second = 0
+
+        guard let targetMonth = calendar.date(from: monthComponents) else {
+            throw RecurrenceError.dateCalculationFailed
+        }
         return try dateInMonth(
             inMonthStarting: targetMonth,
             zeroBasedDay: originalDay - 1,

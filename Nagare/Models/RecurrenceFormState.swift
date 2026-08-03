@@ -56,7 +56,7 @@ struct RecurrenceFormState: Equatable {
         }
 
         switch unit {
-        case .day:
+        case .day, .year:
             return anchors.isEmpty
         case .week:
             return !anchors.isEmpty && anchors.allSatisfy((0...6).contains)
@@ -191,7 +191,7 @@ struct RecurrenceFormState: Equatable {
         }
 
         switch unit {
-        case .day:
+        case .day, .year:
             anchors = []
         case .week:
             anchors = Set(anchors.filter((0...6).contains))
@@ -232,6 +232,7 @@ extension RecurrenceUnit: Identifiable {
         case .day: "day"
         case .week: "week"
         case .month: "month"
+        case .year: "year"
         }
     }
 
@@ -240,6 +241,7 @@ extension RecurrenceUnit: Identifiable {
         case .day: "days"
         case .week: "weeks"
         case .month: "months"
+        case .year: "years"
         }
     }
 }

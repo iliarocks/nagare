@@ -1,3 +1,4 @@
+import AppIntents
 import OSLog
 import SwiftData
 import SwiftUI
@@ -5,7 +6,7 @@ import SwiftUI
 @main
 struct NagareApp: App {
     private enum StartupState {
-        case ready(ModelContainer)
+        case ready(NagareIntentStore)
         case failed
     }
 
@@ -33,7 +34,9 @@ struct NagareApp: App {
                 in: modelContainer.mainContext,
                 arguments: arguments
             )
-            startupState = .ready(modelContainer)
+            let intentStore = NagareIntentStore(modelContainer: modelContainer)
+            AppDependencyManager.shared.add(dependency: intentStore)
+            startupState = .ready(intentStore)
         } catch {
             Self.logger.fault(
                 "Unable to open Nagare's data store: \(error.localizedDescription, privacy: .public)"
@@ -45,9 +48,9 @@ struct NagareApp: App {
     var body: some Scene {
         WindowGroup {
             switch startupState {
-            case .ready(let modelContainer):
-                RootView()
-                    .modelContainer(modelContainer)
+            case .ready(let intentStore):
+                RootView(intentStore: intentStore)
+                    .modelContainer(intentStore.modelContainer)
             case .failed:
                 StoreStartupFailureView()
             }

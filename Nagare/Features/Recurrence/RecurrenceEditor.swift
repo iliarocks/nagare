@@ -2,6 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct RecurrenceEditor: View {
+    private static let compactDetent = PresentationDetent.fraction(0.38)
+
     private struct InitialValues {
         let form: RecurrenceFormState
         let itemType: RecurrenceItemType
@@ -25,6 +27,7 @@ struct RecurrenceEditor: View {
     @State private var includesEndTime: Bool
     @State private var endTime: Date
     @State private var errorMessage: String?
+    @State private var selectedDetent: PresentationDetent
 
     init(template: RecurrenceTemplate) {
         self.template = template
@@ -37,6 +40,9 @@ struct RecurrenceEditor: View {
         _includesEndTime = State(initialValue: values.includesEndTime)
         _endTime = State(initialValue: values.endTime)
         _errorMessage = State(initialValue: nil)
+        _selectedDetent = State(
+            initialValue: Self.preferredDetent(for: values.form)
+        )
     }
 
     var body: some View {
@@ -99,6 +105,10 @@ struct RecurrenceEditor: View {
         }
         .navigationTitle("Edit Repeat")
         .navigationBarTitleDisplayMode(.inline)
+        .presentationDetents(
+            [Self.compactDetent, .large],
+            selection: $selectedDetent
+        )
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
@@ -126,6 +136,33 @@ struct RecurrenceEditor: View {
             if let initialErrorMessage {
                 errorMessage = initialErrorMessage
             }
+        }
+        .onChange(of: preferredDetent) { _, newDetent in
+            guard selectedDetent != newDetent else {
+                return
+            }
+            withAnimation {
+                selectedDetent = newDetent
+            }
+        }
+    }
+
+    private var preferredDetent: PresentationDetent {
+        Self.preferredDetent(for: form)
+    }
+
+    private static func preferredDetent(
+        for form: RecurrenceFormState
+    ) -> PresentationDetent {
+        guard form.mode == .absolute else {
+            return compactDetent
+        }
+
+        switch form.unit {
+        case .week, .month:
+            return .large
+        case .day, .year:
+            return compactDetent
         }
     }
 

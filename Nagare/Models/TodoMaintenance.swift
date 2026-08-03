@@ -5,9 +5,10 @@ enum TodoMaintenance {
     @MainActor
     static func rollUnfinishedTodosForward(
         in context: ModelContext,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent,
+        now: Date = .now
     ) throws {
-        let today = calendar.startOfDay(for: .now)
+        let today = calendar.startOfDay(for: now)
         var descriptor = FetchDescriptor<Todo>(
             predicate: #Predicate { todo in
                 todo.completedAt == nil && todo.scheduledDate < today

@@ -55,6 +55,30 @@ struct RecurrenceUIModelTests {
         #expect(state.isValid)
     }
 
+    @Test func switchingToYearlyRepeatUsesReferenceDateWithoutAnchors() throws {
+        var state = RecurrenceFormState.enabled(
+            for: .todo,
+            referenceDate: date(2026, 8, 3),
+            calendar: calendar
+        )
+
+        state.selectUnit(
+            .year,
+            referenceDate: date(2026, 8, 3),
+            calendar: calendar
+        )
+
+        #expect(state.anchors.isEmpty)
+        #expect(state.isValid)
+        let optionalRule = try state.rule(
+            referenceDate: date(2026, 8, 3),
+            calendar: calendar
+        )
+        let rule = try #require(optionalRule)
+        #expect(rule.unit == .year)
+        #expect(rule.reference == date(2026, 8, 3))
+    }
+
     @Test func eventRepeatCannotRemainRelative() {
         var state = RecurrenceFormState.enabled(
             for: .todo,

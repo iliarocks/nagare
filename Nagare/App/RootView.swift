@@ -14,6 +14,12 @@ struct RootView: View {
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
 
+    let intentStore: NagareIntentStore?
+
+    init(intentStore: NagareIntentStore? = nil) {
+        self.intentStore = intentStore
+    }
+
     var body: some View {
         NavigationStack {
             TabView(selection: $selectedSection) {
@@ -75,6 +81,7 @@ struct RootView: View {
             }
         }
         .syncTodayWidget()
+        .syncNagareSearchIndex(using: intentStore)
         .onAppIntentExecution(OpenNagareIntent.self) { intent in
             open(intent.target)
         }
