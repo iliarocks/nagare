@@ -10,6 +10,7 @@ struct RootView: View {
 
     @State private var selectedSection = Section.today
     @State private var isCreatingItem = false
+    @State private var isShowingCompleted = false
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
 
@@ -31,6 +32,18 @@ struct RootView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingCompleted = true
+                    } label: {
+                        Label(
+                            "Completed",
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                        .labelStyle(.iconOnly)
+                    }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isCreatingItem = true
@@ -42,6 +55,13 @@ struct RootView: View {
             }
             .sheet(isPresented: $isCreatingItem) {
                 CreateView()
+            }
+            .sheet(isPresented: $isShowingCompleted) {
+                NavigationStack {
+                    CompletedView()
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             .sheet(
                 item: $notesDestination,
@@ -88,7 +108,7 @@ struct RootView: View {
     }
 }
 
-private struct NotesSheet: View {
+struct NotesSheet: View {
     let destination: NotesDestination
     @Binding var detent: PresentationDetent
 

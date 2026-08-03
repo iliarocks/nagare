@@ -34,7 +34,8 @@ struct ItemRow: View {
                 Image(systemName: "trash")
             }
             .accessibilityLabel("Delete")
-
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 onChangeSchedule(item)
             } label: {

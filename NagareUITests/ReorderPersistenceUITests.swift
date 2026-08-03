@@ -159,7 +159,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testTodaySwipeActionsExposeDeleteAndChangeDate() throws {
+    func testTodaySwipeDirectionsSeparateDeleteAndChangeDate() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -167,17 +167,82 @@ final class ReorderPersistenceUITests: XCTestCase {
         ]
         app.launch()
 
-        let todo = app.buttons["Reorder First"]
-        XCTAssertTrue(todo.waitForExistence(timeout: 5))
-        todo.swipeLeft()
+        let deleteTodo = app.buttons["Reorder First"]
+        let editTodo = app.buttons["Reorder Second"]
+        XCTAssertTrue(deleteTodo.waitForExistence(timeout: 5))
+        XCTAssertTrue(editTodo.waitForExistence(timeout: 5))
+        deleteTodo.swipeLeft()
 
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Change Date"].exists)
+
+        editTodo.swipeRight()
+
         let changeDate = app.buttons["Change Date"]
         XCTAssertTrue(changeDate.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Delete"].exists)
         changeDate.tap()
 
         XCTAssertTrue(
             app.navigationBars["Change Date"].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
+    func testCompletedTodoCanBeReinstatedToToday() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let completedButton = app.buttons["Completed"]
+        XCTAssertTrue(completedButton.waitForExistence(timeout: 5))
+        completedButton.tap()
+
+        let completedTodo = app.buttons["Completed Todo UI, completed"]
+        XCTAssertTrue(completedTodo.waitForExistence(timeout: 2))
+        completedTodo.swipeRight()
+
+        let reinstate = app.buttons["Reinstate"]
+        XCTAssertTrue(reinstate.waitForExistence(timeout: 2))
+        reinstate.tap()
+        XCTAssertFalse(completedTodo.waitForExistence(timeout: 1))
+
+        XCTAssertFalse(app.buttons["Close Completed"].exists)
+        app.swipeDown()
+
+        XCTAssertTrue(
+            app.buttons["Completed Todo UI"].waitForExistence(timeout: 2),
+            "Reinstating a future Todo should make it immediately visible in Today"
+        )
+    }
+
+    @MainActor
+    func testCompletedTodoCanBePermanentlyDeleted() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let completedButton = app.buttons["Completed"]
+        XCTAssertTrue(completedButton.waitForExistence(timeout: 5))
+        completedButton.tap()
+
+        let completedTodo = app.buttons["Completed Todo UI, completed"]
+        XCTAssertTrue(completedTodo.waitForExistence(timeout: 2))
+        completedTodo.swipeLeft()
+
+        let delete = app.buttons["Delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 2))
+        delete.tap()
+
+        XCTAssertFalse(completedTodo.waitForExistence(timeout: 1))
+        XCTAssertTrue(
+            app.staticTexts["No Completed Todos"].waitForExistence(timeout: 2)
         )
     }
 
@@ -194,7 +259,7 @@ final class ReorderPersistenceUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
         ).firstMatch
         XCTAssertTrue(event.waitForExistence(timeout: 5))
-        event.swipeLeft()
+        event.swipeRight()
 
         let changeSchedule = app.buttons["Change Schedule"]
         XCTAssertTrue(changeSchedule.waitForExistence(timeout: 2))
@@ -283,7 +348,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testTemplateSwipeActionsExposeDeleteAndChangeRepeat() throws {
+    func testTemplateSwipeRightOpensChangeRepeat() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -299,11 +364,11 @@ final class ReorderPersistenceUITests: XCTestCase {
             "Recurring Future UI, future repeating item"
         ].firstMatch
         XCTAssertTrue(template.waitForExistence(timeout: 5))
-        template.swipeLeft()
+        template.swipeRight()
 
-        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
         let changeRepeat = app.buttons["Change Repeat"]
         XCTAssertTrue(changeRepeat.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Delete"].exists)
         changeRepeat.tap()
 
         XCTAssertTrue(

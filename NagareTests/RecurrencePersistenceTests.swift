@@ -195,6 +195,147 @@ struct RecurrencePersistenceTests {
         #expect(try context.fetch(FetchDescriptor<Todo>()).count == 1)
     }
 
+    @Test func reinstatingTodoMovesItToEndOfToday() throws {
+        let context = try makeContext()
+        let today = date(2026, 7, 10)
+        let existing = Todo(
+            title: "Already Today",
+            scheduledDate: today,
+            order: "r",
+            calendar: calendar
+        )
+        let completed = Todo(
+            title: "Completed Early",
+            notes: "Keep these notes",
+            scheduledDate: date(2026, 7, 20),
+            completedAt: date(2026, 7, 8, hour: 12),
+            order: "9",
+            calendar: calendar
+        )
+        context.insert(existing)
+        context.insert(completed)
+        try context.save()
+
+        try RecurrencePersistence.reinstate(
+            completed,
+            on: today,
+            in: context,
+            calendar: calendar
+        )
+
+        #expect(completed.completedAt == nil)
+        #expect(completed.scheduledDate == today)
+        #expect(completed.notes == "Keep these notes")
+        #expect(completed.order > existing.order)
+        #expect(
+            Item.ordered(todos: [completed, existing], events: [])
+                .compactMap { item in
+                    guard case .todo(let todo) = item else {
+                        return nil
+                    }
+                    return todo.title
+                } == ["Already Today", "Completed Early"]
+        )
+    }
+
+    @Test func reinstatingRecurringHistoryDetachesOnlyThatOccurrence() throws {
+        let context = try makeContext()
+        let first = insertTodo(
+            "Completed occurrence",
+            notes: "Historical notes",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let rule = try RecurrenceRule.relative(every: 1, unit: .day)
+        let template = try RecurrencePersistence.createTemplate(
+            for: first,
+            rule: rule,
+            in: context
+        )
+        let producedCurrent = try RecurrencePersistence.complete(
+            first,
+            at: date(2026, 7, 1, hour: 17),
+            in: context,
+            calendar: calendar
+        )
+        let current = try #require(producedCurrent)
+
+        try RecurrencePersistence.reinstate(
+            first,
+            on: date(2026, 7, 10),
+            in: context,
+            calendar: calendar
+        )
+
+        #expect(first.completedAt == nil)
+        #expect(first.scheduledDate == date(2026, 7, 10))
+        #expect(first.recurrenceTemplate == nil)
+        #expect(first.recurrenceSequence == nil)
+        #expect(first.notes == "Historical notes")
+        #expect(current.recurrenceTemplate?.id == template.id)
+        #expect(current.recurrenceSequence == 1)
+        #expect(template.currentItemID == current.id)
+        #expect(template.currentSequence == 1)
+        #expect(template.todoOccurrences.map(\.id) == [current.id])
+    }
+
+    @Test func deletingRecurringHistoryPreservesCurrentOccurrence() throws {
+        let context = try makeContext()
+        let completed = insertTodo(
+            "Completed occurrence",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let rule = try RecurrenceRule.relative(every: 1, unit: .day)
+        let template = try RecurrencePersistence.createTemplate(
+            for: completed,
+            rule: rule,
+            in: context
+        )
+        let producedCurrent = try RecurrencePersistence.complete(
+            completed,
+            at: date(2026, 7, 1, hour: 17),
+            in: context,
+            calendar: calendar
+        )
+        let current = try #require(producedCurrent)
+
+        try RecurrencePersistence.deleteCompleted(
+            completed,
+            in: context
+        )
+
+        let todos = try context.fetch(FetchDescriptor<Todo>())
+        #expect(todos.map(\.id) == [current.id])
+        #expect(current.completedAt == nil)
+        #expect(current.recurrenceTemplate?.id == template.id)
+        #expect(template.currentItemID == current.id)
+        #expect(template.currentSequence == 1)
+        #expect(template.todoOccurrences.map(\.id) == [current.id])
+    }
+
+    @Test func cannotReinstateAnActiveTodo() throws {
+        let context = try makeContext()
+        let active = insertTodo(
+            "Still active",
+            day: date(2026, 7, 1),
+            into: context
+        )
+
+        let error = capturePersistenceError {
+            try RecurrencePersistence.reinstate(
+                active,
+                on: date(2026, 7, 10),
+                in: context,
+                calendar: calendar
+            )
+        }
+
+        #expect(error?.code == "RECURRENCE-PERSIST-019")
+        #expect(active.completedAt == nil)
+        #expect(active.scheduledDate == date(2026, 7, 1))
+    }
+
     @Test func deletingCurrentRecurringTodoSkipsItAndCreatesNext() throws {
         let context = try makeContext()
         let current = insertTodo(

@@ -148,6 +148,44 @@ enum RecurrencePersistence {
         }
     }
 
+    /// Returns a completed Todo to Today as the final item in the list.
+    /// Completed recurring occurrences are detached so the recurrence's
+    /// already-created current occurrence remains unchanged.
+    static func reinstate(
+        _ todo: Todo,
+        on date: Date = .now,
+        in context: ModelContext,
+        calendar: Calendar = .autoupdatingCurrent
+    ) throws {
+        try perform(in: context) {
+            guard todo.completedAt != nil else {
+                throw RecurrencePersistenceError.todoNotCompleted
+            }
+
+            let order = try ItemOrdering.nextOrder(in: context)
+            todo.recurrenceTemplate = nil
+            todo.recurrenceSequence = nil
+            todo.scheduledDate = calendar.startOfDay(for: date)
+            todo.order = order
+            todo.completedAt = nil
+        }
+    }
+
+    /// Permanently removes one completed Todo occurrence. Deleting completed
+    /// recurrence history does not affect the template's current occurrence.
+    static func deleteCompleted(
+        _ todo: Todo,
+        in context: ModelContext
+    ) throws {
+        try perform(in: context) {
+            guard todo.completedAt != nil else {
+                throw RecurrencePersistenceError.todoNotCompleted
+            }
+
+            context.delete(todo)
+        }
+    }
+
     /// Deletes the current Todo occurrence without marking it complete, then
     /// creates the next occurrence when the Todo repeats.
     @discardableResult
@@ -539,6 +577,7 @@ enum RecurrencePersistenceError: Error, LocalizedError {
     case itemIsNotCurrent
     case sequenceMismatch
     case todoAlreadyCompleted
+    case todoNotCompleted
     case invalidCurrentOccurrences
     case invalidStoredMode(String)
     case invalidStoredUnit(String)
@@ -560,6 +599,7 @@ enum RecurrencePersistenceError: Error, LocalizedError {
         case .itemIsNotCurrent: "RECURRENCE-PERSIST-006"
         case .sequenceMismatch: "RECURRENCE-PERSIST-007"
         case .todoAlreadyCompleted: "RECURRENCE-PERSIST-008"
+        case .todoNotCompleted: "RECURRENCE-PERSIST-019"
         case .invalidCurrentOccurrences: "RECURRENCE-PERSIST-009"
         case .invalidStoredMode: "RECURRENCE-PERSIST-010"
         case .invalidStoredUnit: "RECURRENCE-PERSIST-011"
@@ -592,6 +632,8 @@ enum RecurrencePersistenceError: Error, LocalizedError {
             "The occurrence sequence does not match its recurrence template. (\(code))"
         case .todoAlreadyCompleted:
             "Nagare refused to complete the same Todo occurrence twice. (\(code))"
+        case .todoNotCompleted:
+            "Nagare couldn't modify a Todo that is not completed. (\(code))"
         case .invalidCurrentOccurrences:
             "The recurrence template does not have exactly one current occurrence. (\(code))"
         case .invalidStoredMode(let mode):

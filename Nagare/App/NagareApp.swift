@@ -137,6 +137,19 @@ struct NagareApp: App {
         context.insert(Todo(title: "Upcoming Second", scheduledDate: tomorrow, order: "i"))
         context.insert(Todo(title: "Upcoming Third", scheduledDate: tomorrow, order: "r"))
         context.insert(
+            Todo(
+                title: "Completed Todo UI",
+                notes: "Completed item notes",
+                scheduledDate: tomorrow,
+                completedAt: Calendar.autoupdatingCurrent.date(
+                    byAdding: .day,
+                    value: -1,
+                    to: today
+                ) ?? today,
+                order: "z"
+            )
+        )
+        context.insert(
             Event(
                 title: "Schedule UI Event With A Deliberately Long Title That Wraps Onto Multiple Lines",
                 scheduledDate: Calendar.autoupdatingCurrent.date(

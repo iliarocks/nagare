@@ -35,7 +35,8 @@ struct VirtualItemRow: View {
                 Image(systemName: "trash")
             }
             .accessibilityLabel("Delete")
-
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button(action: onChangeRepeat) {
                 Image(systemName: "repeat")
             }
