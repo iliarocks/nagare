@@ -10,8 +10,10 @@ final class Todo: Note {
     var completedAt: Date?
     var createdAt: Date
     var order: String
+    var projectOrder: String?
     var recurrenceSequence: Int?
     var recurrenceTemplate: RecurrenceTemplate?
+    var project: Project?
 
     init(
         id: UUID = UUID(),
@@ -21,6 +23,7 @@ final class Todo: Note {
         completedAt: Date? = nil,
         createdAt: Date = .now,
         order: String,
+        projectOrder: String? = nil,
         calendar: Calendar = .autoupdatingCurrent
     ) {
         self.id = id
@@ -30,7 +33,9 @@ final class Todo: Note {
         self.completedAt = completedAt
         self.createdAt = createdAt
         self.order = order
+        self.projectOrder = projectOrder
         self.recurrenceSequence = nil
         self.recurrenceTemplate = nil
+        self.project = nil
     }
 }

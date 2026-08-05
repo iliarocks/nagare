@@ -5,6 +5,8 @@ struct EventScheduleEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @Query private var projects: [Project]
+
     let event: Event
     let navigationTitle: String
 
@@ -12,14 +14,16 @@ struct EventScheduleEditor: View {
     @State private var startTime: Date
     @State private var includesEndTime: Bool
     @State private var endTime: Date
+    @State private var selectedProject: Project?
     @State private var errorMessage: String?
 
-    init(event: Event, navigationTitle: String = "Change Schedule") {
+    init(event: Event, navigationTitle: String = "Edit Details") {
         self.event = event
         self.navigationTitle = navigationTitle
         _scheduledDate = State(initialValue: event.scheduledDate)
         _startTime = State(initialValue: event.scheduledDate)
         _includesEndTime = State(initialValue: event.endDate != nil)
+        _selectedProject = State(initialValue: event.project)
         _endTime = State(
             initialValue: event.endDate
                 ?? Calendar.autoupdatingCurrent.date(
@@ -64,6 +68,14 @@ struct EventScheduleEditor: View {
                         .foregroundStyle(.red)
                 }
             }
+
+            Section {
+                ProjectPicker(
+                    projects: projects,
+                    selectedProject: selectedProject,
+                    onSelect: { selectedProject = $0 }
+                )
+            }
         }
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -76,14 +88,14 @@ struct EventScheduleEditor: View {
 
             ToolbarItem(placement: .confirmationAction) {
                 Button(action: save) {
-                    Label("Save Schedule", systemImage: "checkmark")
+                    Label("Save Details", systemImage: "checkmark")
                         .labelStyle(.iconOnly)
                 }
                 .tint(.accentColor)
                 .disabled(!isScheduleValid)
             }
         }
-        .alert("Schedule Couldn't Be Changed", isPresented: isShowingError) {
+        .alert("Details Couldn't Be Changed", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
             }
@@ -115,6 +127,11 @@ struct EventScheduleEditor: View {
             }
             event.scheduledDate = eventScheduledDate
             event.endDate = endDate
+            try ProjectMembership.prepare(
+                .event(event),
+                for: selectedProject,
+                in: modelContext
+            )
             try modelContext.save()
             dismiss()
         } catch {

@@ -190,7 +190,7 @@ struct CompletedView: View {
         CompletedView()
     }
     .modelContainer(
-        for: [Todo.self, Event.self, RecurrenceTemplate.self],
+        for: [Project.self, Todo.self, Event.self, RecurrenceTemplate.self],
         inMemory: true
     )
 }

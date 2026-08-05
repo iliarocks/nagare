@@ -97,7 +97,7 @@ struct ReorderableItemList: View {
             NavigationStack {
                 EventScheduleEditor(event: event)
             }
-            .presentationDetents([.fraction(0.38)])
+            .presentationDetents([.medium])
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
             NavigationStack {

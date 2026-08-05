@@ -75,6 +75,7 @@ struct NagareApp: App {
             let configuration = ModelConfiguration(
                 "ReorderRegression",
                 schema: Schema([
+                    Project.self,
                     Todo.self,
                     Event.self,
                     RecurrenceTemplate.self
@@ -83,7 +84,8 @@ struct NagareApp: App {
                 cloudKitDatabase: .none
             )
             return try ModelContainer(
-                for: Todo.self,
+                for: Project.self,
+                Todo.self,
                 Event.self,
                 RecurrenceTemplate.self,
                 configurations: configuration
@@ -91,6 +93,7 @@ struct NagareApp: App {
         }
 
         let schema = Schema([
+            Project.self,
             Todo.self,
             Event.self,
             RecurrenceTemplate.self
@@ -115,6 +118,9 @@ struct NagareApp: App {
             return
         }
 
+        for project in try context.fetch(FetchDescriptor<Project>()) {
+            context.delete(project)
+        }
         for todo in try context.fetch(FetchDescriptor<Todo>()) {
             context.delete(todo)
         }
@@ -133,6 +139,26 @@ struct NagareApp: App {
         ) else {
             return
         }
+
+        let priorityProject = Project(
+            title: "Priority Project UI",
+            notes: "Priority project notes",
+            isPriority: true,
+            order: "i"
+        )
+        let backgroundProject = Project(
+            title: "Background Project UI",
+            notes: "Background project notes",
+            order: "i"
+        )
+        let secondBackgroundProject = Project(
+            title: "Background Project Second UI",
+            order: "r"
+        )
+        context.insert(priorityProject)
+        context.insert(backgroundProject)
+        context.insert(secondBackgroundProject)
+
         context.insert(Todo(title: "Reorder First", scheduledDate: today, order: "9"))
         context.insert(Todo(title: "Reorder Second", scheduledDate: today, order: "i"))
         context.insert(Todo(title: "Reorder Third", scheduledDate: today, order: "r"))
@@ -167,8 +193,10 @@ struct NagareApp: App {
         let recurringTodo = Todo(
             title: "Recurring Current UI",
             scheduledDate: today,
-            order: "1"
+            order: "1",
+            projectOrder: "i"
         )
+        recurringTodo.project = priorityProject
         context.insert(recurringTodo)
         let dailyRule = try RecurrenceRule.absolute(
             every: 1,

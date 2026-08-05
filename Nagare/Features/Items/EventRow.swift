@@ -22,7 +22,7 @@ struct EventRow: View {
         }
         .buttonStyle(.plain)
         .padding(.vertical, 4)
-        .accessibilityAction(named: "Change Schedule", onChangeSchedule)
+        .accessibilityAction(named: "Edit Details", onChangeSchedule)
         .accessibilityAction(named: "Delete", onDelete)
     }
 }

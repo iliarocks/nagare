@@ -39,7 +39,7 @@ struct ItemRow: View {
             Button {
                 onChangeSchedule(item)
             } label: {
-                Image(systemName: "calendar")
+                Image(systemName: "slider.horizontal.3")
             }
             .tint(.blue)
             .accessibilityLabel(scheduleActionTitle)
@@ -47,11 +47,6 @@ struct ItemRow: View {
     }
 
     private var scheduleActionTitle: String {
-        switch item {
-        case .todo:
-            "Change Date"
-        case .event:
-            "Change Schedule"
-        }
+        "Edit Details"
     }
 }

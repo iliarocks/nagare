@@ -6,6 +6,7 @@ struct RootView: View {
     private enum Section: Hashable {
         case today
         case upcoming
+        case projects
     }
 
     @State private var selectedSection = Section.today
@@ -21,64 +22,59 @@ struct RootView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            TabView(selection: $selectedSection) {
-                Tab(value: Section.today) {
-                    TodayView(onOpenNotes: openNotes)
-                } label: {
-                    Label("Today", systemImage: "sun.max")
-                        .labelStyle(.iconOnly)
-                }
-
-                Tab(value: Section.upcoming) {
-                    UpcomingView(onOpenNotes: openNotes)
-                } label: {
-                    Label("Upcoming", systemImage: "calendar")
-                        .labelStyle(.iconOnly)
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        isShowingCompleted = true
-                    } label: {
-                        Label(
-                            "Completed",
-                            systemImage: "clock.arrow.circlepath"
-                        )
-                        .labelStyle(.iconOnly)
-                    }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isCreatingItem = true
-                    } label: {
-                        Label("New Item", systemImage: "plus")
-                            .labelStyle(.iconOnly)
-                    }
-                }
-            }
-            .sheet(isPresented: $isCreatingItem) {
-                CreateView()
-            }
-            .sheet(isPresented: $isShowingCompleted) {
+        TabView(selection: $selectedSection) {
+            Tab(value: Section.today) {
                 NavigationStack {
-                    CompletedView()
+                    TodayView(onOpenNotes: openNotes)
+                        .toolbar {
+                            itemToolbar
+                        }
                 }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+            } label: {
+                Label("Today", systemImage: "sun.max")
+                    .labelStyle(.iconOnly)
             }
-            .sheet(
-                item: $notesDestination,
-                onDismiss: resetNotesSheet
-            ) { destination in
-                NotesSheet(
-                    destination: destination,
-                    detent: $notesDetent
-                )
-                    .id(destination.id)
+
+            Tab(value: Section.upcoming) {
+                NavigationStack {
+                    UpcomingView(onOpenNotes: openNotes)
+                        .toolbar {
+                            itemToolbar
+                        }
+                }
+            } label: {
+                Label("Upcoming", systemImage: "calendar")
+                    .labelStyle(.iconOnly)
             }
+
+            Tab(value: Section.projects) {
+                NavigationStack {
+                    ProjectsView()
+                }
+            } label: {
+                Label("Projects", systemImage: "folder")
+                    .labelStyle(.iconOnly)
+            }
+        }
+        .sheet(isPresented: $isCreatingItem) {
+            CreateView()
+        }
+        .sheet(isPresented: $isShowingCompleted) {
+            NavigationStack {
+                CompletedView()
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(
+            item: $notesDestination,
+            onDismiss: resetNotesSheet
+        ) { destination in
+            NotesSheet(
+                destination: destination,
+                detent: $notesDetent
+            )
+                .id(destination.id)
         }
         .syncTodayWidget()
         .syncNagareSearchIndex(using: intentStore)
@@ -92,6 +88,30 @@ struct RootView: View {
                 return
             }
             open(destination)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var itemToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isShowingCompleted = true
+            } label: {
+                Label(
+                    "Completed",
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .labelStyle(.iconOnly)
+            }
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                isCreatingItem = true
+            } label: {
+                Label("New Item", systemImage: "plus")
+                    .labelStyle(.iconOnly)
+            }
         }
     }
 
@@ -144,7 +164,7 @@ struct NotesSheet: View {
 #Preview {
     RootView()
         .modelContainer(
-            for: [Todo.self, Event.self, RecurrenceTemplate.self],
+            for: [Project.self, Todo.self, Event.self, RecurrenceTemplate.self],
             inMemory: true
         )
 }

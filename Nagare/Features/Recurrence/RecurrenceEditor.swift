@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct RecurrenceEditor: View {
-    private static let compactDetent = PresentationDetent.fraction(0.38)
+    private static let compactDetent = PresentationDetent.medium
 
     private struct InitialValues {
         let form: RecurrenceFormState
@@ -17,6 +17,8 @@ struct RecurrenceEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @Query private var projects: [Project]
+
     let template: RecurrenceTemplate
     private let itemType: RecurrenceItemType
     private let referenceDate: Date
@@ -26,6 +28,7 @@ struct RecurrenceEditor: View {
     @State private var startTime: Date
     @State private var includesEndTime: Bool
     @State private var endTime: Date
+    @State private var selectedProject: Project?
     @State private var errorMessage: String?
     @State private var selectedDetent: PresentationDetent
 
@@ -39,6 +42,7 @@ struct RecurrenceEditor: View {
         _startTime = State(initialValue: values.startTime)
         _includesEndTime = State(initialValue: values.includesEndTime)
         _endTime = State(initialValue: values.endTime)
+        _selectedProject = State(initialValue: template.project)
         _errorMessage = State(initialValue: nil)
         _selectedDetent = State(
             initialValue: Self.preferredDetent(for: values.form)
@@ -53,6 +57,14 @@ struct RecurrenceEditor: View {
                 referenceDate: referenceDate,
                 showsToggle: false
             )
+
+            Section {
+                ProjectPicker(
+                    projects: projects,
+                    selectedProject: selectedProject,
+                    onSelect: { selectedProject = $0 }
+                )
+            }
 
             if itemType == .event {
                 Section {
@@ -212,6 +224,7 @@ struct RecurrenceEditor: View {
 
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }
@@ -220,6 +233,11 @@ struct RecurrenceEditor: View {
         _ template: RecurrenceTemplate,
         rule: RecurrenceRule
     ) throws {
+        try ProjectMembership.prepare(
+            template,
+            for: selectedProject,
+            in: modelContext
+        )
         try RecurrencePersistence.updateTemplate(
             template,
             rule: rule,

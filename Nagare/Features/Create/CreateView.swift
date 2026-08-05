@@ -20,6 +20,8 @@ struct CreateView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @Query private var projects: [Project]
+
     @State private var itemType = ItemType.todo
     @State private var title = ""
     @State private var notes = ""
@@ -33,8 +35,13 @@ struct CreateView: View {
             to: .now
         ) ?? .now
     @State private var recurrence = RecurrenceFormState.disabled
+    @State private var selectedProject: Project?
     @State private var errorMessage: String?
     @FocusState private var isTitleFocused: Bool
+
+    init(project: Project? = nil) {
+        _selectedProject = State(initialValue: project)
+    }
 
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -121,6 +128,14 @@ struct CreateView: View {
                         Text("The end time must be later than the start time.")
                             .foregroundStyle(.red)
                     }
+                }
+
+                Section {
+                    ProjectPicker(
+                        projects: projects,
+                        selectedProject: selectedProject,
+                        onSelect: { selectedProject = $0 }
+                    )
                 }
 
                 RecurrenceFields(
@@ -221,6 +236,11 @@ struct CreateView: View {
                     order: order
                 )
                 modelContext.insert(todo)
+                try ProjectMembership.prepare(
+                    .todo(todo),
+                    for: selectedProject,
+                    in: modelContext
+                )
                 if let rule {
                     _ = try RecurrencePersistence.createTemplate(
                         for: todo,
@@ -240,6 +260,11 @@ struct CreateView: View {
                     order: order
                 )
                 modelContext.insert(event)
+                try ProjectMembership.prepare(
+                    .event(event),
+                    for: selectedProject,
+                    in: modelContext
+                )
                 if let rule {
                     _ = try RecurrencePersistence.createTemplate(
                         for: event,

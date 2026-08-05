@@ -112,8 +112,7 @@ struct UpcomingView: View {
             if itemGroups.isEmpty {
                 ContentUnavailableView(
                     "Nothing upcoming",
-                    systemImage: "calendar",
-                    description: Text("Future todos and events will appear here")
+                    systemImage: "calendar"
                 )
             } else {
                 ReorderableItemList(
