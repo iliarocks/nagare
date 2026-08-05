@@ -2,6 +2,11 @@ import SwiftData
 import SwiftUI
 
 struct CreateView: View {
+    private enum Field: Hashable {
+        case title
+        case notes
+    }
+
     private enum ItemType: String, CaseIterable, Identifiable {
         case todo
         case event
@@ -17,7 +22,6 @@ struct CreateView: View {
 
     }
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     @Query private var projects: [Project]
@@ -36,8 +40,12 @@ struct CreateView: View {
         ) ?? .now
     @State private var recurrence = RecurrenceFormState.disabled
     @State private var selectedProject: Project?
+    @State private var isShowingDetails = false
+    @State private var detailsDetent = PresentationDetent.medium
+    @State private var persistedItem: Item?
+    @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
-    @FocusState private var isTitleFocused: Bool
+    @FocusState private var focusedField: Field?
 
     init(project: Project? = nil) {
         _selectedProject = State(initialValue: project)
@@ -80,95 +88,21 @@ struct CreateView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Picker("Type", selection: $itemType) {
-                    ForEach(ItemType.allCases) { type in
-                        Text(type.title)
-                            .tag(type)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Section {
-                    TextField(
-                        itemType == .todo ? "What needs doing?" : "What's happening?",
-                        text: $title
+        composer
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .sheet(isPresented: $isShowingDetails) {
+                details
+                    .presentationDetents(
+                        [.medium, .large],
+                        selection: $detailsDetent
                     )
-                    .accessibilityIdentifier("Create Title")
-                    .focused($isTitleFocused)
-                    .submitLabel(.done)
-                    .onSubmit {
-                        isTitleFocused = false
-                    }
-
-                    TextField("Notes", text: $notes, axis: .vertical)
-                        .lineLimit(3...6)
-                        .accessibilityIdentifier("Create Notes")
-                }
-
-                Section {
-                    if itemType == .event {
-                        ScheduleFields(
-                            date: $scheduledDate,
-                            startTime: $startTime,
-                            includesEndTime: $includesEndTime,
-                            endTime: $endTime
-                        )
-                    } else {
-                        DatePicker(
-                            "Date",
-                            selection: $scheduledDate,
-                            in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
-                            displayedComponents: .date
-                        )
-                    }
-                } footer: {
-                    if itemType == .event && !isScheduleValid {
-                        Text("The end time must be later than the start time.")
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                Section {
-                    ProjectPicker(
-                        projects: projects,
-                        selectedProject: selectedProject,
-                        onSelect: { selectedProject = $0 }
-                    )
-                }
-
-                RecurrenceFields(
-                    state: $recurrence,
-                    itemType: recurrenceItemType,
-                    referenceDate: itemType == .todo
-                        ? scheduledDate
-                        : eventScheduledDate
-                )
+                    .presentationDragIndicator(.visible)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("New")
-                        .font(.headline)
-                }
-
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        Label("Add \(itemType.title)", systemImage: "checkmark")
-                            .labelStyle(.iconOnly)
-                    }
-                    .tint(.accentColor)
-                    .disabled(!isFormValid)
-                }
-            }
-            .alert("\(itemType.title) Couldn't Be Created", isPresented: isShowingError) {
+            .alert(
+                "\(itemType.title) Couldn't Be Saved",
+                isPresented: isShowingError
+            ) {
                 Button("OK", role: .cancel) {
                     errorMessage = nil
                 }
@@ -176,7 +110,13 @@ struct CreateView: View {
                 Text(errorMessage ?? "An unknown error occurred.")
             }
             .task {
-                isTitleFocused = true
+                focusedField = .title
+            }
+            .onChange(of: title) {
+                scheduleSave()
+            }
+            .onChange(of: notes) {
+                scheduleSave()
             }
             .onChange(of: itemType) {
                 let referenceDate = itemType == .todo
@@ -187,20 +127,228 @@ struct CreateView: View {
                     referenceDate: referenceDate
                 )
                 recurrence.rebaseReference(to: referenceDate)
+                scheduleSave()
             }
             .onChange(of: scheduledDate) {
-                guard itemType == .todo else {
-                    return
+                if itemType == .todo {
+                    recurrence.rebaseReference(to: scheduledDate)
                 }
-                recurrence.rebaseReference(to: scheduledDate)
+                scheduleSave()
             }
             .onChange(of: eventScheduledDate) {
-                guard itemType == .event else {
+                if itemType == .event {
+                    recurrence.rebaseReference(to: eventScheduledDate)
+                }
+                scheduleSave()
+            }
+            .onChange(of: includesEndTime) {
+                scheduleSave()
+            }
+            .onChange(of: endTime) {
+                scheduleSave()
+            }
+            .onChange(of: selectedProject?.id) {
+                scheduleSave()
+            }
+            .onChange(of: recurrence) {
+                scheduleSave()
+            }
+            .onChange(of: preferredDetailsDetent) { _, newDetent in
+                guard isShowingDetails,
+                      detailsDetent != newDetent else {
                     return
                 }
-                recurrence.rebaseReference(to: eventScheduledDate)
+                withAnimation {
+                    detailsDetent = newDetent
+                }
             }
+            .onDisappear {
+                pendingSave?.cancel()
+                saveDraft()
+            }
+    }
+
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField(
+                itemType == .todo
+                    ? "What needs doing?"
+                    : "What's happening?",
+                text: $title
+            )
+            .font(.title.weight(.semibold))
+            .focused($focusedField, equals: .title)
+            .submitLabel(.done)
+            .onSubmit {
+                focusedField = nil
+                pendingSave?.cancel()
+                saveDraft()
+            }
+            .accessibilityIdentifier("Create Title")
+
+            ZStack(alignment: .topLeading) {
+                if notes.isEmpty {
+                    Text("Notes")
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 8)
+                }
+
+                TextEditor(text: $notes)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, -5)
+                    .focused($focusedField, equals: .notes)
+                    .accessibilityIdentifier("Create Notes")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            Button {
+                focusedField = nil
+                detailsDetent = preferredDetailsDetent
+                isShowingDetails = true
+            } label: {
+                HStack(spacing: 12) {
+                    Label("Details", systemImage: "slider.horizontal.3")
+                        .labelStyle(.iconOnly)
+
+                    Spacer(minLength: 8)
+
+                    Text(detailsSummary)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Create Details")
+            .padding(.vertical, 8)
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 32)
+        .padding(.bottom, 16)
+    }
+
+    private var details: some View {
+        Form {
+            Section {
+                Picker("Type", selection: $itemType) {
+                    ForEach(ItemType.allCases) { type in
+                        Text(type.title)
+                            .tag(type)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("Create Item Type")
+            }
+
+            Section {
+                if itemType == .event {
+                    ScheduleFields(
+                        date: $scheduledDate,
+                        startTime: $startTime,
+                        includesEndTime: $includesEndTime,
+                        endTime: $endTime
+                    )
+                } else {
+                    DatePicker(
+                        "Date",
+                        selection: $scheduledDate,
+                        in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
+                        displayedComponents: .date
+                    )
+                }
+            } footer: {
+                if itemType == .event && !isScheduleValid {
+                    Text("The end time must be later than the start time.")
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Section {
+                ProjectPicker(
+                    projects: projects,
+                    selectedProject: selectedProject,
+                    onSelect: { selectedProject = $0 }
+                )
+            }
+
+            RecurrenceFields(
+                state: $recurrence,
+                itemType: recurrenceItemType,
+                referenceDate: itemType == .todo
+                    ? scheduledDate
+                    : eventScheduledDate
+            )
+        }
+    }
+
+    private var preferredDetailsDetent: PresentationDetent {
+        guard recurrence.isEnabled,
+              recurrence.mode == .absolute else {
+            return .medium
+        }
+
+        switch recurrence.unit {
+        case .week, .month:
+            return .large
+        case .day, .year:
+            return .medium
+        }
+    }
+
+    private var detailsSummary: String {
+        [scheduleSummary, projectSummary, recurrenceSummary]
+            .joined(separator: " · ")
+    }
+
+    private var scheduleSummary: String {
+        let calendar = Calendar.autoupdatingCurrent
+        let date: Date
+        let includesTime: Bool
+        switch itemType {
+        case .todo:
+            date = scheduledDate
+            includesTime = false
+        case .event:
+            date = eventScheduledDate
+            includesTime = true
+        }
+
+        let day: String
+        if calendar.isDateInToday(date) {
+            day = "Today"
+        } else if calendar.isDateInTomorrow(date) {
+            day = "Tomorrow"
+        } else {
+            day = date.formatted(date: .abbreviated, time: .omitted)
+        }
+
+        guard includesTime else {
+            return day
+        }
+        return "\(day) at \(date.formatted(date: .omitted, time: .shortened))"
+    }
+
+    private var projectSummary: String {
+        selectedProject?.title ?? "No Project"
+    }
+
+    private var recurrenceSummary: String {
+        guard recurrence.isEnabled else {
+            return "No Repeat"
+        }
+
+        let cadence = recurrence.interval == 1
+            ? "Every \(recurrence.unit.singularTitle)"
+            : "Every \(recurrence.interval) \(recurrence.unit.pluralTitle)"
+        return recurrence.mode == .relative
+            ? "\(cadence) after completion"
+            : cadence
     }
 
     private var isShowingError: Binding<Bool> {
@@ -214,10 +362,23 @@ struct CreateView: View {
         )
     }
 
-    private func save() {
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        pendingSave = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+            } catch {
+                return
+            }
+
+            saveDraft()
+        }
+    }
+
+    @discardableResult
+    private func saveDraft() -> Bool {
         guard isFormValid else {
-            errorMessage = "Complete the title, schedule, and repeat settings before saving. (CREATE-001)"
-            return
+            return false
         }
 
         do {
@@ -226,61 +387,258 @@ struct CreateView: View {
                 : eventScheduledDate
             let rule = try recurrence.rule(referenceDate: referenceDate)
 
-            switch itemType {
-            case .todo:
-                let order = try ItemOrdering.nextOrder(in: modelContext)
-                let todo = Todo(
-                    title: trimmedTitle,
-                    notes: savedNotes,
-                    scheduledDate: scheduledDate,
-                    order: order
-                )
-                modelContext.insert(todo)
-                try ProjectMembership.prepare(
-                    .todo(todo),
-                    for: selectedProject,
-                    in: modelContext
-                )
-                if let rule {
-                    _ = try RecurrencePersistence.createTemplate(
-                        for: todo,
-                        rule: rule,
-                        in: modelContext
-                    )
+            if let persistedItem {
+                if persistedType(of: persistedItem) == itemType {
+                    try update(persistedItem, rule: rule)
                 } else {
-                    try modelContext.save()
-                }
-            case .event:
-                let order = try ItemOrdering.nextOrder(in: modelContext)
-                let event = Event(
-                    title: trimmedTitle,
-                    notes: savedNotes,
-                    scheduledDate: eventScheduledDate,
-                    endDate: eventEndDate,
-                    order: order
-                )
-                modelContext.insert(event)
-                try ProjectMembership.prepare(
-                    .event(event),
-                    for: selectedProject,
-                    in: modelContext
-                )
-                if let rule {
-                    _ = try RecurrencePersistence.createTemplate(
-                        for: event,
-                        rule: rule,
-                        in: modelContext
+                    self.persistedItem = try replace(
+                        persistedItem,
+                        rule: rule
                     )
-                } else {
-                    try modelContext.save()
                 }
+            } else {
+                persistedItem = try createPersistedItem(rule: rule)
             }
-
-            dismiss()
+            return true
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription
+            return false
         }
+    }
+
+    private func createPersistedItem(
+        rule: RecurrenceRule?
+    ) throws -> Item {
+        let order = try ItemOrdering.nextOrder(in: modelContext)
+
+        switch itemType {
+        case .todo:
+            let todo = Todo(
+                title: trimmedTitle,
+                notes: savedNotes,
+                scheduledDate: scheduledDate,
+                order: order
+            )
+            modelContext.insert(todo)
+            try ProjectMembership.prepare(
+                .todo(todo),
+                for: selectedProject,
+                in: modelContext
+            )
+            try persistRecurrence(for: todo, rule: rule)
+            return .todo(todo)
+
+        case .event:
+            let event = Event(
+                title: trimmedTitle,
+                notes: savedNotes,
+                scheduledDate: eventScheduledDate,
+                endDate: eventEndDate,
+                order: order
+            )
+            modelContext.insert(event)
+            try ProjectMembership.prepare(
+                .event(event),
+                for: selectedProject,
+                in: modelContext
+            )
+            try persistRecurrence(for: event, rule: rule)
+            return .event(event)
+        }
+    }
+
+    private func update(
+        _ item: Item,
+        rule: RecurrenceRule?
+    ) throws {
+        let calendar = Calendar.autoupdatingCurrent
+
+        switch item {
+        case .todo(let todo):
+            if !calendar.isDate(
+                todo.scheduledDate,
+                inSameDayAs: scheduledDate
+            ) {
+                todo.order = try ItemOrdering.nextOrder(in: modelContext)
+            }
+            todo.title = trimmedTitle
+            todo.notes = savedNotes
+            todo.scheduledDate = calendar.startOfDay(for: scheduledDate)
+            try ProjectMembership.prepare(
+                .todo(todo),
+                for: selectedProject,
+                in: modelContext
+            )
+            try persistRecurrence(for: todo, rule: rule)
+
+        case .event(let event):
+            if !calendar.isDate(
+                event.scheduledDate,
+                inSameDayAs: eventScheduledDate
+            ) {
+                event.order = try ItemOrdering.nextOrder(in: modelContext)
+            }
+            event.title = trimmedTitle
+            event.notes = savedNotes
+            event.scheduledDate = eventScheduledDate
+            event.endDate = eventEndDate
+            try ProjectMembership.prepare(
+                .event(event),
+                for: selectedProject,
+                in: modelContext
+            )
+            try persistRecurrence(for: event, rule: rule)
+        }
+    }
+
+    private func replace(
+        _ item: Item,
+        rule: RecurrenceRule?
+    ) throws -> Item {
+        let previousProject = item.project
+        let previousProjectOrder = item.projectOrder
+        let order = item.order
+        let createdAt: Date
+
+        switch item {
+        case .todo(let todo):
+            createdAt = todo.createdAt
+            if let template = todo.recurrenceTemplate {
+                modelContext.delete(template)
+            }
+            modelContext.delete(todo)
+        case .event(let event):
+            createdAt = event.createdAt
+            if let template = event.recurrenceTemplate {
+                modelContext.delete(template)
+            }
+            modelContext.delete(event)
+        }
+
+        switch itemType {
+        case .todo:
+            let todo = Todo(
+                title: trimmedTitle,
+                notes: savedNotes,
+                scheduledDate: scheduledDate,
+                createdAt: createdAt,
+                order: order,
+                projectOrder: previousProjectOrder
+            )
+            todo.project = previousProject
+            modelContext.insert(todo)
+            try ProjectMembership.prepare(
+                .todo(todo),
+                for: selectedProject,
+                in: modelContext
+            )
+            try persistRecurrence(for: todo, rule: rule)
+            return .todo(todo)
+
+        case .event:
+            let event = Event(
+                title: trimmedTitle,
+                notes: savedNotes,
+                scheduledDate: eventScheduledDate,
+                endDate: eventEndDate,
+                createdAt: createdAt,
+                order: order,
+                projectOrder: previousProjectOrder
+            )
+            event.project = previousProject
+            modelContext.insert(event)
+            try ProjectMembership.prepare(
+                .event(event),
+                for: selectedProject,
+                in: modelContext
+            )
+            try persistRecurrence(for: event, rule: rule)
+            return .event(event)
+        }
+    }
+
+    private func persistRecurrence(
+        for todo: Todo,
+        rule: RecurrenceRule?
+    ) throws {
+        if let template = todo.recurrenceTemplate {
+            template.title = trimmedTitle
+            template.notes = savedNotes
+            if let rule {
+                try RecurrencePersistence.updateTemplate(
+                    template,
+                    rule: rule,
+                    in: modelContext
+                )
+            } else {
+                try RecurrencePersistence.deleteTemplate(
+                    template,
+                    in: modelContext
+                )
+            }
+        } else if let rule {
+            _ = try RecurrencePersistence.createTemplate(
+                for: todo,
+                rule: rule,
+                in: modelContext
+            )
+        } else {
+            try modelContext.save()
+        }
+    }
+
+    private func persistRecurrence(
+        for event: Event,
+        rule: RecurrenceRule?
+    ) throws {
+        if let template = event.recurrenceTemplate {
+            template.title = trimmedTitle
+            template.notes = savedNotes
+            if let rule {
+                try RecurrencePersistence.updateTemplate(
+                    template,
+                    rule: rule,
+                    eventStartTimeSeconds: wallTimeSeconds(
+                        event.scheduledDate
+                    ),
+                    eventEndTimeSeconds: event.endDate.map(
+                        wallTimeSeconds
+                    ),
+                    in: modelContext
+                )
+            } else {
+                try RecurrencePersistence.deleteTemplate(
+                    template,
+                    in: modelContext
+                )
+            }
+        } else if let rule {
+            _ = try RecurrencePersistence.createTemplate(
+                for: event,
+                rule: rule,
+                in: modelContext
+            )
+        } else {
+            try modelContext.save()
+        }
+    }
+
+    private func persistedType(of item: Item) -> ItemType {
+        switch item {
+        case .todo: .todo
+        case .event: .event
+        }
+    }
+
+    private func wallTimeSeconds(_ date: Date) -> Int {
+        let components = Calendar.autoupdatingCurrent.dateComponents(
+            [.hour, .minute, .second],
+            from: date
+        )
+        return (components.hour ?? 0) * 3_600
+            + (components.minute ?? 0) * 60
+            + (components.second ?? 0)
     }
 
 }

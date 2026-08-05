@@ -16,20 +16,26 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         let title = app.textFields["Create Title"]
         XCTAssertTrue(title.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Todo"].exists)
-        XCTAssertTrue(app.buttons["Event"].exists)
-        XCTAssertTrue(app.buttons["Project Picker"].exists)
-        XCTAssertTrue(app.staticTexts["New"].exists)
+        XCTAssertFalse(app.buttons["Create Item Type"].exists)
+        XCTAssertFalse(app.buttons["Project Picker"].exists)
+        XCTAssertFalse(app.buttons["Add Todo"].exists)
+        XCTAssertFalse(app.buttons["Cancel"].exists)
         title.typeText("Created With Notes UI")
 
-        let notes = app.textFields["Create Notes"]
+        let notes = app.textViews["Create Notes"]
         XCTAssertTrue(notes.waitForExistence(timeout: 2))
         notes.tap()
         notes.typeText("Notes entered while creating the todo")
 
-        let addTodo = app.buttons["Add Todo"]
-        XCTAssertTrue(addTodo.waitForExistence(timeout: 2))
-        addTodo.tap()
+        let details = app.buttons["Create Details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 2))
+        details.tap()
+        XCTAssertFalse(app.navigationBars["Edit Details"].exists)
+        XCTAssertTrue(app.buttons["Create Item Type"].exists)
+        XCTAssertTrue(app.buttons["Project Picker"].exists)
+
+        dismissSheet(in: app)
+        dismissSheet(in: app)
 
         let createdTodo = app.buttons["Created With Notes UI"]
         XCTAssertTrue(createdTodo.waitForExistence(timeout: 5))
@@ -40,6 +46,54 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertEqual(
             savedNotes.value as? String,
             "Notes entered while creating the todo"
+        )
+    }
+
+    @MainActor
+    func testCreateComposerSwitchesToEventAndOpensDetails() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let newItem = app.buttons["New Item"]
+        XCTAssertTrue(newItem.waitForExistence(timeout: 5))
+        newItem.tap()
+
+        XCTAssertFalse(app.buttons["Create Item Type"].exists)
+        let title = app.textFields["Create Title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 2))
+        title.typeText("Draft Event UI")
+
+        let details = app.buttons["Create Details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 2))
+        details.tap()
+
+        let typeMenu = app.buttons["Create Item Type"]
+        XCTAssertTrue(typeMenu.waitForExistence(timeout: 2))
+        typeMenu.tap()
+
+        let event = app.buttons["Event"]
+        XCTAssertTrue(event.waitForExistence(timeout: 2))
+        event.tap()
+
+        XCTAssertFalse(app.navigationBars["Edit Details"].exists)
+        XCTAssertFalse(app.buttons["Add Event"].exists)
+        XCTAssertFalse(app.buttons["Cancel"].exists)
+        XCTAssertTrue(app.buttons["Project Picker"].exists)
+        XCTAssertTrue(app.staticTexts["Time"].exists)
+
+        dismissSheet(in: app)
+        dismissSheet(in: app)
+
+        let createdEvent = app.buttons["Draft Event UI"]
+        XCTAssertTrue(createdEvent.waitForExistence(timeout: 5))
+        createdEvent.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Event Time"]
+                .waitForExistence(timeout: 2)
         )
     }
 
@@ -676,7 +730,13 @@ final class ReorderPersistenceUITests: XCTestCase {
             withNormalizedOffset: CGVector(dx: 0.25, dy: 0.1)
         ).tap()
         notes.typeText("Notes saved with a new background project")
-        app.buttons["Create Project"].tap()
+        title.tap()
+        let done = app.keyboards.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 2))
+        done.tap()
+        XCTAssertFalse(app.buttons["Create Project"].exists)
+        XCTAssertFalse(app.buttons["Cancel"].exists)
+        dismissSheet(in: app)
 
         let priority = project(named: "Priority Project UI", in: app)
         let background = project(named: "Background Project UI", in: app)
@@ -699,7 +759,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testProjectTitleSubmitDismissesKeyboardWithoutCreating() throws {
+    func testProjectTitleSubmitDismissesKeyboardWhileAutosaving() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -725,9 +785,10 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         XCTAssertTrue(title.exists)
-        XCTAssertTrue(app.buttons["Create Project"].exists)
+        XCTAssertFalse(app.buttons["Create Project"].exists)
+        XCTAssertFalse(app.buttons["Cancel"].exists)
 
-        app.buttons["Create Project"].tap()
+        dismissSheet(in: app)
 
         XCTAssertTrue(
             project(named: "Created After Done UI", in: app)
@@ -911,6 +972,14 @@ final class ReorderPersistenceUITests: XCTestCase {
         in app: XCUIApplication
     ) -> XCUIElement {
         app.descendants(matching: .any)["Project \(title)"]
+    }
+
+    @MainActor
+    private func dismissSheet(in app: XCUIApplication) {
+        let grabber = app.buttons["Sheet Grabber"]
+        XCTAssertTrue(grabber.waitForExistence(timeout: 2))
+        grabber.swipeDown()
+        XCTAssertFalse(grabber.waitForExistence(timeout: 2))
     }
 
     private func dragRow(

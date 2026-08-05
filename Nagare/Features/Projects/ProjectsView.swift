@@ -85,7 +85,7 @@ struct ProjectsView: View {
         }
         .sheet(isPresented: $isCreatingProject) {
             ProjectCreateView()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: persistedProjectProjection, initial: true) {

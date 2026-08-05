@@ -63,8 +63,8 @@ struct NotesView<Item: Note>: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding()
-        .padding([.top, .horizontal], 8)
+        .padding(24)
+        .padding(.top, 8)
         .onChange(of: title) {
             scheduleSave()
         }

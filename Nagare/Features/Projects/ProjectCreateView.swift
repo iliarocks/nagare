@@ -7,11 +7,12 @@ struct ProjectCreateView: View {
         case notes
     }
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     @State private var title = ""
     @State private var notes = ""
+    @State private var persistedProject: Project?
+    @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
@@ -28,6 +29,8 @@ struct ProjectCreateView: View {
                     .submitLabel(.done)
                     .onSubmit {
                         focusedField = nil
+                        pendingSave?.cancel()
+                        saveProject()
                     }
                     .accessibilityIdentifier("Create Project Title")
 
@@ -46,28 +49,23 @@ struct ProjectCreateView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding()
-            .padding([.top, .horizontal], 8)
+            .padding(24)
+            .padding(.top, 8)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: create) {
-                        Label("Create Project", systemImage: "checkmark")
-                            .labelStyle(.iconOnly)
-                    }
-                    .disabled(trimmedTitle.isEmpty)
-                }
-            }
             .task {
                 focusedField = .title
             }
-            .alert("Project Couldn't Be Created", isPresented: isShowingError) {
+            .onChange(of: title) {
+                scheduleSave()
+            }
+            .onChange(of: notes) {
+                scheduleSave()
+            }
+            .onDisappear {
+                pendingSave?.cancel()
+                saveProject()
+            }
+            .alert("Project Couldn't Be Saved", isPresented: isShowingError) {
                 Button("OK", role: .cancel) {
                     errorMessage = nil
                 }
@@ -84,29 +82,54 @@ struct ProjectCreateView: View {
         )
     }
 
-    private func create() {
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        pendingSave = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+            } catch {
+                return
+            }
+
+            saveProject()
+        }
+    }
+
+    private func saveProject() {
         guard !trimmedTitle.isEmpty else {
             return
         }
 
         do {
-            let order = try ProjectOrdering.nextOrder(
-                isPriority: false,
-                in: modelContext
-            )
             let savedNotes = notes.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ).isEmpty ? nil : notes
-            modelContext.insert(
-                Project(
+            let projectToPersist: Project
+
+            if let persistedProject {
+                guard persistedProject.title != trimmedTitle
+                    || persistedProject.notes != savedNotes else {
+                    return
+                }
+                persistedProject.title = trimmedTitle
+                persistedProject.notes = savedNotes
+                projectToPersist = persistedProject
+            } else {
+                let order = try ProjectOrdering.nextOrder(
+                    isPriority: false,
+                    in: modelContext
+                )
+                let project = Project(
                     title: trimmedTitle,
                     notes: savedNotes,
                     isPriority: false,
                     order: order
                 )
-            )
+                modelContext.insert(project)
+                projectToPersist = project
+            }
             try modelContext.save()
-            dismiss()
+            persistedProject = projectToPersist
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription
