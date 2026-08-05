@@ -22,6 +22,7 @@ final class RecurrenceTemplate: Note {
     var currentItemID: UUID
     var currentSequence: Int
     var createdAt: Date
+    var project: Project?
 
     @Relationship(deleteRule: .nullify, inverse: \Todo.recurrenceTemplate)
     var todoOccurrences: [Todo]
@@ -55,6 +56,7 @@ final class RecurrenceTemplate: Note {
         self.currentItemID = currentItemID
         self.currentSequence = currentSequence
         self.createdAt = createdAt
+        self.project = nil
         self.todoOccurrences = []
         self.eventOccurrences = []
     }

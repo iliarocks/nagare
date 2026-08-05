@@ -4,6 +4,8 @@ import SwiftUI
 struct NotesView<Item: Note>: View {
     @Environment(\.modelContext) private var modelContext
 
+    @Query private var projects: [Project]
+
     let item: Item
 
     @State private var title: String
@@ -33,6 +35,18 @@ struct NotesView<Item: Note>: View {
                     )
                     .accessibilityIdentifier("Event Time")
                 }
+            }
+
+            if let template = item as? RecurrenceTemplate {
+                LabeledContent("Project") {
+                    ProjectPicker(
+                        projects: projects,
+                        selectedProject: template.project,
+                        onSelect: { assignProject($0, to: template) }
+                    )
+                    .labelsHidden()
+                }
+                .font(.subheadline)
             }
 
             ZStack(alignment: .topLeading) {
@@ -79,6 +93,21 @@ struct NotesView<Item: Note>: View {
                 }
             }
         )
+    }
+
+    private func assignProject(
+        _ project: Project?,
+        to template: RecurrenceTemplate
+    ) {
+        do {
+            try ProjectMembership.assign(
+                template,
+                to: project,
+                in: modelContext
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func scheduleSave() {

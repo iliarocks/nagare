@@ -17,7 +17,7 @@ struct TodoRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityAction(named: "Change Date", onChangeDate)
+            .accessibilityAction(named: "Edit Details", onChangeDate)
             .accessibilityAction(named: "Delete", onDelete)
 
             Button(action: complete) {

@@ -26,6 +26,7 @@ enum RecurrencePersistence {
                 currentItemID: todo.id
             )
             context.insert(template)
+            template.project = todo.project
             todo.recurrenceSequence = 0
             todo.recurrenceTemplate = template
             return template
@@ -59,6 +60,7 @@ enum RecurrencePersistence {
                 currentItemID: event.id
             )
             context.insert(template)
+            template.project = event.project
             event.recurrenceSequence = 0
             event.recurrenceTemplate = template
             return template
@@ -163,10 +165,14 @@ enum RecurrencePersistence {
             }
 
             let order = try ItemOrdering.nextOrder(in: context)
+            let projectOrder = try todo.project.map {
+                try ProjectItemOrdering.nextOrder(in: $0, context: context)
+            }
             todo.recurrenceTemplate = nil
             todo.recurrenceSequence = nil
             todo.scheduledDate = calendar.startOfDay(for: date)
             todo.order = order
+            todo.projectOrder = projectOrder
             todo.completedAt = nil
         }
     }
@@ -364,8 +370,10 @@ enum RecurrencePersistence {
             scheduledDate: nextDate,
             createdAt: createdAt,
             order: current.order,
+            projectOrder: current.projectOrder,
             calendar: calendar
         )
+        next.project = template.project
         next.recurrenceSequence = nextSequence
         return next
     }
@@ -406,8 +414,10 @@ enum RecurrencePersistence {
             scheduledDate: nextStart,
             endDate: nextEnd,
             createdAt: createdAt,
-            order: current.order
+            order: current.order,
+            projectOrder: current.projectOrder
         )
+        next.project = template.project
         next.recurrenceSequence = nextSequence
         return next
     }

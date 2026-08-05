@@ -350,7 +350,8 @@ struct NagareIntentSemanticsTests {
 
     private func makeStore() throws -> NagareIntentStore {
         let container = try ModelContainer(
-            for: Todo.self,
+            for: Project.self,
+            Todo.self,
             Event.self,
             RecurrenceTemplate.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)

@@ -5,14 +5,18 @@ struct TodoDateEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @Query private var projects: [Project]
+
     let todo: Todo
 
     @State private var scheduledDate: Date
+    @State private var selectedProject: Project?
     @State private var errorMessage: String?
 
     init(todo: Todo) {
         self.todo = todo
         _scheduledDate = State(initialValue: todo.scheduledDate)
+        _selectedProject = State(initialValue: todo.project)
     }
 
     var body: some View {
@@ -25,8 +29,16 @@ struct TodoDateEditor: View {
                     displayedComponents: .date
                 )
             }
+
+            Section {
+                ProjectPicker(
+                    projects: projects,
+                    selectedProject: selectedProject,
+                    onSelect: { selectedProject = $0 }
+                )
+            }
         }
-        .navigationTitle("Change Date")
+        .navigationTitle("Edit Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -37,13 +49,13 @@ struct TodoDateEditor: View {
 
             ToolbarItem(placement: .confirmationAction) {
                 Button(action: save) {
-                    Label("Save Date", systemImage: "checkmark")
+                    Label("Save Details", systemImage: "checkmark")
                         .labelStyle(.iconOnly)
                 }
                 .tint(.accentColor)
             }
         }
-        .alert("Date Couldn't Be Changed", isPresented: isShowingError) {
+        .alert("Details Couldn't Be Changed", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
             }
@@ -72,6 +84,11 @@ struct TodoDateEditor: View {
                 todo.order = try ItemOrdering.nextOrder(in: modelContext)
             }
             todo.scheduledDate = newDate
+            try ProjectMembership.prepare(
+                .todo(todo),
+                for: selectedProject,
+                in: modelContext
+            )
             try modelContext.save()
             dismiss()
         } catch {

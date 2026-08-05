@@ -362,13 +362,15 @@ struct RecurrenceUIModelTests {
 
     private func makeContext() throws -> ModelContext {
         let configuration = ModelConfiguration(
-            for: Todo.self,
+            for: Project.self,
+            Todo.self,
             Event.self,
             RecurrenceTemplate.self,
             isStoredInMemoryOnly: true
         )
         let container = try ModelContainer(
-            for: Todo.self,
+            for: Project.self,
+            Todo.self,
             Event.self,
             RecurrenceTemplate.self,
             configurations: configuration

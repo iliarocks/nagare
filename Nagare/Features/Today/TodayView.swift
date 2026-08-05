@@ -67,8 +67,7 @@ struct TodayView: View {
             if todayItems.isEmpty {
                 ContentUnavailableView(
                     "Nothing for today",
-                    systemImage: "checkmark.circle",
-                    description: Text("Add an item when something comes to mind")
+                    systemImage: "checkmark.circle"
                 )
             } else {
                 ReorderableItemList(
