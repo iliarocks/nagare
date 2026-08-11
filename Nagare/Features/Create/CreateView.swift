@@ -23,6 +23,7 @@ struct CreateView: View {
     }
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     @Query private var projects: [Project]
 
@@ -41,7 +42,7 @@ struct CreateView: View {
     @State private var recurrence = RecurrenceFormState.disabled
     @State private var selectedProject: Project?
     @State private var isShowingDetails = false
-    @State private var detailsDetent = PresentationDetent.medium
+    @State private var fieldToRestoreAfterDetails = Field.title
     @State private var persistedItem: Item?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
@@ -83,20 +84,20 @@ struct CreateView: View {
         itemType == .todo ? .todo : .event
     }
 
-    private var isFormValid: Bool {
-        !trimmedTitle.isEmpty && isScheduleValid && recurrence.isValid
+    private var isDraftStructurallyValid: Bool {
+        isScheduleValid && recurrence.isValid
     }
 
     var body: some View {
         composer
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
-            .sheet(isPresented: $isShowingDetails) {
+            .sheet(
+                isPresented: $isShowingDetails,
+                onDismiss: restoreFocusAfterDetails
+            ) {
                 details
-                    .presentationDetents(
-                        [.medium, .large],
-                        selection: $detailsDetent
-                    )
+                    .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
             .alert(
@@ -153,15 +154,6 @@ struct CreateView: View {
             .onChange(of: recurrence) {
                 scheduleSave()
             }
-            .onChange(of: preferredDetailsDetent) { _, newDetent in
-                guard isShowingDetails,
-                      detailsDetent != newDetent else {
-                    return
-                }
-                withAnimation {
-                    detailsDetent = newDetent
-                }
-            }
             .onDisappear {
                 pendingSave?.cancel()
                 saveDraft()
@@ -180,9 +172,7 @@ struct CreateView: View {
             .focused($focusedField, equals: .title)
             .submitLabel(.done)
             .onSubmit {
-                focusedField = nil
-                pendingSave?.cancel()
-                saveDraft()
+                submit()
             }
             .accessibilityIdentifier("Create Title")
 
@@ -204,19 +194,15 @@ struct CreateView: View {
             Divider()
 
             Button {
+                fieldToRestoreAfterDetails = focusedField ?? .title
                 focusedField = nil
-                detailsDetent = preferredDetailsDetent
                 isShowingDetails = true
             } label: {
                 HStack(spacing: 12) {
-                    Label("Details", systemImage: "slider.horizontal.3")
-                        .labelStyle(.iconOnly)
-
-                    Spacer(minLength: 8)
-
                     Text(detailsSummary)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -284,20 +270,6 @@ struct CreateView: View {
                     ? scheduledDate
                     : eventScheduledDate
             )
-        }
-    }
-
-    private var preferredDetailsDetent: PresentationDetent {
-        guard recurrence.isEnabled,
-              recurrence.mode == .absolute else {
-            return .medium
-        }
-
-        switch recurrence.unit {
-        case .week, .month:
-            return .large
-        case .day, .year:
-            return .medium
         }
     }
 
@@ -375,9 +347,30 @@ struct CreateView: View {
         }
     }
 
+    private func submit() {
+        pendingSave?.cancel()
+        guard saveDraft(allowingEmptyTitle: true) else { return }
+        dismiss()
+    }
+
+    private func restoreFocusAfterDetails() {
+        restoreFocus(fieldToRestoreAfterDetails)
+    }
+
+    private func restoreFocus(_ field: Field) {
+        Task { @MainActor in
+            await Task.yield()
+            guard !isShowingDetails else {
+                return
+            }
+            focusedField = field
+        }
+    }
+
     @discardableResult
-    private func saveDraft() -> Bool {
-        guard isFormValid else {
+    private func saveDraft(allowingEmptyTitle: Bool = false) -> Bool {
+        guard isDraftStructurallyValid,
+              allowingEmptyTitle || !trimmedTitle.isEmpty else {
             return false
         }
 
@@ -584,7 +577,7 @@ struct CreateView: View {
                 in: modelContext
             )
         } else {
-            try modelContext.save()
+            try SwiftDataTransaction.save(modelContext)
         }
     }
 
@@ -620,7 +613,7 @@ struct CreateView: View {
                 in: modelContext
             )
         } else {
-            try modelContext.save()
+            try SwiftDataTransaction.save(modelContext)
         }
     }
 

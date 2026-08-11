@@ -5,6 +5,7 @@ struct TodoRow: View {
     let onOpen: () -> Void
     let onComplete: () -> Void
     let onChangeDate: () -> Void
+    let onMoveProject: () -> Void
     let onDelete: () -> Void
     @State private var isCompleting = false
 
@@ -17,7 +18,8 @@ struct TodoRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityAction(named: "Edit Details", onChangeDate)
+            .accessibilityAction(named: "Change Date", onChangeDate)
+            .accessibilityAction(named: "Move Project", onMoveProject)
             .accessibilityAction(named: "Delete", onDelete)
 
             Button(action: complete) {

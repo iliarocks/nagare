@@ -13,6 +13,7 @@ struct ScheduleFields: View {
             in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
             displayedComponents: .date
         )
+        .accessibilityIdentifier("Schedule Date Picker")
 
         LabeledContent("Time") {
             HStack(spacing: 8) {

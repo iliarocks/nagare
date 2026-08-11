@@ -34,6 +34,18 @@ struct NagareApp: App {
                 in: modelContainer.mainContext,
                 arguments: arguments
             )
+#if DEBUG
+            do {
+                try DevelopmentSampleData.seedIfNeeded(
+                    in: modelContainer.mainContext,
+                    arguments: arguments
+                )
+            } catch {
+                Self.logger.error(
+                    "Unable to add development sample data: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+#endif
             let intentStore = NagareIntentStore(modelContainer: modelContainer)
             AppDependencyManager.shared.add(dependency: intentStore)
             startupState = .ready(intentStore)
@@ -136,6 +148,11 @@ struct NagareApp: App {
             byAdding: .day,
             value: 1,
             to: today
+        ),
+        let dayAfterTomorrow = Calendar.autoupdatingCurrent.date(
+            byAdding: .day,
+            value: 2,
+            to: today
         ) else {
             return
         }
@@ -165,6 +182,13 @@ struct NagareApp: App {
         context.insert(Todo(title: "Upcoming First", scheduledDate: tomorrow, order: "9"))
         context.insert(Todo(title: "Upcoming Second", scheduledDate: tomorrow, order: "i"))
         context.insert(Todo(title: "Upcoming Third", scheduledDate: tomorrow, order: "r"))
+        context.insert(
+            Todo(
+                title: "Upcoming Next Day",
+                scheduledDate: dayAfterTomorrow,
+                order: "i"
+            )
+        )
         context.insert(
             Todo(
                 title: "Completed Todo UI",
@@ -201,7 +225,8 @@ struct NagareApp: App {
         let dailyRule = try RecurrenceRule.absolute(
             every: 1,
             unit: .day,
-            reference: today
+            reference: today,
+            calendar: .autoupdatingCurrent
         )
         let recurringTemplate = try RecurrencePersistence.createTemplate(
             for: recurringTodo,
@@ -209,7 +234,7 @@ struct NagareApp: App {
             in: context
         )
         recurringTemplate.title = "Recurring Future UI"
-        try context.save()
+        try SwiftDataTransaction.save(context)
 #endif
     }
 

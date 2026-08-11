@@ -5,7 +5,11 @@ struct ItemRow: View {
     let onOpen: (Item) -> Void
     let onComplete: (Todo) -> Void
     let onChangeSchedule: (Item) -> Void
+    let onMoveProject: (Item) -> Void
     let onDelete: (Item) -> Void
+
+    @State private var sharedCalendarFile: SharedCalendarFile?
+    @State private var sharingErrorMessage: String?
 
     var body: some View {
         ZStack {
@@ -16,6 +20,7 @@ struct ItemRow: View {
                     onOpen: { onOpen(item) },
                     onComplete: { onComplete(todo) },
                     onChangeDate: { onChangeSchedule(item) },
+                    onMoveProject: { onMoveProject(item) },
                     onDelete: { onDelete(item) }
                 )
             case .event(let event):
@@ -23,6 +28,7 @@ struct ItemRow: View {
                     event: event,
                     onOpen: { onOpen(item) },
                     onChangeSchedule: { onChangeSchedule(item) },
+                    onMoveProject: { onMoveProject(item) },
                     onDelete: { onDelete(item) }
                 )
             }
@@ -35,18 +41,77 @@ struct ItemRow: View {
             }
             .accessibilityLabel("Delete")
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
                 onChangeSchedule(item)
             } label: {
-                Image(systemName: "slider.horizontal.3")
+                Image(systemName: scheduleActionIcon)
             }
             .tint(.blue)
             .accessibilityLabel(scheduleActionTitle)
+
+            Button {
+                onMoveProject(item)
+            } label: {
+                Image(systemName: "folder")
+            }
+            .tint(.indigo)
+            .accessibilityLabel("Move Project")
+
+            if case .event(let event) = item {
+                Button {
+                    share(event)
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .tint(.green)
+                .accessibilityLabel("Share Event")
+            }
+        }
+        .sheet(item: $sharedCalendarFile) { file in
+            CalendarActivityView(file: file)
+                .ignoresSafeArea()
+        }
+        .alert(
+            "Event Couldn't Be Shared",
+            isPresented: isShowingSharingError
+        ) {
+            Button("OK", role: .cancel) {
+                sharingErrorMessage = nil
+            }
+        } message: {
+            Text(sharingErrorMessage ?? "An unknown error occurred.")
         }
     }
 
     private var scheduleActionTitle: String {
-        "Edit Details"
+        switch item {
+        case .todo: "Change Date"
+        case .event: "Change Date and Time"
+        }
+    }
+
+    private var scheduleActionIcon: String {
+        switch item {
+        case .todo: "calendar"
+        case .event: "calendar.badge.clock"
+        }
+    }
+
+    private var isShowingSharingError: Binding<Bool> {
+        Binding(
+            get: { sharingErrorMessage != nil },
+            set: { if !$0 { sharingErrorMessage = nil } }
+        )
+    }
+
+    private func share(_ event: Event) {
+        do {
+            sharedCalendarFile = try ICalendarExportStore.write(
+                ICalendarExportFile(event: event)
+            )
+        } catch {
+            sharingErrorMessage = error.localizedDescription
+        }
     }
 }

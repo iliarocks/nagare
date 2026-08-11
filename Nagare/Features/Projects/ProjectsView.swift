@@ -125,9 +125,7 @@ struct ProjectsView: View {
     }
 
     private func projectRow(_ project: Project) -> some View {
-        NavigationLink {
-            ProjectDetailView(project: project)
-        } label: {
+        NavigationLink(value: project.id) {
             Text(project.title)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 4)

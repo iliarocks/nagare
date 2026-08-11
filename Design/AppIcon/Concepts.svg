@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3328" height="1320" viewBox="0 0 3328 1320">
+  <rect width="3328" height="1320" fill="#F2F2F7"/>
+
+  <g transform="translate(80 80)">
+    <rect width="960" height="960" rx="216" fill="#17233B"/>
+    <rect x="205" y="250" width="450" height="112" rx="56" fill="#F8FAFF"/>
+    <rect x="255" y="424" width="500" height="112" rx="56" fill="#BBD4FF"/>
+    <rect x="305" y="598" width="450" height="112" rx="56" fill="#70A7FF"/>
+    <text x="480" y="1085" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="54" text-anchor="middle" fill="#1C1C1E">Offset Flow</text>
+  </g>
+
+  <g transform="translate(1184 80)">
+    <rect width="960" height="960" rx="216" fill="#123130"/>
+    <path d="M205 316 C360 212 585 228 760 344" fill="none" stroke="#F5FFFD" stroke-width="106" stroke-linecap="round"/>
+    <path d="M200 496 C376 386 602 407 770 526" fill="none" stroke="#A9E7DF" stroke-width="106" stroke-linecap="round"/>
+    <path d="M224 684 C400 582 610 598 754 702" fill="none" stroke="#55BFB3" stroke-width="106" stroke-linecap="round"/>
+    <text x="480" y="1085" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="54" text-anchor="middle" fill="#1C1C1E">Quiet Current</text>
+  </g>
+
+  <g transform="translate(2288 80)">
+    <rect width="960" height="960" rx="216" fill="#34203D"/>
+    <path d="M276 248 C506 248 568 342 568 478 C568 624 634 712 772 712"
+          fill="none" stroke="#FDF8FF" stroke-width="126" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="276" cy="248" r="63" fill="#FDF8FF"/>
+    <circle cx="772" cy="712" r="63" fill="#C99ADD"/>
+    <text x="480" y="1085" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="54" text-anchor="middle" fill="#1C1C1E">Single Bend</text>
+  </g>
+
+  <g transform="translate(80 1190)">
+    <text font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="38" fill="#636366">
+      Silhouette study — effects intentionally omitted
+    </text>
+  </g>
+</svg>

@@ -8,6 +8,7 @@ struct ProjectCreateView: View {
     }
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""
     @State private var notes = ""
@@ -28,9 +29,7 @@ struct ProjectCreateView: View {
                     .focused($focusedField, equals: .title)
                     .submitLabel(.done)
                     .onSubmit {
-                        focusedField = nil
-                        pendingSave?.cancel()
-                        saveProject()
+                        submit()
                     }
                     .accessibilityIdentifier("Create Project Title")
 
@@ -95,9 +94,16 @@ struct ProjectCreateView: View {
         }
     }
 
-    private func saveProject() {
-        guard !trimmedTitle.isEmpty else {
-            return
+    private func submit() {
+        pendingSave?.cancel()
+        guard saveProject(allowingEmptyTitle: true) else { return }
+        dismiss()
+    }
+
+    @discardableResult
+    private func saveProject(allowingEmptyTitle: Bool = false) -> Bool {
+        guard allowingEmptyTitle || !trimmedTitle.isEmpty else {
+            return false
         }
 
         do {
@@ -107,13 +113,13 @@ struct ProjectCreateView: View {
             let projectToPersist: Project
 
             if let persistedProject {
-                guard persistedProject.title != trimmedTitle
-                    || persistedProject.notes != savedNotes else {
-                    return
+                if persistedProject.title != trimmedTitle
+                    || persistedProject.notes != savedNotes {
+                    persistedProject.title = trimmedTitle
+                    persistedProject.notes = savedNotes
+                    try SwiftDataTransaction.save(modelContext)
                 }
-                persistedProject.title = trimmedTitle
-                persistedProject.notes = savedNotes
-                projectToPersist = persistedProject
+                return true
             } else {
                 let order = try ProjectOrdering.nextOrder(
                     isPriority: false,
@@ -128,11 +134,13 @@ struct ProjectCreateView: View {
                 modelContext.insert(project)
                 projectToPersist = project
             }
-            try modelContext.save()
+            try SwiftDataTransaction.save(modelContext)
             persistedProject = projectToPersist
+            return true
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription
+            return false
         }
     }
 }

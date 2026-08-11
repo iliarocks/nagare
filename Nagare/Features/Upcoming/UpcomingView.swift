@@ -79,22 +79,32 @@ struct UpcomingView: View {
     }
 
     private var itemGroups: [ReorderableItemGroup] {
-        persistedItemGroups.map { group in
-            guard let displayedIDs = displayedItemIDsByDate[group.date] else {
-                return group
+        let persistedGroupsByDate = Dictionary(
+            uniqueKeysWithValues: persistedItemGroups.map { ($0.date, $0) }
+        )
+        let itemsByID = Dictionary(
+            uniqueKeysWithValues: persistedItemGroups
+                .flatMap(\.items)
+                .map { ($0.id, $0) }
+        )
+        let displayedIDSet = Set(displayedItemIDsByDate.values.joined())
+        let dates = Set(persistedGroupsByDate.keys)
+            .union(displayedItemIDsByDate.keys)
+
+        return dates.sorted().map { date in
+            let persistedGroup = persistedGroupsByDate[date]
+                ?? ReorderableItemGroup(date: date, items: [])
+            guard let displayedIDs = displayedItemIDsByDate[date] else {
+                return persistedGroup
             }
 
-            let itemsByID = Dictionary(
-                uniqueKeysWithValues: group.items.map { ($0.id, $0) }
-            )
             let projectedItems = displayedIDs.compactMap { itemsByID[$0] }
-            let projectedIDs = Set(projectedItems.map(\.id))
             return ReorderableItemGroup(
-                date: group.date,
-                items: projectedItems + group.items.filter {
-                    !projectedIDs.contains($0.id)
+                date: date,
+                items: projectedItems + persistedGroup.items.filter {
+                    !displayedIDSet.contains($0.id)
                 },
-                virtualItems: group.virtualItems
+                virtualItems: persistedGroup.virtualItems
             )
         }
     }
@@ -125,7 +135,8 @@ struct UpcomingView: View {
                     onComplete: complete,
                     onDelete: delete,
                     onDeleteTemplate: deleteTemplate,
-                    onMove: move
+                    onMove: move,
+                    onMoveAcrossDates: moveAcrossDates
                 )
             }
         }
@@ -275,6 +286,36 @@ struct UpcomingView: View {
             try ItemOrdering.saveDisplayedOrder(
                 newItemIDs,
                 on: date,
+                in: modelContext
+            )
+        } catch {
+            modelContext.rollback()
+            displayedItemIDsByDate = persistedItemIDsByDate
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func moveAcrossDates(
+        _ sourceIDs: [ItemID],
+        to destinationDate: Date,
+        before destinationID: ItemID?
+    ) {
+        do {
+            let displayedGroups = Dictionary(
+                uniqueKeysWithValues: itemGroups.map {
+                    ($0.date, $0.items.map(\.id))
+                }
+            )
+            displayedItemIDsByDate = try ReorderProjection.applying(
+                sources: sourceIDs,
+                to: destinationDate,
+                before: destinationID,
+                in: displayedGroups
+            )
+            try ItemOrdering.move(
+                sourceIDs,
+                to: destinationDate,
+                before: destinationID,
                 in: modelContext
             )
         } catch {

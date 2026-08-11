@@ -19,6 +19,7 @@ struct ProjectDetailView: View {
     @State private var todoBeingRescheduled: Todo?
     @State private var eventBeingRescheduled: Event?
     @State private var recurrenceTemplateBeingEdited: RecurrenceTemplate?
+    @State private var projectMoveTarget: ProjectMoveTarget?
     @State private var errorMessage: String?
 
     init(project: Project) {
@@ -67,25 +68,32 @@ struct ProjectDetailView: View {
             CreateView(project: project)
         }
         .sheet(item: $notesDestination, onDismiss: resetNotesSheet) {
-            NotesSheet(destination: $0, detent: $notesDetent)
+            NotesSheet(
+                destination: $0,
+                detent: $notesDetent,
+                onOpenProject: { _ in notesDestination = nil }
+            )
                 .id($0.id)
         }
         .sheet(item: $todoBeingRescheduled) { todo in
-            NavigationStack {
-                TodoDateEditor(todo: todo)
-            }
-            .presentationDetents([.fraction(0.38)])
+            TodoDateEditor(todo: todo)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
         .sheet(item: $eventBeingRescheduled) { event in
-            NavigationStack {
-                EventScheduleEditor(event: event)
-            }
-            .presentationDetents([.medium])
+            EventScheduleEditor(event: event)
+                .presentationDetents([EventScheduleEditor.sheetDetent])
+                .presentationDragIndicator(.visible)
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
-            NavigationStack {
-                RecurrenceEditor(template: template)
-            }
+            RecurrenceEditor(template: template)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $projectMoveTarget) { target in
+            ProjectMoveEditor(target: target)
+                .presentationDetents([.fraction(0.25)])
+                .presentationDragIndicator(.visible)
         }
         .onChange(of: title) {
             scheduleProjectSave()
@@ -131,6 +139,9 @@ struct ProjectDetailView: View {
                             onOpen: open,
                             onComplete: complete,
                             onChangeSchedule: presentScheduleEditor,
+                            onMoveProject: {
+                                projectMoveTarget = ProjectMoveTarget($0)
+                            },
                             onDelete: delete
                         )
                     }
@@ -146,6 +157,9 @@ struct ProjectDetailView: View {
                             onOpen: { notesDestination = .template(template) },
                             onChangeRepeat: {
                                 recurrenceTemplateBeingEdited = template
+                            },
+                            onMoveProject: {
+                                projectMoveTarget = .template(template)
                             },
                             onDelete: { deleteTemplate(template) }
                         )
@@ -217,7 +231,7 @@ struct ProjectDetailView: View {
         project.notes = savedNotes
 
         do {
-            try modelContext.save()
+            try SwiftDataTransaction.save(modelContext)
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription

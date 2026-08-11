@@ -4,6 +4,7 @@ struct EventRow: View {
     let event: Event
     let onOpen: () -> Void
     let onChangeSchedule: () -> Void
+    let onMoveProject: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -22,7 +23,8 @@ struct EventRow: View {
         }
         .buttonStyle(.plain)
         .padding(.vertical, 4)
-        .accessibilityAction(named: "Edit Details", onChangeSchedule)
+        .accessibilityAction(named: "Change Date and Time", onChangeSchedule)
+        .accessibilityAction(named: "Move Project", onMoveProject)
         .accessibilityAction(named: "Delete", onDelete)
     }
 }

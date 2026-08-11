@@ -56,7 +56,10 @@ struct TodayTopProvider: TimelineProvider {
     private func entry(at date: Date) -> TodayTopEntry {
         TodayTopEntry(
             date: date,
-            item: NagareWidgetDataStore.read().topItem(on: date)
+            item: NagareWidgetDataStore.read().topItem(
+                on: date,
+                calendar: .autoupdatingCurrent
+            )
         )
     }
 }

@@ -2,8 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct RecurrenceEditor: View {
-    private static let compactDetent = PresentationDetent.medium
-
     private struct InitialValues {
         let form: RecurrenceFormState
         let itemType: RecurrenceItemType
@@ -14,10 +12,7 @@ struct RecurrenceEditor: View {
         let errorMessage: String?
     }
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-
-    @Query private var projects: [Project]
 
     let template: RecurrenceTemplate
     private let itemType: RecurrenceItemType
@@ -28,9 +23,8 @@ struct RecurrenceEditor: View {
     @State private var startTime: Date
     @State private var includesEndTime: Bool
     @State private var endTime: Date
-    @State private var selectedProject: Project?
     @State private var errorMessage: String?
-    @State private var selectedDetent: PresentationDetent
+    @State private var pendingSave: Task<Void, Never>?
 
     init(template: RecurrenceTemplate) {
         self.template = template
@@ -42,11 +36,7 @@ struct RecurrenceEditor: View {
         _startTime = State(initialValue: values.startTime)
         _includesEndTime = State(initialValue: values.includesEndTime)
         _endTime = State(initialValue: values.endTime)
-        _selectedProject = State(initialValue: template.project)
         _errorMessage = State(initialValue: nil)
-        _selectedDetent = State(
-            initialValue: Self.preferredDetent(for: values.form)
-        )
     }
 
     var body: some View {
@@ -57,14 +47,6 @@ struct RecurrenceEditor: View {
                 referenceDate: referenceDate,
                 showsToggle: false
             )
-
-            Section {
-                ProjectPicker(
-                    projects: projects,
-                    selectedProject: selectedProject,
-                    onSelect: { selectedProject = $0 }
-                )
-            }
 
             if itemType == .event {
                 Section {
@@ -115,28 +97,7 @@ struct RecurrenceEditor: View {
                 }
             }
         }
-        .navigationTitle("Edit Repeat")
-        .navigationBarTitleDisplayMode(.inline)
-        .presentationDetents(
-            [Self.compactDetent, .large],
-            selection: $selectedDetent
-        )
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") {
-                    dismiss()
-                }
-            }
-
-            ToolbarItem(placement: .confirmationAction) {
-                Button(action: save) {
-                    Label("Save Repeat", systemImage: "checkmark")
-                        .labelStyle(.iconOnly)
-                }
-                .tint(.accentColor)
-                .disabled(!canSave)
-            }
-        }
+        .scrollIndicators(.hidden)
         .alert("Repeat Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
@@ -149,32 +110,21 @@ struct RecurrenceEditor: View {
                 errorMessage = initialErrorMessage
             }
         }
-        .onChange(of: preferredDetent) { _, newDetent in
-            guard selectedDetent != newDetent else {
-                return
-            }
-            withAnimation {
-                selectedDetent = newDetent
-            }
+        .onChange(of: form) {
+            scheduleSave()
         }
-    }
-
-    private var preferredDetent: PresentationDetent {
-        Self.preferredDetent(for: form)
-    }
-
-    private static func preferredDetent(
-        for form: RecurrenceFormState
-    ) -> PresentationDetent {
-        guard form.mode == .absolute else {
-            return compactDetent
+        .onChange(of: startTime) {
+            scheduleSave()
         }
-
-        switch form.unit {
-        case .week, .month:
-            return .large
-        case .day, .year:
-            return compactDetent
+        .onChange(of: includesEndTime) {
+            scheduleSave()
+        }
+        .onChange(of: endTime) {
+            scheduleSave()
+        }
+        .onDisappear {
+            pendingSave?.cancel()
+            save()
         }
     }
 
@@ -200,20 +150,20 @@ struct RecurrenceEditor: View {
         )
     }
 
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        pendingSave = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+            } catch {
+                return
+            }
+            save()
+        }
+    }
+
     private func save() {
-        guard initialErrorMessage == nil else {
-            errorMessage = initialErrorMessage
-                ?? "Nagare couldn't load this repeat rule. (RECURRENCE-UI-006)"
-            return
-        }
-        guard form.isValid else {
-            errorMessage = "Choose at least one valid repeat day. (RECURRENCE-UI-001)"
-            return
-        }
-        guard isEventTimeValid else {
-            errorMessage = "The future Event end time cannot be earlier than its start time. (RECURRENCE-UI-002)"
-            return
-        }
+        guard canSave else { return }
 
         do {
             guard let rule = try form.rule(referenceDate: referenceDate) else {
@@ -221,8 +171,6 @@ struct RecurrenceEditor: View {
             }
 
             try update(template, rule: rule)
-
-            dismiss()
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription
@@ -233,11 +181,6 @@ struct RecurrenceEditor: View {
         _ template: RecurrenceTemplate,
         rule: RecurrenceRule
     ) throws {
-        try ProjectMembership.prepare(
-            template,
-            for: selectedProject,
-            in: modelContext
-        )
         try RecurrencePersistence.updateTemplate(
             template,
             rule: rule,

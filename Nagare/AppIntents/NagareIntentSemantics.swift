@@ -3,7 +3,6 @@ import Foundation
 enum NagareIntentError: Error, LocalizedError, Equatable {
     case emptyTitle
     case todoCannotHaveTime
-    case eventRequiresTime
     case allDayEventUnsupported
     case eventEndBeforeStart
     case pastTodoDate
@@ -11,12 +10,7 @@ enum NagareIntentError: Error, LocalizedError, Equatable {
     case unsupportedReminderFeatures
     case unsupportedEventFeatures
     case invalidNagareContainer
-    case itemNotFound
-    case itemNotOnToday
-    case ambiguousTodayItem
     case repeatCreationUnsupported
-    case unsupportedReminderUpdate
-    case unsupportedEventSpan
 
     var errorDescription: String? {
         switch self {
@@ -24,8 +18,6 @@ enum NagareIntentError: Error, LocalizedError, Equatable {
             "Nagare needs a title before it can create the item. (SIRI-001)"
         case .todoCannotHaveTime:
             "Nagare Todos are intentionally untimed. Create an Event instead when something has a specific time. (SIRI-002)"
-        case .eventRequiresTime:
-            "Nagare Events need a specific start time. Create a Todo instead when it can happen anytime that day. (SIRI-003)"
         case .allDayEventUnsupported:
             "Nagare doesn't use all-day Events. Create an untimed Todo instead. (SIRI-004)"
         case .eventEndBeforeStart:
@@ -40,18 +32,8 @@ enum NagareIntentError: Error, LocalizedError, Equatable {
             "Nagare Events don't currently support locations or attendees. (SIRI-014)"
         case .invalidNagareContainer:
             "Nagare only has one Todo list and one Event calendar. (SIRI-015)"
-        case .itemNotFound:
-            "Nagare couldn't find that item. (SIRI-016)"
-        case .itemNotOnToday:
-            "Nagare couldn't find that item on Today. ‘What comes after’ only uses the current Today list. (SIRI-017)"
-        case .ambiguousTodayItem:
-            "More than one item on Today has that title. Rename one of them so Nagare can tell which item you mean. (SIRI-018)"
         case .repeatCreationUnsupported:
             "Nagare doesn't currently support creating repeating items through Siri. Create the repeating item in Nagare instead. (SIRI-019)"
-        case .unsupportedReminderUpdate:
-            "That Todo change isn't supported through Siri yet. Nagare currently supports completing or reinstating a Todo. (SIRI-020)"
-        case .unsupportedEventSpan:
-            "Nagare couldn't apply that deletion scope to this Event. (SIRI-021)"
         }
     }
 }
@@ -106,48 +88,12 @@ enum NagareIntentSemantics {
         return day
     }
 
-}
-
-enum NagareRecurrenceBridge {
-    static func systemRule(
-        from rule: RecurrenceRule?,
-        calendar: Calendar = .autoupdatingCurrent
-    ) -> Calendar.RecurrenceRule? {
-        guard let rule, rule.mode == .absolute else {
-            return nil
-        }
-
-        switch rule.unit {
-        case .day:
-            return .daily(calendar: calendar, interval: rule.interval)
-        case .week:
-            return .weekly(
-                calendar: calendar,
-                interval: rule.interval,
-                weekdays: rule.anchors.map {
-                    .every(weekday(for: $0))
-                }
-            )
-        case .month:
-            return .monthly(
-                calendar: calendar,
-                interval: rule.interval,
-                daysOfTheMonth: rule.anchors.map { $0 + 1 }
-            )
-        case .year:
-            return .yearly(calendar: calendar, interval: rule.interval)
-        }
-    }
-
-    private static func weekday(for anchor: Int) -> Locale.Weekday {
-        switch anchor {
-        case 0: .monday
-        case 1: .tuesday
-        case 2: .wednesday
-        case 3: .thursday
-        case 4: .friday
-        case 5: .saturday
-        default: .sunday
+    static func validateEventRange(
+        startDate: Date,
+        endDate: Date?
+    ) throws {
+        if let endDate, endDate <= startDate {
+            throw NagareIntentError.eventEndBeforeStart
         }
     }
 }

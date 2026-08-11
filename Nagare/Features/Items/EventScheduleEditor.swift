@@ -2,28 +2,23 @@ import SwiftData
 import SwiftUI
 
 struct EventScheduleEditor: View {
-    @Environment(\.dismiss) private var dismiss
+    static let sheetDetent = PresentationDetent.height(230)
+
     @Environment(\.modelContext) private var modelContext
 
-    @Query private var projects: [Project]
-
     let event: Event
-    let navigationTitle: String
 
     @State private var scheduledDate: Date
     @State private var startTime: Date
     @State private var includesEndTime: Bool
     @State private var endTime: Date
-    @State private var selectedProject: Project?
     @State private var errorMessage: String?
 
-    init(event: Event, navigationTitle: String = "Edit Details") {
+    init(event: Event) {
         self.event = event
-        self.navigationTitle = navigationTitle
         _scheduledDate = State(initialValue: event.scheduledDate)
         _startTime = State(initialValue: event.scheduledDate)
         _includesEndTime = State(initialValue: event.endDate != nil)
-        _selectedProject = State(initialValue: event.project)
         _endTime = State(
             initialValue: event.endDate
                 ?? Calendar.autoupdatingCurrent.date(
@@ -69,31 +64,18 @@ struct EventScheduleEditor: View {
                 }
             }
 
-            Section {
-                ProjectPicker(
-                    projects: projects,
-                    selectedProject: selectedProject,
-                    onSelect: { selectedProject = $0 }
-                )
-            }
         }
-        .navigationTitle(navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") {
-                    dismiss()
-                }
-            }
-
-            ToolbarItem(placement: .confirmationAction) {
-                Button(action: save) {
-                    Label("Save Details", systemImage: "checkmark")
-                        .labelStyle(.iconOnly)
-                }
-                .tint(.accentColor)
-                .disabled(!isScheduleValid)
-            }
+        .onChange(of: scheduledDate) {
+            save()
+        }
+        .onChange(of: startTime) {
+            save()
+        }
+        .onChange(of: includesEndTime) {
+            save()
+        }
+        .onChange(of: endTime) {
+            save()
         }
         .alert("Details Couldn't Be Changed", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -120,6 +102,11 @@ struct EventScheduleEditor: View {
             return
         }
 
+        guard event.scheduledDate != eventScheduledDate
+            || event.endDate != endDate else {
+            return
+        }
+
         do {
             let calendar = Calendar.autoupdatingCurrent
             if !calendar.isDate(event.scheduledDate, inSameDayAs: eventScheduledDate) {
@@ -127,13 +114,7 @@ struct EventScheduleEditor: View {
             }
             event.scheduledDate = eventScheduledDate
             event.endDate = endDate
-            try ProjectMembership.prepare(
-                .event(event),
-                for: selectedProject,
-                in: modelContext
-            )
-            try modelContext.save()
-            dismiss()
+            try SwiftDataTransaction.save(modelContext)
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription

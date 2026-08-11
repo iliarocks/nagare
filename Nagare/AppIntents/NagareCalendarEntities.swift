@@ -154,9 +154,7 @@ struct NagareEventEntity: AppEntity {
         self.startDate = snapshot.scheduledDate
         self.endDate = snapshot.endDate ?? snapshot.scheduledDate
         self.isAllDay = false
-        self.recurrence = NagareRecurrenceBridge.systemRule(
-            from: snapshot.recurrence
-        )
+        self.recurrence = nil
         self.note = snapshot.notes.map(AttributedString.init)
         self.travelTime = nil
         self.location = nil
@@ -167,22 +165,11 @@ struct NagareEventEntity: AppEntity {
         self.attendees = []
     }
 
-    struct NagareEventQuery: EntityStringQuery {
-        @Dependency var store: NagareIntentStore
-
-        @MainActor
-        func entities(matching string: String) async throws -> [NagareEventEntity] {
-            try store.eventSnapshots()
-                .filter { $0.title.localizedCaseInsensitiveContains(string) }
-                .map(NagareEventEntity.init)
-        }
-
-        @MainActor
+    struct NagareEventQuery: EntityQuery {
         func entities(
             for identifiers: [NagareEventEntity.ID]
         ) async throws -> [NagareEventEntity] {
-            try store.eventSnapshots(matching: identifiers)
-                .map(NagareEventEntity.init)
+            []
         }
     }
 }

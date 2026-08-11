@@ -53,6 +53,42 @@ struct ReorderProjectionTests {
         #expect(result == ["third", "first", "second", "fourth"])
     }
 
+    @Test func movesItemsBetweenCollectionsAtomically() throws {
+        let firstDay = ["first", "moving"]
+        let secondDay = ["destination", "last"]
+
+        let result = try ReorderProjection.applying(
+            sources: ["moving"],
+            to: "second-day",
+            before: "last",
+            in: [
+                "first-day": firstDay,
+                "second-day": secondDay
+            ]
+        )
+
+        #expect(result["first-day"] == ["first"])
+        #expect(
+            result["second-day"]
+                == ["destination", "moving", "last"]
+        )
+    }
+
+    @Test func keepsAnEmptiedSourceCollectionInTheProjection() throws {
+        let result = try ReorderProjection.applying(
+            sources: ["moving"],
+            to: "second-day",
+            before: nil,
+            in: [
+                "first-day": ["moving"],
+                "second-day": ["destination"]
+            ]
+        )
+
+        #expect(result["first-day"] == [])
+        #expect(result["second-day"] == ["destination", "moving"])
+    }
+
     @Test func rejectsUnexpectedInputInsteadOfFailingQuietly() {
         #expect(throws: ReorderProjection.ProjectionError.self) {
             try ReorderProjection.applying(

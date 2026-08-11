@@ -5,6 +5,6 @@ import WidgetKit
 struct NagareWidgets: WidgetBundle {
     var body: some Widget {
         TodayTopWidget()
-        QuickAddWidget()
+        QuickAddControl()
     }
 }

@@ -123,6 +123,70 @@ struct ItemOrderingTests {
         #expect(calendar.isDate(moving.scheduledDate, inSameDayAs: firstDay))
     }
 
+    @Test func movesEventAcrossDaysWithoutChangingItsTimeOrDuration() throws {
+        let context = try makeContext()
+        let firstDay = date(day: 1)
+        let secondDay = date(day: 2)
+        let destination = insertTodo(
+            "Destination",
+            order: "i",
+            day: firstDay,
+            into: context
+        )
+        let start = try #require(
+            calendar.date(
+                bySettingHour: 9,
+                minute: 30,
+                second: 0,
+                of: secondDay
+            )
+        )
+        let end = start.addingTimeInterval(90 * 60)
+        let moving = Event(
+            title: "Moving Event",
+            scheduledDate: start,
+            endDate: end,
+            order: "r"
+        )
+        context.insert(moving)
+        try context.save()
+
+        try ItemOrdering.move(
+            [.event(moving.id)],
+            to: firstDay,
+            before: .todo(destination.id),
+            in: context,
+            calendar: calendar
+        )
+
+        #expect(calendar.isDate(moving.scheduledDate, inSameDayAs: firstDay))
+        #expect(
+            calendar.dateComponents(
+                [.hour, .minute],
+                from: moving.scheduledDate
+            ) == DateComponents(hour: 9, minute: 30)
+        )
+        #expect(
+            moving.endDate?.timeIntervalSince(moving.scheduledDate)
+                == TimeInterval(90 * 60)
+        )
+
+        let verificationContext = ModelContext(context.container)
+        let persistedEvents = try verificationContext.fetch(
+            FetchDescriptor<Event>()
+        )
+        let persisted = try #require(
+            persistedEvents.first(where: { $0.id == moving.id })
+        )
+        #expect(
+            calendar.isDate(persisted.scheduledDate, inSameDayAs: firstDay)
+        )
+        #expect(
+            persisted.endDate?.timeIntervalSince(persisted.scheduledDate)
+                == TimeInterval(90 * 60)
+        )
+    }
+
     @Test func reportsDuplicateSourcesInsteadOfSilentlyReturning() throws {
         let context = try makeContext()
         let day = date(day: 1)

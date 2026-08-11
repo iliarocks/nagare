@@ -37,17 +37,12 @@ struct CreateNagareTodoIntent {
 
         let title = try NagareIntentSemantics.title(from: title)
         let scheduledDate = try NagareIntentSemantics.todoDate(from: dueDate)
-        let todo = try store.createTodo(
+        let snapshot = try store.createTodo(
             title: title,
             notes: NagareIntentSemantics.notes(from: note),
-            scheduledDate: scheduledDate,
-            recurrence: nil
+            scheduledDate: scheduledDate
         )
-        guard let snapshot = try store.todoSnapshots(matching: [todo.id]).first else {
-            throw NagareIntentError.itemNotFound
-        }
         let entity = NagareTodoEntity(snapshot: snapshot)
-        try? await store.refreshSearchIndex()
 
         return .result(
             value: entity,
@@ -84,23 +79,19 @@ struct CreateNagareEventIntent {
         guard recurrence == nil else {
             throw NagareIntentError.repeatCreationUnsupported
         }
-        if let endDate, endDate <= startDate {
-            throw NagareIntentError.eventEndBeforeStart
-        }
+        try NagareIntentSemantics.validateEventRange(
+            startDate: startDate,
+            endDate: endDate
+        )
 
         let title = try NagareIntentSemantics.title(from: title)
-        let event = try store.createEvent(
+        let snapshot = try store.createEvent(
             title: title,
             notes: NagareIntentSemantics.notes(from: note),
             scheduledDate: startDate,
-            endDate: endDate,
-            recurrence: nil
+            endDate: endDate
         )
-        guard let snapshot = try store.eventSnapshots(matching: [event.id]).first else {
-            throw NagareIntentError.itemNotFound
-        }
         let entity = NagareEventEntity(snapshot: snapshot)
-        try? await store.refreshSearchIndex()
 
         return .result(
             value: entity,

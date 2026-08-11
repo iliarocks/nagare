@@ -179,34 +179,21 @@ struct NagareTodoEntity: AppEntity {
             [.calendar, .timeZone, .year, .month, .day],
             from: snapshot.scheduledDate
         )
-        self.recurrence = NagareRecurrenceBridge.systemRule(
-            from: snapshot.recurrence
-        )
-        self.isCompleted = snapshot.completedAt != nil
+        self.recurrence = nil
+        self.isCompleted = false
         self.isFlagged = nil
         self.creationDate = snapshot.createdAt
-        self.completionDate = snapshot.completedAt
+        self.completionDate = nil
         self.list = .nagare
         self.section = nil
         self.locationTrigger = nil
     }
 
-    struct NagareTodoQuery: EntityStringQuery {
-        @Dependency var store: NagareIntentStore
-
-        @MainActor
-        func entities(matching string: String) async throws -> [NagareTodoEntity] {
-            try store.todoSnapshots()
-                .filter { $0.title.localizedCaseInsensitiveContains(string) }
-                .map(NagareTodoEntity.init)
-        }
-
-        @MainActor
+    struct NagareTodoQuery: EntityQuery {
         func entities(
             for identifiers: [NagareTodoEntity.ID]
         ) async throws -> [NagareTodoEntity] {
-            try store.todoSnapshots(matching: identifiers)
-                .map(NagareTodoEntity.init)
+            []
         }
     }
 }

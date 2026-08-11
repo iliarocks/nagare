@@ -4,6 +4,7 @@ struct ProjectRepeatRow: View {
     let template: RecurrenceTemplate
     let onOpen: () -> Void
     let onChangeRepeat: () -> Void
+    let onMoveProject: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -29,12 +30,21 @@ struct ProjectRepeatRow: View {
             }
             .accessibilityLabel("Stop Repeat")
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button(action: onChangeRepeat) {
                 Image(systemName: "repeat")
             }
             .tint(.blue)
             .accessibilityLabel("Change Repeat")
+
+            Button(action: onMoveProject) {
+                Image(systemName: "folder")
+            }
+            .tint(.indigo)
+            .accessibilityLabel("Move Project")
         }
+        .accessibilityAction(named: "Change Repeat", onChangeRepeat)
+        .accessibilityAction(named: "Move Project", onMoveProject)
+        .accessibilityAction(named: "Stop Repeat", onDelete)
     }
 }

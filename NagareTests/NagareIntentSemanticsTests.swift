@@ -11,26 +11,27 @@ struct NagareIntentSemanticsTests {
         return calendar
     }
 
-    @Test func todoRejectsAnyExplicitTimeComponent() {
-        let components = DateComponents(
-            calendar: calendar,
-            timeZone: calendar.timeZone,
-            year: 2026,
-            month: 8,
-            day: 4,
-            hour: 15
+    @Test func titleIsTrimmedAndMustNotBeEmpty() throws {
+        #expect(
+            try NagareIntentSemantics.title(from: "  Buy cereal  ")
+                == "Buy cereal"
         )
-
-        #expect(throws: NagareIntentError.todoCannotHaveTime) {
-            try NagareIntentSemantics.todoDate(
-                from: components,
-                now: date(2026, 8, 3),
-                calendar: calendar
-            )
+        #expect(throws: NagareIntentError.emptyTitle) {
+            try NagareIntentSemantics.title(from: "  \n ")
         }
     }
 
-    @Test func todoAcceptsDateOnlyComponents() throws {
+    @Test func todoWithoutDateDefaultsToToday() throws {
+        let result = try NagareIntentSemantics.todoDate(
+            from: nil,
+            now: date(2026, 8, 3, hour: 18),
+            calendar: calendar
+        )
+
+        #expect(result == date(2026, 8, 3))
+    }
+
+    @Test func todoAcceptsTomorrowWithoutAddingATime() throws {
         let components = DateComponents(
             calendar: calendar,
             timeZone: calendar.timeZone,
@@ -48,304 +49,118 @@ struct NagareIntentSemanticsTests {
         #expect(result == date(2026, 8, 4))
     }
 
-    @Test func todoWithoutDateDefaultsToToday() throws {
-        let result = try NagareIntentSemantics.todoDate(
-            from: nil,
-            now: date(2026, 8, 3, hour: 18),
-            calendar: calendar
+    @Test func todoRejectsExplicitTimesAndPastDates() {
+        let timed = DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 8,
+            day: 4,
+            hour: 15
         )
+        #expect(throws: NagareIntentError.todoCannotHaveTime) {
+            try NagareIntentSemantics.todoDate(
+                from: timed,
+                now: date(2026, 8, 3),
+                calendar: calendar
+            )
+        }
 
-        #expect(result == date(2026, 8, 3))
-    }
-
-    @Test func todoRejectsPastDate() {
-        let components = DateComponents(
+        let past = DateComponents(
             calendar: calendar,
             timeZone: calendar.timeZone,
             year: 2026,
             month: 8,
             day: 2
         )
-
         #expect(throws: NagareIntentError.pastTodoDate) {
             try NagareIntentSemantics.todoDate(
-                from: components,
+                from: past,
                 now: date(2026, 8, 3),
                 calendar: calendar
             )
         }
     }
 
-    @Test func relativeNagareRecurrenceIsNotMisrepresentedToSiri() throws {
-        let relative = try RecurrenceRule.relative(every: 1, unit: .week)
-        #expect(
-            NagareRecurrenceBridge.systemRule(
-                from: relative,
-                calendar: calendar
-            ) == nil
+    @Test func eventAllowsAnOptionalEndButRejectsInvalidRanges() throws {
+        let start = date(2026, 8, 8, hour: 16)
+        let end = date(2026, 8, 8, hour: 17)
+
+        try NagareIntentSemantics.validateEventRange(
+            startDate: start,
+            endDate: nil
         )
+        try NagareIntentSemantics.validateEventRange(
+            startDate: start,
+            endDate: end
+        )
+        #expect(throws: NagareIntentError.eventEndBeforeStart) {
+            try NagareIntentSemantics.validateEventRange(
+                startDate: start,
+                endDate: start
+            )
+        }
     }
 
-    @Test func intentStoreCreatesItemsUsingTheSameTodayOrder() throws {
+    @Test func storeCreatesOnlyAStandardTodo() throws {
         let store = try makeStore()
-        let today = calendar.startOfDay(for: .now)
-        let eventTime = calendar.date(
-            bySettingHour: 15,
-            minute: 0,
-            second: 0,
-            of: today
-        )!
+        let tomorrow = date(2026, 8, 4)
 
-        let todo = try store.createTodo(
-            title: "Call Alex",
-            notes: nil,
-            scheduledDate: today,
-            recurrence: nil
-        )
-        let event = try store.createEvent(
-            title: "Coffee",
-            notes: nil,
-            scheduledDate: eventTime,
-            endDate: nil,
-            recurrence: nil
-        )
-
-        #expect(todo.order < event.order)
-        let snapshots = try store.todayItemSnapshots(
-            on: today,
-            calendar: calendar
-        )
-        let expectedItems = Item.ordered(todos: [todo], events: [event])
-        let expectedTitles = expectedItems.map { item in
-            switch item {
-            case .todo(let todo): todo.title
-            case .event(let event): event.title
-            }
-        }
-        let expectedKinds = expectedItems.map { item in
-            switch item {
-            case .todo: NagareIntentItemKind.todo
-            case .event: NagareIntentItemKind.event
-            }
-        }
-
-        #expect(snapshots.map(\.title) == expectedTitles)
-        #expect(snapshots.map(\.kind) == expectedKinds)
-    }
-
-    @Test func itemAfterTitleNeverEscapesToday() throws {
-        let store = try makeStore()
-        let localCalendar = Calendar.autoupdatingCurrent
-        let today = localCalendar.startOfDay(for: .now)
-        let tomorrow = try #require(
-            localCalendar.date(byAdding: .day, value: 1, to: today)
-        )
-
-        _ = try store.createTodo(
-            title: "First",
-            notes: nil,
-            scheduledDate: today,
-            recurrence: nil
-        )
-        _ = try store.createTodo(
-            title: "Second",
-            notes: nil,
-            scheduledDate: today,
-            recurrence: nil
-        )
-        _ = try store.createTodo(
-            title: "Future",
+        let snapshot = try store.createTodo(
+            title: "Buy cereal",
             notes: nil,
             scheduledDate: tomorrow,
-            recurrence: nil
+            calendar: calendar
         )
 
-        let next = try store.todayItemSnapshot(
-            afterTitle: "First",
-            on: today,
-            calendar: localCalendar
+        #expect(snapshot.title == "Buy cereal")
+        #expect(snapshot.scheduledDate == tomorrow)
+        #expect(snapshot.endDate == nil)
+        #expect(
+            try store.modelContainer.mainContext.fetch(
+                FetchDescriptor<Todo>()
+            ).count == 1
         )
-        #expect(next?.title == "Second")
-
-        #expect(throws: NagareIntentError.itemNotOnToday) {
-            try store.todayItemSnapshot(
-                afterTitle: "Future",
-                on: today,
-                calendar: localCalendar
-            )
-        }
+        #expect(try recurrenceTemplates(in: store).isEmpty)
     }
 
-    @Test func completingRelativeTodoSchedulesFromCompletion() throws {
+    @Test func storeCreatesEventsWithOrWithoutAnEnd() throws {
         let store = try makeStore()
-        let localCalendar = Calendar.autoupdatingCurrent
-        let today = localCalendar.startOfDay(for: .now)
-        let completion = try #require(
-            localCalendar.date(byAdding: .hour, value: 15, to: today)
-        )
-        let rule = try RecurrenceRule.relative(every: 5, unit: .day)
-        let todo = try store.createTodo(
-            title: "Wash dishes",
+        let basketball = date(2026, 8, 8, hour: 18, minute: 30)
+        let hangStart = date(2026, 8, 8, hour: 16)
+        let hangEnd = date(2026, 8, 8, hour: 17)
+
+        let openEnded = try store.createEvent(
+            title: "Play Basketball",
             notes: nil,
-            scheduledDate: today,
-            recurrence: rule
+            scheduledDate: basketball,
+            endDate: nil
+        )
+        let ranged = try store.createEvent(
+            title: "Bro's Hang",
+            notes: nil,
+            scheduledDate: hangStart,
+            endDate: hangEnd
         )
 
-        let result = try store.setTodoCompletion(
-            todo.id,
-            isCompleted: true,
-            at: completion,
-            calendar: localCalendar
+        #expect(openEnded.scheduledDate == basketball)
+        #expect(openEnded.endDate == nil)
+        #expect(ranged.scheduledDate == hangStart)
+        #expect(ranged.endDate == hangEnd)
+        #expect(
+            try store.modelContainer.mainContext.fetch(
+                FetchDescriptor<Event>()
+            ).count == 2
         )
-        let expectedNextDate = try #require(
-            localCalendar.date(byAdding: .day, value: 5, to: today)
-        )
-
-        #expect(result.item.completedAt == completion)
-        #expect(result.nextOccurrence?.scheduledDate == expectedNextDate)
-        #expect(result.nextOccurrence?.recurrence?.mode == .relative)
+        #expect(try recurrenceTemplates(in: store).isEmpty)
     }
 
-    @Test func deletingRepeatingTodoSkipsOnlyCurrentOccurrence() throws {
-        let store = try makeStore()
-        let localCalendar = Calendar.autoupdatingCurrent
-        let today = localCalendar.startOfDay(for: .now)
-        let rule = try RecurrenceRule.relative(every: 2, unit: .day)
-        let todo = try store.createTodo(
-            title: "Water plants",
-            notes: nil,
-            scheduledDate: today,
-            recurrence: rule
+    private func recurrenceTemplates(
+        in store: NagareIntentStore
+    ) throws -> [RecurrenceTemplate] {
+        try store.modelContainer.mainContext.fetch(
+            FetchDescriptor<RecurrenceTemplate>()
         )
-
-        let results = try store.deleteTodos(
-            identifiedBy: [todo.id],
-            at: today,
-            calendar: localCalendar
-        )
-        let expectedNextDate = try #require(
-            localCalendar.date(byAdding: .day, value: 2, to: today)
-        )
-
-        #expect(results.count == 1)
-        #expect(results.first?.nextOccurrence?.scheduledDate == expectedNextDate)
-        #expect(try store.todoSnapshots().map(\.title) == ["Water plants"])
-    }
-
-    @Test func deletingOrdinaryEventRemovesIt() throws {
-        let store = try makeStore()
-        let localCalendar = Calendar.autoupdatingCurrent
-        let today = localCalendar.startOfDay(for: .now)
-        let eventTime = try #require(
-            localCalendar.date(
-                bySettingHour: 10,
-                minute: 0,
-                second: 0,
-                of: today
-            )
-        )
-        let event = try store.createEvent(
-            title: "Dentist",
-            notes: nil,
-            scheduledDate: eventTime,
-            endDate: nil,
-            recurrence: nil
-        )
-
-        let result = try store.deleteEvent(
-            identifiedBy: event.id,
-            span: nil,
-            at: eventTime,
-            calendar: localCalendar
-        )
-
-        #expect(result.nextOccurrence == nil)
-        #expect(try store.eventSnapshots().isEmpty)
-    }
-
-    @Test func deletingThisRepeatingEventAdvancesTheSeries() throws {
-        let store = try makeStore()
-        let localCalendar = Calendar.autoupdatingCurrent
-        let today = localCalendar.startOfDay(for: .now)
-        let eventTime = try #require(
-            localCalendar.date(
-                bySettingHour: 10,
-                minute: 0,
-                second: 0,
-                of: today
-            )
-        )
-        let rule = try RecurrenceRule.absolute(
-            every: 1,
-            unit: .day,
-            reference: eventTime,
-            calendar: localCalendar
-        )
-        let event = try store.createEvent(
-            title: "Standup",
-            notes: nil,
-            scheduledDate: eventTime,
-            endDate: nil,
-            recurrence: rule
-        )
-
-        let result = try store.deleteEvent(
-            identifiedBy: event.id,
-            span: .this,
-            at: eventTime,
-            calendar: localCalendar
-        )
-        let expectedNextDate = try #require(
-            localCalendar.date(byAdding: .day, value: 1, to: eventTime)
-        )
-        let remainingEvents = try store.eventSnapshots()
-
-        #expect(result.nextOccurrence?.scheduledDate == expectedNextDate)
-        #expect(remainingEvents.count == 1)
-        #expect(remainingEvents.first?.id != event.id)
-    }
-
-    @Test func deletingFutureOrAllRepeatingEventsRemovesTheSeries() throws {
-        for span in [NagareEventSpan.future, .all] {
-            let store = try makeStore()
-            let localCalendar = Calendar.autoupdatingCurrent
-            let today = localCalendar.startOfDay(for: .now)
-            let eventTime = try #require(
-                localCalendar.date(
-                    bySettingHour: 10,
-                    minute: 0,
-                    second: 0,
-                    of: today
-                )
-            )
-            let rule = try RecurrenceRule.absolute(
-                every: 1,
-                unit: .day,
-                reference: eventTime,
-                calendar: localCalendar
-            )
-            let event = try store.createEvent(
-                title: "Standup",
-                notes: nil,
-                scheduledDate: eventTime,
-                endDate: nil,
-                recurrence: rule
-            )
-
-            let result = try store.deleteEvent(
-                identifiedBy: event.id,
-                span: span,
-                at: eventTime,
-                calendar: localCalendar
-            )
-            let templates = try store.modelContext.fetch(
-                FetchDescriptor<RecurrenceTemplate>()
-            )
-
-            #expect(result.nextOccurrence == nil)
-            #expect(try store.eventSnapshots().isEmpty)
-            #expect(templates.isEmpty)
-        }
     }
 
     private func makeStore() throws -> NagareIntentStore {
@@ -363,14 +178,16 @@ struct NagareIntentSemanticsTests {
         _ year: Int,
         _ month: Int,
         _ day: Int,
-        hour: Int = 0
+        hour: Int = 0,
+        minute: Int = 0
     ) -> Date {
         calendar.date(
             from: DateComponents(
                 year: year,
                 month: month,
                 day: day,
-                hour: hour
+                hour: hour,
+                minute: minute
             )
         )!
     }

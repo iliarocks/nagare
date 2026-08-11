@@ -27,9 +27,11 @@ struct ReorderableItemList: View {
     let onDelete: (Item) -> Void
     let onDeleteTemplate: (RecurrenceTemplate) -> Void
     let onMove: (Date, IndexSet, Int) -> Void
+    let onMoveAcrossDates: ([ItemID], Date, ItemID?) -> Void
     @State private var todoBeingRescheduled: Todo?
     @State private var eventBeingRescheduled: Event?
     @State private var recurrenceTemplateBeingEdited: RecurrenceTemplate?
+    @State private var projectMoveTarget: ProjectMoveTarget?
 
     init(
         groups: [ReorderableItemGroup],
@@ -39,7 +41,10 @@ struct ReorderableItemList: View {
         onComplete: @escaping (Todo) -> Void,
         onDelete: @escaping (Item) -> Void,
         onDeleteTemplate: @escaping (RecurrenceTemplate) -> Void = { _ in },
-        onMove: @escaping (Date, IndexSet, Int) -> Void
+        onMove: @escaping (Date, IndexSet, Int) -> Void,
+        onMoveAcrossDates: @escaping ([ItemID], Date, ItemID?) -> Void = {
+            _, _, _ in
+        }
     ) {
         self.groups = groups
         self.showsDateHeaders = showsDateHeaders
@@ -49,6 +54,7 @@ struct ReorderableItemList: View {
         self.onDelete = onDelete
         self.onDeleteTemplate = onDeleteTemplate
         self.onMove = onMove
+        self.onMoveAcrossDates = onMoveAcrossDates
     }
 
     var body: some View {
@@ -88,21 +94,24 @@ struct ReorderableItemList: View {
             apply(difference)
         }
         .sheet(item: $todoBeingRescheduled) { todo in
-            NavigationStack {
-                TodoDateEditor(todo: todo)
-            }
-            .presentationDetents([.fraction(0.38)])
+            TodoDateEditor(todo: todo)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
         .sheet(item: $eventBeingRescheduled) { event in
-            NavigationStack {
-                EventScheduleEditor(event: event)
-            }
-            .presentationDetents([.medium])
+            EventScheduleEditor(event: event)
+                .presentationDetents([EventScheduleEditor.sheetDetent])
+                .presentationDragIndicator(.visible)
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
-            NavigationStack {
-                RecurrenceEditor(template: template)
-            }
+            RecurrenceEditor(template: template)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $projectMoveTarget) { target in
+            ProjectMoveEditor(target: target)
+                .presentationDetents([.fraction(0.25)])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -114,6 +123,9 @@ struct ReorderableItemList: View {
                 onOpen: onOpen,
                 onComplete: onComplete,
                 onChangeSchedule: presentScheduleEditor,
+                onMoveProject: {
+                    projectMoveTarget = ProjectMoveTarget($0)
+                },
                 onDelete: onDelete
             )
         }
@@ -125,6 +137,9 @@ struct ReorderableItemList: View {
                 onOpen: { onOpenVirtual(item) },
                 onChangeRepeat: {
                     recurrenceTemplateBeingEdited = item.template
+                },
+                onMoveProject: {
+                    projectMoveTarget = .template(item.template)
                 },
                 onDelete: {
                     onDeleteTemplate(item.template)
@@ -145,35 +160,68 @@ struct ReorderableItemList: View {
     private func apply(
         _ difference: ReorderDifference<ItemID, Date>
     ) {
-        guard difference.sources.count == 1,
-              let sourceID = difference.sources.first,
-              let sourceGroup = groups.first(where: { group in
-                  group.items.contains(where: { $0.id == sourceID })
-              }),
-              sourceGroup.date == difference.destination.collectionID,
-              let sourceIndex = sourceGroup.items.firstIndex(
-                  where: { $0.id == sourceID }
-              ) else {
+        guard !difference.sources.isEmpty else {
             return
         }
 
-        let destinationOffset: Int
+        let destinationDate = difference.destination.collectionID
+        let destinationID: ItemID?
         switch difference.destination.position {
-        case .before(let destinationID):
-            guard let index = sourceGroup.items.firstIndex(
-                where: { $0.id == destinationID }
-            ) else {
+        case .before(let id):
+            guard groups.contains(where: { group in
+                group.date == destinationDate
+                    && group.items.contains(where: { $0.id == id })
+            }) else {
+                return
+            }
+            destinationID = id
+        case .end:
+            destinationID = nil
+        }
+
+        let sourceIDSet = Set(difference.sources)
+        let sourceGroups = groups.filter { group in
+            group.items.contains(where: { sourceIDSet.contains($0.id) })
+        }
+        let locatedSourceIDs = sourceGroups.flatMap { group in
+            group.items.compactMap { item in
+                sourceIDSet.contains(item.id) ? item.id : nil
+            }
+        }
+        guard Set(locatedSourceIDs) == sourceIDSet else {
+            return
+        }
+
+        guard sourceGroups.allSatisfy({ $0.date == destinationDate }),
+              let sourceGroup = sourceGroups.first else {
+            onMoveAcrossDates(
+                difference.sources,
+                destinationDate,
+                destinationID
+            )
+            return
+        }
+
+        let sourceOffsets = IndexSet(
+            sourceGroup.items.indices.filter {
+                sourceIDSet.contains(sourceGroup.items[$0].id)
+            }
+        )
+        let destinationOffset: Int
+        if let destinationID {
+            guard let index = sourceGroup.items.firstIndex(where: {
+                $0.id == destinationID
+            }) else {
                 return
             }
             destinationOffset = index
-
-        case .end:
+        } else {
             destinationOffset = sourceGroup.items.endIndex
         }
 
         onMove(
             sourceGroup.date,
-            IndexSet(integer: sourceIndex),
+            sourceOffsets,
             destinationOffset
         )
     }
