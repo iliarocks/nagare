@@ -133,10 +133,18 @@ the pointer, or deleting the template:
 - planner and SwiftData integration tests cover import-order permutations,
   missing relationship edges, conflict convergence, and idempotence.
 
-The development schema still must not be promoted until the full physical
-two-device matrix below passes. Automated partial-import coverage removes the
-known `VIRTUAL-001` architecture defect; it does not substitute for CloudKit
-transport testing on real devices.
+The targeted physical regression matrix now passes on an iPhone 17 Pro and an
+Apple-silicon Mac: title edits and Today reorders propagated in both directions
+while both apps remained open, with no relaunch or manual refresh. Phone-to-Mac
+delivery was observably slower than Mac-to-phone delivery, but every tested
+change reached the already-rendered immutable snapshot. This asymmetry is
+acceptable eventual-consistency behavior, not the former stale-context defect.
+
+The broader release matrix below remains mandatory before promoting the
+development schema. Automated partial-import coverage and this targeted matrix
+remove the known `VIRTUAL-001` and stale-publication defects; they do not yet
+cover every command, recurrence transition, or offline conflict on real
+devices.
 
 In a development-signed build, pass `--initialize-cloudkit-schema` once after
 an intentional model change. The debug-only initializer derives the managed
