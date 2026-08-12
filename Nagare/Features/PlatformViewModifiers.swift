@@ -39,6 +39,18 @@ extension ToolbarItemPlacement {
 
 extension View {
     @ViewBuilder
+    func nagareToolbarIcon() -> some View {
+#if os(macOS)
+        // The large bordered toolbar style adds six more vertical points than
+        // horizontal ones. This content frame produces a square 36-point
+        // control, allowing the requested circle border to remain circular.
+        frame(width: 24, height: 18)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
     func nagareToolbarButton() -> some View {
 #if os(macOS)
         controlSize(.large)

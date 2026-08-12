@@ -85,6 +85,7 @@ struct ProjectsView: View {
                 Button(action: onOpenSettings) {
                     Label("Settings", systemImage: "gearshape")
                         .labelStyle(.iconOnly)
+                        .nagareToolbarIcon()
                 }
                 .nagareToolbarButton()
             }
@@ -99,6 +100,7 @@ struct ProjectsView: View {
                 } label: {
                     Label("New Project", systemImage: "plus")
                         .labelStyle(.iconOnly)
+                        .nagareToolbarIcon()
                 }
                 .nagareToolbarButton()
             }
