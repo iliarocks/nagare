@@ -247,7 +247,6 @@ struct RootView: View {
                     systemImage: "gearshape"
                 )
                 .labelStyle(.iconOnly)
-                .nagareToolbarIcon()
             }
             .nagareToolbarButton()
         }
@@ -262,7 +261,6 @@ struct RootView: View {
             } label: {
                 Label("New Item", systemImage: "plus")
                     .labelStyle(.iconOnly)
-                    .nagareToolbarIcon()
             }
             .nagareToolbarButton()
         }

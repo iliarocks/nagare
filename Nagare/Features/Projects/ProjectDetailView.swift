@@ -78,7 +78,6 @@ struct ProjectDetailView: View {
                 } label: {
                     Label("New Item", systemImage: "plus")
                         .labelStyle(.iconOnly)
-                        .nagareToolbarIcon()
                 }
                 .nagareToolbarButton()
             }
