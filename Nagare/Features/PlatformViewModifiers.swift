@@ -100,7 +100,7 @@ extension View {
     @ViewBuilder
     func nagareDateSectionHeader(isFirst: Bool) -> some View {
 #if os(macOS)
-        font(.system(size: 14))
+        font(.system(size: 13))
             .padding(.top, isFirst ? 0 : 12)
 #else
         font(.caption)
