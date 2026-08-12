@@ -79,6 +79,7 @@ struct ProjectDetailView: View {
                     Label("New Item", systemImage: "plus")
                         .labelStyle(.iconOnly)
                 }
+                .nagareToolbarButton()
             }
         }
         .nagareDraftComposer(

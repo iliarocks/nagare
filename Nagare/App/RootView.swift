@@ -173,7 +173,7 @@ struct RootView: View {
 
 #if os(macOS)
     private var macContent: some View {
-        HStack(spacing: 0) {
+        NavigationSplitView {
             List(selection: $selectedSection) {
                 Label("Today", systemImage: "sun.max")
                     .tag(NavigationSection.today)
@@ -183,10 +183,13 @@ struct RootView: View {
                     .tag(NavigationSection.projects)
             }
             .listStyle(.sidebar)
-            .frame(width: 180)
-
-            Divider()
-
+            .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(
+                min: 180,
+                ideal: 180,
+                max: 180
+            )
+        } detail: {
             Group {
                 switch selectedSection {
                 case .today:
@@ -210,6 +213,7 @@ struct RootView: View {
             }
             .frame(minWidth: 620, minHeight: 480)
         }
+        .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(
             \.nagareCommandActions,
             NagareCommandActions(
@@ -244,6 +248,7 @@ struct RootView: View {
                 )
                 .labelStyle(.iconOnly)
             }
+            .nagareToolbarButton()
         }
 
 #if os(macOS)
@@ -257,6 +262,7 @@ struct RootView: View {
                 Label("New Item", systemImage: "plus")
                     .labelStyle(.iconOnly)
             }
+            .nagareToolbarButton()
         }
     }
 

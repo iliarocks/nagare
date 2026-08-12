@@ -135,8 +135,9 @@ struct NagareApp: App {
                 .windowFullScreenBehavior(.disabled)
         }
         .defaultSize(width: 1_100, height: 720)
-        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
+            CommandGroup(replacing: .sidebar) {}
             NagareCommands()
         }
 

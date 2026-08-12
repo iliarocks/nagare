@@ -39,6 +39,17 @@ extension ToolbarItemPlacement {
 
 extension View {
     @ViewBuilder
+    func nagareToolbarButton() -> some View {
+#if os(macOS)
+        controlSize(.large)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
     func nagareItemTitleFont() -> some View {
 #if os(macOS)
         font(.system(size: 16))

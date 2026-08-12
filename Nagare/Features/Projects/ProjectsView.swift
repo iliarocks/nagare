@@ -86,6 +86,7 @@ struct ProjectsView: View {
                     Label("Settings", systemImage: "gearshape")
                         .labelStyle(.iconOnly)
                 }
+                .nagareToolbarButton()
             }
 
 #if os(macOS)
@@ -99,6 +100,7 @@ struct ProjectsView: View {
                     Label("New Project", systemImage: "plus")
                         .labelStyle(.iconOnly)
                 }
+                .nagareToolbarButton()
             }
         }
         .nagareDraftComposer(
