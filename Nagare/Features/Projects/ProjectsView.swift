@@ -154,6 +154,7 @@ struct ProjectsView: View {
     private func projectRow(_ project: ProjectRecordSnapshot) -> some View {
         NavigationLink(value: project.id) {
             Text(project.title)
+                .nagareItemTitleFont()
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 4)
         }
