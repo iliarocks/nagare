@@ -1,45 +1,58 @@
-import SwiftData
 import SwiftUI
 
 struct ProjectDetailView: View {
-    @Environment(\.modelContext) private var modelContext
+    @NagareDataStoreEnvironment private var dataStore
 
-    @Query private var todos: [Todo]
-    @Query private var events: [Event]
-    @Query private var templates: [RecurrenceTemplate]
-
-    let project: Project
+    let project: ProjectRecordSnapshot
 
     @State private var isCreatingItem = false
     @State private var title: String
     @State private var notes: String
+    @State private var lastLoadedProject: ProjectRecordSnapshot?
     @State private var pendingSave: Task<Void, Never>?
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
-    @State private var todoBeingRescheduled: Todo?
-    @State private var eventBeingRescheduled: Event?
-    @State private var recurrenceTemplateBeingEdited: RecurrenceTemplate?
+    @State private var todoBeingRescheduled: TodoRecordSnapshot?
+    @State private var eventBeingRescheduled: EventRecordSnapshot?
+    @State private var recurrenceTemplateBeingEdited: RecurrenceTemplateRecordSnapshot?
     @State private var projectMoveTarget: ProjectMoveTarget?
     @State private var errorMessage: String?
 
-    init(project: Project) {
+    private var todos: [TodoRecordSnapshot] {
+        dataStore.todos
+    }
+
+    private var events: [EventRecordSnapshot] {
+        dataStore.events
+    }
+
+    private var templates: [RecurrenceTemplateRecordSnapshot] {
+        dataStore.recurrenceTemplates
+    }
+
+    private var currentProject: ProjectRecordSnapshot {
+        dataStore.snapshot.projectsByID[project.id] ?? project
+    }
+
+    init(project: ProjectRecordSnapshot) {
         self.project = project
         _title = State(initialValue: project.title)
         _notes = State(initialValue: project.notes ?? "")
+        _lastLoadedProject = State(initialValue: project)
     }
 
-    private var actualItems: [Item] {
-        Item.orderedInProject(
+    private var actualItems: [ItemRecordSnapshot] {
+        ItemRecordSnapshot.orderedInProject(
             todos: todos.filter {
-                $0.project?.id == project.id && $0.completedAt == nil
+                $0.projectID == project.id && $0.completedAt == nil
             },
-            events: events.filter { $0.project?.id == project.id }
+            events: events.filter { $0.projectID == project.id }
         )
     }
 
-    private var repeatTemplates: [RecurrenceTemplate] {
+    private var repeatTemplates: [RecurrenceTemplateRecordSnapshot] {
         templates
-            .filter { $0.project?.id == project.id }
+            .filter { $0.projectID == project.id }
             .sorted {
                 let firstOrder = currentProjectOrder(for: $0)
                 let secondOrder = currentProjectOrder(for: $1)
@@ -52,7 +65,7 @@ struct ProjectDetailView: View {
 
     var body: some View {
         itemList
-        .nagareProjectNavigationTitle(project.title)
+        .nagareProjectNavigationTitle(currentProject.title)
         .nagareInlineNavigationTitle()
         .toolbar {
             ToolbarItem(placement: .nagareTrailing) {
@@ -67,7 +80,7 @@ struct ProjectDetailView: View {
         .nagareDraftComposer(
             isPresented: $isCreatingItem
         ) {
-            CreateView(project: project) {
+            CreateView(project: currentProject) {
                 isCreatingItem = false
             }
         }
@@ -104,6 +117,9 @@ struct ProjectDetailView: View {
         }
         .onChange(of: notes) {
             scheduleProjectSave()
+        }
+        .onChange(of: currentProject, initial: true) { _, project in
+            load(project)
         }
         .onDisappear {
             pendingSave?.cancel()
@@ -158,7 +174,7 @@ struct ProjectDetailView: View {
                     ForEach(repeatTemplates) { template in
                         ProjectRepeatRow(
                             template: template,
-                            onOpen: { notesDestination = .template(template) },
+                            onOpen: { notesDestination = .template(template.id) },
                             onChangeRepeat: {
                                 recurrenceTemplateBeingEdited = template
                             },
@@ -172,7 +188,7 @@ struct ProjectDetailView: View {
             }
         }
         .nagareListSectionSpacing(.custom(48))
-        .reorderContainer(for: Item.self, in: UUID.self) {
+        .reorderContainer(for: ItemRecordSnapshot.self, in: UUID.self) {
             apply($0)
         }
     }
@@ -228,19 +244,39 @@ struct ProjectDetailView: View {
         let savedNotes = notes.trimmingCharacters(
             in: .whitespacesAndNewlines
         ).isEmpty ? nil : notes
-        guard project.title != trimmedTitle || project.notes != savedNotes else {
+        guard currentProject.title != trimmedTitle
+                || currentProject.notes != savedNotes else {
             return
         }
 
-        project.title = trimmedTitle
-        project.notes = savedNotes
-
         do {
-            try SwiftDataTransaction.save(modelContext)
+            try dataStore.updateProject(
+                project.id,
+                title: trimmedTitle,
+                notes: savedNotes
+            )
+            lastLoadedProject = nil
+            load(currentProject)
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func load(_ project: ProjectRecordSnapshot) {
+        guard project != lastLoadedProject else { return }
+        let hasUnsavedChanges = lastLoadedProject.map {
+            title != $0.title || normalizedNotes != $0.notes
+        } ?? false
+        guard !hasUnsavedChanges else { return }
+        title = project.title
+        notes = project.notes ?? ""
+        lastLoadedProject = project
+    }
+
+    private var normalizedNotes: String? {
+        notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : notes
     }
 
     private func apply(_ difference: ReorderDifference<ItemID, UUID>) {
@@ -256,55 +292,53 @@ struct ProjectDetailView: View {
         }
 
         do {
-            try ProjectItemOrdering.move(
+            try dataStore.moveProjectItems(
                 difference.sources,
                 before: destinationID,
-                in: project,
-                context: modelContext
+                projectID: project.id
             )
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }
 
-    private func open(_ item: Item) {
+    private func open(_ item: ItemRecordSnapshot) {
         notesDetent = .medium
         notesDestination = NotesDestination(item)
     }
 
-    private func complete(_ todo: Todo) {
+    private func complete(_ todo: TodoRecordSnapshot) {
         do {
             try withAnimation {
-                _ = try RecurrencePersistence.complete(todo, in: modelContext)
+                try dataStore.completeTodo(todo.id)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func delete(_ item: Item) {
+    private func delete(_ item: ItemRecordSnapshot) {
         do {
             switch item {
             case .todo(let todo):
-                try RecurrencePersistence.delete(todo, in: modelContext)
+                try dataStore.deleteItem(.todo(todo.id))
             case .event(let event):
-                try RecurrencePersistence.delete(event, in: modelContext)
+                try dataStore.deleteItem(.event(event.id))
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func deleteTemplate(_ template: RecurrenceTemplate) {
+    private func deleteTemplate(_ template: RecurrenceTemplateRecordSnapshot) {
         do {
-            try RecurrencePersistence.deleteTemplate(template, in: modelContext)
+            try dataStore.deleteRecurrenceTemplate(template.id)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func presentScheduleEditor(_ item: Item) {
+    private func presentScheduleEditor(_ item: ItemRecordSnapshot) {
         switch item {
         case .todo(let todo):
             todoBeingRescheduled = todo
@@ -314,20 +348,9 @@ struct ProjectDetailView: View {
     }
 
     private func currentProjectOrder(
-        for template: RecurrenceTemplate
+        for template: RecurrenceTemplateRecordSnapshot
     ) -> String {
-        switch template.itemType {
-        case .todo:
-            template.todoOccurrences.first {
-                $0.id == template.currentItemID && $0.completedAt == nil
-            }?.projectOrder ?? ""
-        case .event:
-            template.eventOccurrences.first {
-                $0.id == template.currentItemID
-            }?.projectOrder ?? ""
-        case nil:
-            ""
-        }
+        dataStore.snapshot.currentProjectOrder(for: template)
     }
 
     private func resetNotesSheet() {

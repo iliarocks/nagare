@@ -228,7 +228,7 @@ struct RecurrencePersistenceTests {
         #expect(completed.notes == "Keep these notes")
         #expect(completed.order > existing.order)
         #expect(
-            Item.ordered(todos: [completed, existing], events: [])
+            SwiftDataItem.ordered(todos: [completed, existing], events: [])
                 .compactMap { item in
                     guard case .todo(let todo) = item else {
                         return nil

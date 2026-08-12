@@ -82,6 +82,37 @@ struct SyncReconciliationPlannerTests {
         ])
     }
 
+    @Test func duplicateOfflineCalendarImportsConvergeByUID() {
+        let first = event(
+            id: currentID,
+            localID: "first-import",
+            physicalID: UUID(
+                uuidString: "40000000-0000-0000-0000-000000000001"
+            )!,
+            calendarIdentifier: "lunch@example.com"
+        )
+        let second = event(
+            id: competingID,
+            localID: "second-import",
+            physicalID: UUID(
+                uuidString: "40000000-0000-0000-0000-000000000002"
+            )!,
+            calendarIdentifier: "lunch@example.com"
+        )
+
+        let plan = SyncReconciliationPlanner.plan(
+            for: graph(events: [second, first])
+        )
+
+        #expect(plan.mutations == [
+            .mergeDuplicate(
+                duplicate: first.metadata.reference,
+                canonical: second.metadata.reference
+            )
+        ])
+        #expect(plan.report.duplicateEventsRemoved == 1)
+    }
+
     @Test func templateFirstImportIsPendingAndNonDestructive() {
         let template = todoTemplate(
             currentItemID: currentID,
@@ -323,15 +354,19 @@ struct SyncReconciliationPlannerTests {
     private func event(
         id: UUID,
         localID: String,
-        sequence: Int,
-        templateID: UUID
+        physicalID: UUID? = nil,
+        calendarIdentifier: String? = nil,
+        sequence: Int? = nil,
+        templateID: UUID? = nil
     ) -> SyncEventSnapshot {
         SyncEventSnapshot(
             metadata: metadata(
                 kind: .event,
                 localID: localID,
-                semanticID: id
+                semanticID: id,
+                physicalID: physicalID
             ),
+            calendarIdentifier: calendarIdentifier,
             recurrenceSequence: sequence,
             recurrenceTemplateID: templateID,
             projectID: nil

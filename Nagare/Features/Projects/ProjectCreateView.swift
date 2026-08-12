@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct ProjectCreateView: View {
@@ -7,12 +6,12 @@ struct ProjectCreateView: View {
         case notes
     }
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @NagareDataStoreEnvironment private var dataStore
 
     @State private var title = ""
     @State private var notes = ""
-    @State private var persistedProject: Project?
+    @State private var persistedProjectID: UUID?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
@@ -118,35 +117,15 @@ struct ProjectCreateView: View {
             let savedNotes = notes.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ).isEmpty ? nil : notes
-            let projectToPersist: Project
-
-            if let persistedProject {
-                if persistedProject.title != trimmedTitle
-                    || persistedProject.notes != savedNotes {
-                    persistedProject.title = trimmedTitle
-                    persistedProject.notes = savedNotes
-                    try SwiftDataTransaction.save(modelContext)
-                }
-                return true
-            } else {
-                let order = try ProjectOrdering.nextOrder(
-                    isPriority: false,
-                    in: modelContext
-                )
-                let project = Project(
+            persistedProjectID = try dataStore.upsertProject(
+                ProjectDraft(
                     title: trimmedTitle,
-                    notes: savedNotes,
-                    isPriority: false,
-                    order: order
-                )
-                modelContext.insert(project)
-                projectToPersist = project
-            }
-            try SwiftDataTransaction.save(modelContext)
-            persistedProject = projectToPersist
+                    notes: savedNotes
+                ),
+                existingID: persistedProjectID
+            )
             return true
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
             return false
         }

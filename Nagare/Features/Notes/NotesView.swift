@@ -1,32 +1,70 @@
-import SwiftData
 import SwiftUI
 
-struct NotesView<Record: Note>: View {
-    @Environment(\.modelContext) private var modelContext
+struct NotesView: View {
+    @NagareDataStoreEnvironment private var dataStore
 
-    let item: Record
-    let onOpenProject: (Project) -> Void
+    let id: NoteRecordID
+    let onOpenProject: (UUID) -> Void
 
-    @State private var title: String
-    @State private var notes: String
-    @State private var todoBeingRescheduled: Todo?
-    @State private var eventBeingRescheduled: Event?
+    @State private var title = ""
+    @State private var notes = ""
+    @State private var lastLoadedRecord: NoteRecordSnapshot?
+    @State private var todoBeingRescheduled: TodoRecordSnapshot?
+    @State private var eventBeingRescheduled: EventRecordSnapshot?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
 
     init(
-        item: Record,
-        onOpenProject: @escaping (Project) -> Void = { _ in }
+        id: NoteRecordID,
+        onOpenProject: @escaping (UUID) -> Void = { _ in }
     ) {
-        self.item = item
+        self.id = id
         self.onOpenProject = onOpenProject
-        _title = State(initialValue: item.title)
-        _notes = State(initialValue: item.notes ?? "")
+    }
+
+    private var record: NoteRecordSnapshot? {
+        dataStore.snapshot.note(for: id)
     }
 
     var body: some View {
+        Group {
+            if let record {
+                editor(record)
+            } else {
+                ContentUnavailableView(
+                    "Item Not Found",
+                    systemImage: "questionmark.document"
+                )
+            }
+        }
+        .task { load(record) }
+        .onChange(of: record) { _, record in
+            load(record)
+        }
+        .onDisappear {
+            pendingSave?.cancel()
+            save()
+        }
+        .sheet(item: $todoBeingRescheduled) { todo in
+            TodoDateEditor(todo: todo)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $eventBeingRescheduled) { event in
+            EventScheduleEditor(event: event)
+                .presentationDetents([EventScheduleEditor.sheetDetent])
+                .presentationDragIndicator(.visible)
+        }
+        .alert("Nagare Couldn't Complete That Action", isPresented: isShowingError) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
+        }
+    }
+
+    private func editor(_ record: NoteRecordSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            metadata
+            metadata(record)
 
             HStack(alignment: .center, spacing: 12) {
                 TextField("Title", text: $title, axis: .vertical)
@@ -36,10 +74,9 @@ struct NotesView<Record: Note>: View {
                     .layoutPriority(1)
                     .accessibilityIdentifier("Item Title")
 
-                if let project = associatedProject {
-                    Button {
-                        onOpenProject(project)
-                    } label: {
+                if let projectID = record.projectID,
+                   let project = dataStore.snapshot.projectsByID[projectID] {
+                    Button { onOpenProject(projectID) } label: {
                         Text(project.title)
                             .lineLimit(1)
                             .frame(minWidth: 44, alignment: .trailing)
@@ -69,58 +106,28 @@ struct NotesView<Record: Note>: View {
         }
         .padding(24)
         .padding(.top, 8)
-        .onChange(of: title) {
-            scheduleSave()
-        }
-        .onChange(of: notes) {
-            scheduleSave()
-        }
-        .onDisappear {
-            pendingSave?.cancel()
-            save()
-        }
-        .sheet(item: $todoBeingRescheduled) { todo in
-            TodoDateEditor(todo: todo)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $eventBeingRescheduled) { event in
-            EventScheduleEditor(event: event)
-                .presentationDetents([EventScheduleEditor.sheetDetent])
-                .presentationDragIndicator(.visible)
-        }
-        .alert("Nagare Couldn't Complete That Action", isPresented: isShowingError) {
-            Button("OK", role: .cancel) {
-                errorMessage = nil
-            }
-        } message: {
-            Text(errorMessage ?? "An unknown error occurred.")
-        }
+        .onChange(of: title) { scheduleSave() }
+        .onChange(of: notes) { scheduleSave() }
     }
 
     @ViewBuilder
-    private var metadata: some View {
-        if let scheduledItem {
+    private func metadata(_ record: NoteRecordSnapshot) -> some View {
+        if let scheduledItem = scheduledItem(for: record) {
             HStack(spacing: 12) {
-                Button {
-                    presentScheduleEditor(for: scheduledItem)
-                } label: {
+                Button { presentScheduleEditor(for: scheduledItem) } label: {
                     Text(
                         scheduledItem.scheduledDate,
-                        format: .dateTime
-                            .weekday(.abbreviated)
-                            .month(.abbreviated)
-                            .day()
+                        format: .dateTime.weekday(.abbreviated).month(.abbreviated).day()
                     )
                 }
                 .accessibilityIdentifier("Notes Date")
 
                 Spacer(minLength: 16)
 
-                if let scheduledEvent {
+                if case .event(let event) = scheduledItem {
                     EventTimeLabel(
-                        startDate: scheduledEvent.scheduledDate,
-                        endDate: scheduledEvent.endDate
+                        startDate: event.scheduledDate,
+                        endDate: event.endDate
                     )
                     .accessibilityIdentifier("Event Time")
                 }
@@ -131,101 +138,74 @@ struct NotesView<Record: Note>: View {
         }
     }
 
-    private var scheduledEvent: Event? {
-        guard case .event(let event) = scheduledItem else {
-            return nil
+    private func scheduledItem(
+        for record: NoteRecordSnapshot
+    ) -> ItemRecordSnapshot? {
+        switch record {
+        case .todo(let todo): .todo(todo)
+        case .event(let event): .event(event)
+        case .recurrenceTemplate(let template):
+            dataStore.snapshot.currentItem(for: template)
         }
-        return event
-    }
-
-    private var scheduledItem: Item? {
-        if let todo = item as? Todo {
-            return .todo(todo)
-        }
-        if let event = item as? Event {
-            return .event(event)
-        }
-        guard let template = item as? RecurrenceTemplate else {
-            return nil
-        }
-        switch template.itemType {
-        case .todo:
-            return template.todoOccurrences.first(where: {
-                $0.id == template.currentItemID && $0.completedAt == nil
-            }).map(Item.todo)
-        case .event:
-            return template.eventOccurrences.first(where: {
-                $0.id == template.currentItemID
-            }).map(Item.event)
-        case nil:
-            return nil
-        }
-    }
-
-    private var associatedProject: Project? {
-        if let todo = item as? Todo {
-            return todo.project
-        }
-        if let event = item as? Event {
-            return event.project
-        }
-        return (item as? RecurrenceTemplate)?.project
     }
 
     private var isShowingError: Binding<Bool> {
         Binding(
             get: { errorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    errorMessage = nil
-                }
-            }
+            set: { if !$0 { errorMessage = nil } }
         )
     }
 
-    private func presentScheduleEditor(for item: Item) {
+    private func presentScheduleEditor(for item: ItemRecordSnapshot) {
         switch item {
-        case .todo(let todo):
-            todoBeingRescheduled = todo
-        case .event(let event):
-            eventBeingRescheduled = event
+        case .todo(let todo): todoBeingRescheduled = todo
+        case .event(let event): eventBeingRescheduled = event
         }
+    }
+
+    private func load(_ record: NoteRecordSnapshot?) {
+        guard let record, record != lastLoadedRecord else { return }
+        let hasUnsavedChanges = lastLoadedRecord.map {
+            title != $0.title || normalizedNotes != $0.notes
+        } ?? false
+        guard !hasUnsavedChanges else { return }
+        title = record.title
+        notes = record.notes ?? ""
+        lastLoadedRecord = record
+    }
+
+    private var normalizedNotes: String? {
+        notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : notes
     }
 
     private func scheduleSave() {
         pendingSave?.cancel()
         pendingSave = Task {
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-            } catch {
-                return
-            }
-
-            _ = save()
+            do { try await Task.sleep(for: .milliseconds(500)) }
+            catch { return }
+            save()
         }
     }
 
-    @discardableResult
-    private func save() -> Bool {
+    private func save() {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let savedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : notes
-
-        guard item.title != trimmedTitle || item.notes != savedNotes else {
-            return true
+        guard let record,
+              record.title != trimmedTitle || record.notes != normalizedNotes else {
+            return
         }
 
-        item.title = trimmedTitle
-        item.notes = savedNotes
-
         do {
-            try SwiftDataTransaction.save(modelContext)
-            return true
+            try dataStore.updateNote(
+                id,
+                title: trimmedTitle,
+                notes: normalizedNotes
+            )
+            lastLoadedRecord = nil
+            load(dataStore.snapshot.note(for: id))
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
-            return false
         }
     }
 }

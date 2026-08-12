@@ -2,14 +2,14 @@ import SwiftUI
 
 struct ReorderableItemGroup: Identifiable {
     let date: Date
-    let items: [Item]
+    let items: [ItemRecordSnapshot]
     let virtualItems: [VirtualItem]
 
     var id: Date { date }
 
     init(
         date: Date,
-        items: [Item],
+        items: [ItemRecordSnapshot],
         virtualItems: [VirtualItem] = []
     ) {
         self.date = date
@@ -21,26 +21,29 @@ struct ReorderableItemGroup: Identifiable {
 struct ReorderableItemList: View {
     let groups: [ReorderableItemGroup]
     let showsDateHeaders: Bool
-    let onOpen: (Item) -> Void
+    let onOpen: (ItemRecordSnapshot) -> Void
     let onOpenVirtual: (VirtualItem) -> Void
-    let onComplete: (Todo) -> Void
-    let onDelete: (Item) -> Void
-    let onDeleteTemplate: (RecurrenceTemplate) -> Void
+    let onComplete: (TodoRecordSnapshot) -> Void
+    let onDelete: (ItemRecordSnapshot) -> Void
+    let onDeleteTemplate: (RecurrenceTemplateRecordSnapshot) -> Void
     let onMove: (Date, IndexSet, Int) -> Void
     let onMoveAcrossDates: ([ItemID], Date, ItemID?) -> Void
-    @State private var todoBeingRescheduled: Todo?
-    @State private var eventBeingRescheduled: Event?
-    @State private var recurrenceTemplateBeingEdited: RecurrenceTemplate?
+    @State private var todoBeingRescheduled: TodoRecordSnapshot?
+    @State private var eventBeingRescheduled: EventRecordSnapshot?
+    @State private var recurrenceTemplateBeingEdited:
+        RecurrenceTemplateRecordSnapshot?
     @State private var projectMoveTarget: ProjectMoveTarget?
 
     init(
         groups: [ReorderableItemGroup],
         showsDateHeaders: Bool,
-        onOpen: @escaping (Item) -> Void,
+        onOpen: @escaping (ItemRecordSnapshot) -> Void,
         onOpenVirtual: @escaping (VirtualItem) -> Void = { _ in },
-        onComplete: @escaping (Todo) -> Void,
-        onDelete: @escaping (Item) -> Void,
-        onDeleteTemplate: @escaping (RecurrenceTemplate) -> Void = { _ in },
+        onComplete: @escaping (TodoRecordSnapshot) -> Void,
+        onDelete: @escaping (ItemRecordSnapshot) -> Void,
+        onDeleteTemplate: @escaping (
+            RecurrenceTemplateRecordSnapshot
+        ) -> Void = { _ in },
         onMove: @escaping (Date, IndexSet, Int) -> Void,
         onMoveAcrossDates: @escaping ([ItemID], Date, ItemID?) -> Void = {
             _, _, _ in
@@ -90,7 +93,7 @@ struct ReorderableItemList: View {
         .nagareListSectionSpacing(
             showsDateHeaders ? .custom(48) : .standard
         )
-        .reorderContainer(for: Item.self, in: Date.self) { difference in
+        .reorderContainer(for: ItemRecordSnapshot.self, in: Date.self) { difference in
             apply(difference)
         }
         .sheet(item: $todoBeingRescheduled) { todo in
@@ -148,7 +151,7 @@ struct ReorderableItemList: View {
         }
     }
 
-    private func presentScheduleEditor(_ item: Item) {
+    private func presentScheduleEditor(_ item: ItemRecordSnapshot) {
         switch item {
         case .todo(let todo):
             todoBeingRescheduled = todo

@@ -33,10 +33,32 @@ struct RecurrenceFormState: Equatable {
     }
 
     static func existing(
-        _ template: RecurrenceTemplate,
+        _ template: RecurrenceTemplateRecordSnapshot,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> RecurrenceFormState {
-        let rule = try template.rule(calendar: calendar)
+        guard let mode = RecurrenceMode(rawValue: template.modeRawValue),
+              let unit = RecurrenceUnit(rawValue: template.unitRawValue) else {
+            throw RecurrencePersistenceError.wrongItemType
+        }
+        let rule: RecurrenceRule
+        switch mode {
+        case .relative:
+            rule = try RecurrenceRule.relative(
+                every: template.interval,
+                unit: unit
+            )
+        case .absolute:
+            guard let reference = template.reference else {
+                throw RecurrenceError.missingReference
+            }
+            rule = try RecurrenceRule.absolute(
+                every: template.interval,
+                unit: unit,
+                anchors: template.anchors,
+                reference: reference,
+                calendar: calendar
+            )
+        }
         return RecurrenceFormState(
             isEnabled: true,
             mode: rule.mode,

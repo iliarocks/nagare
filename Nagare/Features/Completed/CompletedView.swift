@@ -1,26 +1,27 @@
-import SwiftData
 import SwiftUI
 
 struct CompletedView: View {
     private struct CompletedGroup: Identifiable {
         let date: Date
-        let todos: [Todo]
+        let todos: [TodoRecordSnapshot]
 
         var id: Date { date }
     }
 
-    @Environment(\.modelContext) private var modelContext
-
-    @Query(sort: \Todo.completedAt, order: .reverse)
-    private var todos: [Todo]
+    @NagareDataStoreEnvironment private var dataStore
 
     @State private var errorMessage: String?
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
 
+    private var todos: [TodoRecordSnapshot] {
+        dataStore.todos
+    }
+
     private var groups: [CompletedGroup] {
         let calendar = Calendar.autoupdatingCurrent
-        let completedTodos = todos.compactMap { todo -> (Todo, Date)? in
+        let completedTodos = todos.compactMap {
+            todo -> (TodoRecordSnapshot, Date)? in
             guard let completedAt = todo.completedAt else {
                 return nil
             }
@@ -94,10 +95,10 @@ struct CompletedView: View {
         )
     }
 
-    private func completedRow(_ todo: Todo) -> some View {
+    private func completedRow(_ todo: TodoRecordSnapshot) -> some View {
         Button {
             notesDetent = .medium
-            notesDestination = .todo(todo)
+            notesDestination = .todo(todo.id)
         } label: {
             HStack(spacing: 12) {
                 Text(todo.title)
@@ -170,26 +171,20 @@ struct CompletedView: View {
         .fontWeight(.regular)
     }
 
-    private func reinstate(_ todo: Todo) {
+    private func reinstate(_ todo: TodoRecordSnapshot) {
         do {
             try withAnimation {
-                try RecurrencePersistence.reinstate(
-                    todo,
-                    in: modelContext
-                )
+                try dataStore.reinstateTodo(todo.id)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func delete(_ todo: Todo) {
+    private func delete(_ todo: TodoRecordSnapshot) {
         do {
             try withAnimation {
-                try RecurrencePersistence.deleteCompleted(
-                    todo,
-                    in: modelContext
-                )
+                try dataStore.deleteCompletedTodo(todo.id)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -199,14 +194,4 @@ struct CompletedView: View {
     private func resetNotesSheet() {
         notesDetent = .medium
     }
-}
-
-#Preview {
-    NavigationStack {
-        CompletedView()
-    }
-    .modelContainer(
-        for: [Project.self, Todo.self, Event.self, RecurrenceTemplate.self],
-        inMemory: true
-    )
 }

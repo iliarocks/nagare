@@ -1,5 +1,4 @@
 import AppIntents
-import SwiftData
 import SwiftUI
 
 struct RootView: View {
@@ -15,13 +14,11 @@ struct RootView: View {
         case projects
     }
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @NagareDataStoreEnvironment private var dataStore
 #if os(macOS)
     @Environment(\.openSettings) private var openSystemSettings
 #endif
-
-    @Query private var projects: [Project]
 
     @State private var selectedSection = NavigationSection.today
     @State private var isCreatingItem = false
@@ -35,6 +32,10 @@ struct RootView: View {
     let intentStore: NagareIntentStore?
     let syncMonitor: SyncIntegrityMonitor?
     let cloudSyncEnabledForCurrentLaunch: Bool
+
+    private var projects: [ProjectRecordSnapshot] {
+        dataStore.projects
+    }
 
     init(
         intentStore: NagareIntentStore? = nil,
@@ -287,17 +288,15 @@ struct RootView: View {
         notesDetent = .medium
     }
 
-    private func openProject(_ project: Project) {
+    private func openProject(_ projectID: UUID) {
         notesDestination = nil
         selectedSection = .projects
-        projectPath = [project.id]
+        projectPath = [projectID]
     }
 
     private func importPendingCalendarEvents() {
         do {
-            let events = try CalendarImportPersistence.importPending(
-                in: modelContext
-            )
+            let events = try dataStore.importPendingCalendarEvents()
             guard !events.isEmpty else { return }
 
             let calendar = Calendar.autoupdatingCurrent
@@ -330,12 +329,12 @@ struct RootView: View {
 struct NotesSheet: View {
     let destination: NotesDestination
     @Binding var detent: PresentationDetent
-    let onOpenProject: (Project) -> Void
+    let onOpenProject: (UUID) -> Void
 
     init(
         destination: NotesDestination,
         detent: Binding<PresentationDetent>,
-        onOpenProject: @escaping (Project) -> Void = { _ in }
+        onOpenProject: @escaping (UUID) -> Void = { _ in }
     ) {
         self.destination = destination
         _detent = detent
@@ -353,21 +352,13 @@ struct NotesSheet: View {
 
     @ViewBuilder
     private var notesView: some View {
-        switch destination {
-        case .todo(let todo):
-            NotesView(item: todo, onOpenProject: onOpenProject)
-        case .event(let event):
-            NotesView(item: event, onOpenProject: onOpenProject)
-        case .template(let template):
-            NotesView(item: template, onOpenProject: onOpenProject)
-        }
+        NotesView(
+            id: destination.recordID,
+            onOpenProject: onOpenProject
+        )
     }
 }
 
 #Preview {
     RootView()
-        .modelContainer(
-            for: [Project.self, Todo.self, Event.self, RecurrenceTemplate.self],
-            inMemory: true
-        )
 }

@@ -65,11 +65,24 @@ side of a relationship. `SyncIntegrityMonitor` debounces persistent-history
 events before asking `SyncIntegrityRepair` to restore semantic invariants.
 The repair also runs at launch and whenever the app becomes active.
 
+SwiftUI reads one immutable `NagareDataSnapshot`. A history event first runs
+semantic reconciliation through a fresh short-lived context, then a separate
+fresh read context reconstructs and publishes the complete value graph.
+SwiftData records never cross the repository boundary. This is intentional:
+independently coordinated updates can leave objects registered in a long-lived
+context stale even while inserts appear. An integration test opens the same
+store through two coordinators, materializes a snapshot in the reader, changes
+the record in the writer, and requires history-driven publication of the new
+value.
+
 Conflict rules are deterministic:
 
 - Duplicate semantic UUIDs keep the greatest `modifiedAt`, falling back to
   `createdAt` and then the replicated `syncRecordID`. Project and recurrence
   relationships are moved to the canonical record before deletion.
+- Duplicate nonrepeating calendar imports with the same calendar UID use the
+  same canonical ordering. This covers two devices importing one invite while
+  both are offline without inventing a parallel calendar schema.
 - Competing todo successors keep the occurrence named by the template when it
   is available; otherwise they use the same deterministic record ordering.
   Earlier occurrences remain as completed history.
@@ -81,6 +94,10 @@ Conflict rules are deterministic:
 
 These policies prioritize convergence without converting a temporary partial
 import into permanent data loss.
+
+The immutable app snapshot uses the identical canonical ordering for its ID
+indexes. This prevents a transient duplicate from crashing or making a command
+depend on fetch order while the persistent-history repair is still debouncing.
 
 ## CloudKit environments
 

@@ -143,9 +143,14 @@ struct RecurrenceUIModelTests {
             rule: rule,
             in: context
         )
+        let templateSnapshot = try #require(
+            SwiftDataNagareRepository(modelContainer: context.container)
+                .load()
+                .templatesByID[template.id]
+        )
 
         let state = try RecurrenceFormState.existing(
-            template,
+            templateSnapshot,
             calendar: calendar
         )
         let optionalRule = try state.rule(
@@ -304,7 +309,7 @@ struct RecurrenceUIModelTests {
         #expect(item.itemType == .event)
     }
 
-    @Test func virtualItemReadsFutureTitleDirectlyFromTemplate() throws {
+    @Test func freshProjectionReadsUpdatedTemplateWithoutMutatingOldSnapshot() throws {
         let context = try makeContext()
         let todo = insertTodo(
             "Old future title",
@@ -327,8 +332,17 @@ struct RecurrenceUIModelTests {
         )
 
         template.title = "New future title"
+        let refreshedItem = try #require(
+            try project(
+                template,
+                in: context,
+                starting: date(2026, 7, 2),
+                through: date(2026, 7, 2)
+            ).items.first
+        )
 
-        #expect(item.template.title == "New future title")
+        #expect(item.template.title == "Old future title")
+        #expect(refreshedItem.template.title == "New future title")
         #expect(todo.title == "Old future title")
     }
 
@@ -406,16 +420,16 @@ struct RecurrenceUIModelTests {
         starting startDate: Date,
         through horizon: Date
     ) throws -> VirtualItemProjectionResult {
-        let todos = try context.fetch(FetchDescriptor<Todo>())
-        let events = try context.fetch(FetchDescriptor<Event>())
-        let input = VirtualItemProjection.input(
-            templates: [template],
-            todos: todos,
-            events: events
+        try context.save()
+        let snapshot = try SwiftDataNagareRepository(
+            modelContainer: context.container
+        ).load()
+        let templateSnapshot = try #require(
+            snapshot.templatesByID[template.id]
         )
         return VirtualItemProjection.generate(
-            from: input,
-            templates: [template],
+            from: snapshot.recurrenceProjectionInput,
+            templates: [templateSnapshot],
             starting: startDate,
             through: horizon,
             calendar: calendar

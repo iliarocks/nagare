@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TodoRow: View {
-    let todo: Todo
+    let todo: TodoRecordSnapshot
     let onOpen: () -> Void
     let onComplete: () -> Void
     let onChangeDate: () -> Void

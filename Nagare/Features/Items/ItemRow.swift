@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct ItemRow: View {
-    let item: Item
-    let onOpen: (Item) -> Void
-    let onComplete: (Todo) -> Void
-    let onChangeSchedule: (Item) -> Void
-    let onMoveProject: (Item) -> Void
-    let onDelete: (Item) -> Void
+    let item: ItemRecordSnapshot
+    let onOpen: (ItemRecordSnapshot) -> Void
+    let onComplete: (TodoRecordSnapshot) -> Void
+    let onChangeSchedule: (ItemRecordSnapshot) -> Void
+    let onMoveProject: (ItemRecordSnapshot) -> Void
+    let onDelete: (ItemRecordSnapshot) -> Void
 
     @State private var sharedCalendarFile: SharedCalendarFile?
     @State private var sharingErrorMessage: String?
@@ -144,7 +144,7 @@ struct ItemRow: View {
         )
     }
 
-    private func share(_ event: Event) {
+    private func share(_ event: EventRecordSnapshot) {
         do {
             sharedCalendarFile = try ICalendarExportStore.write(
                 ICalendarExportFile(event: event)

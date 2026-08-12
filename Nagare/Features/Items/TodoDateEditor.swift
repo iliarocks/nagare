@@ -1,15 +1,14 @@
-import SwiftData
 import SwiftUI
 
 struct TodoDateEditor: View {
-    @Environment(\.modelContext) private var modelContext
+    @NagareDataStoreEnvironment private var dataStore
 
-    let todo: Todo
+    let todo: TodoRecordSnapshot
 
     @State private var scheduledDate: Date
     @State private var errorMessage: String?
 
-    init(todo: Todo) {
+    init(todo: TodoRecordSnapshot) {
         self.todo = todo
         _scheduledDate = State(initialValue: todo.scheduledDate)
     }
@@ -55,15 +54,13 @@ struct TodoDateEditor: View {
         }
 
         do {
-            try ItemOrdering.move(
+            try dataStore.moveItems(
                 [.todo(todo.id)],
                 to: newDate,
                 before: nil,
-                in: modelContext,
                 calendar: calendar
             )
         } catch {
-            modelContext.rollback()
             scheduledDate = todo.scheduledDate
             errorMessage = error.localizedDescription
         }

@@ -5,10 +5,8 @@ struct VirtualItemID: Hashable {
     let date: Date
 }
 
-/// Presentation value that retains the source record only for user actions.
-/// Dates, type, and ordering are frozen outputs of the pure projection.
 struct VirtualItem: Identifiable {
-    let template: RecurrenceTemplate
+    let template: RecurrenceTemplateRecordSnapshot
     let date: Date
     let startDate: Date?
     let endDate: Date?
@@ -25,26 +23,10 @@ struct VirtualItemProjectionResult {
     let issues: [RecurrenceProjectionIssue]
 }
 
-/// Outer-layer mapper from SwiftData records to immutable projection input and
-/// back to presentation values. All date and partial-import decisions remain
-/// in `RecurrenceProjectionLogic`.
-@MainActor
 enum VirtualItemProjection {
-    static func input(
-        templates: [RecurrenceTemplate],
-        todos: [Todo],
-        events: [Event]
-    ) -> RecurrenceProjectionInput {
-        SwiftDataSyncSnapshotMapper.recurrenceProjectionInput(
-            templates: templates,
-            todos: todos,
-            events: events
-        )
-    }
-
     static func generate(
         from input: RecurrenceProjectionInput,
-        templates: [RecurrenceTemplate],
+        templates: [RecurrenceTemplateRecordSnapshot],
         starting startDate: Date,
         through horizon: Date,
         calendar: Calendar
@@ -55,23 +37,13 @@ enum VirtualItemProjection {
             through: horizon,
             calendar: calendar
         )
-        let templatesByReference = Dictionary(
-            uniqueKeysWithValues: templates.map {
-                (
-                    SwiftDataSyncSnapshotMapper.reference(
-                        for: $0,
-                        kind: .recurrenceTemplate
-                    ),
-                    $0
-                )
-            }
+        let templatesByID = Dictionary(
+            uniqueKeysWithValues: templates.map { ($0.id, $0) }
         )
 
         return VirtualItemProjectionResult(
             items: projected.items.compactMap { item in
-                guard let template = templatesByReference[
-                    item.templateReference
-                ] else {
+                guard let template = templatesByID[item.templateID] else {
                     return nil
                 }
                 return VirtualItem(

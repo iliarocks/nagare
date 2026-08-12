@@ -5,6 +5,11 @@ import Testing
 
 @MainActor
 struct NagareIntentSemanticsTests {
+    private struct Fixture {
+        let store: NagareIntentStore
+        let repository: SwiftDataNagareRepository
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -103,7 +108,8 @@ struct NagareIntentSemanticsTests {
     }
 
     @Test func storeCreatesOnlyAStandardTodo() throws {
-        let store = try makeStore()
+        let fixture = try makeFixture()
+        let store = fixture.store
         let tomorrow = date(2026, 8, 4)
 
         let snapshot = try store.createTodo(
@@ -116,16 +122,14 @@ struct NagareIntentSemanticsTests {
         #expect(snapshot.title == "Buy cereal")
         #expect(snapshot.scheduledDate == tomorrow)
         #expect(snapshot.endDate == nil)
-        #expect(
-            try store.modelContainer.mainContext.fetch(
-                FetchDescriptor<Todo>()
-            ).count == 1
-        )
-        #expect(try recurrenceTemplates(in: store).isEmpty)
+        let persisted = try fixture.repository.load()
+        #expect(persisted.todos.count == 1)
+        #expect(persisted.recurrenceTemplates.isEmpty)
     }
 
     @Test func storeCreatesEventsWithOrWithoutAnEnd() throws {
-        let store = try makeStore()
+        let fixture = try makeFixture()
+        let store = fixture.store
         let basketball = date(2026, 8, 8, hour: 18, minute: 30)
         let hangStart = date(2026, 8, 8, hour: 16)
         let hangEnd = date(2026, 8, 8, hour: 17)
@@ -147,23 +151,12 @@ struct NagareIntentSemanticsTests {
         #expect(openEnded.endDate == nil)
         #expect(ranged.scheduledDate == hangStart)
         #expect(ranged.endDate == hangEnd)
-        #expect(
-            try store.modelContainer.mainContext.fetch(
-                FetchDescriptor<Event>()
-            ).count == 2
-        )
-        #expect(try recurrenceTemplates(in: store).isEmpty)
+        let persisted = try fixture.repository.load()
+        #expect(persisted.events.count == 2)
+        #expect(persisted.recurrenceTemplates.isEmpty)
     }
 
-    private func recurrenceTemplates(
-        in store: NagareIntentStore
-    ) throws -> [RecurrenceTemplate] {
-        try store.modelContainer.mainContext.fetch(
-            FetchDescriptor<RecurrenceTemplate>()
-        )
-    }
-
-    private func makeStore() throws -> NagareIntentStore {
+    private func makeFixture() throws -> Fixture {
         let container = try ModelContainer(
             for: Project.self,
             Todo.self,
@@ -174,7 +167,16 @@ struct NagareIntentSemanticsTests {
                 cloudKitDatabase: .none
             )
         )
-        return NagareIntentStore(modelContainer: container)
+        let repository = SwiftDataNagareRepository(modelContainer: container)
+        return Fixture(
+            store: NagareIntentStore(
+                orchestrator: NagareDataOrchestrator(
+                    reader: repository,
+                    writer: repository
+                )
+            ),
+            repository: repository
+        )
     }
 
     private func date(

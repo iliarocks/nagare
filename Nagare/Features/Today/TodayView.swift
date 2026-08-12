@@ -1,22 +1,23 @@
-import SwiftData
 import SwiftUI
 
 struct TodayView: View {
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-
-    @Query(sort: \Todo.scheduledDate)
-    private var todos: [Todo]
-
-    @Query(sort: \Event.scheduledDate)
-    private var events: [Event]
+    @NagareDataStoreEnvironment private var dataStore
 
     @State private var errorMessage: String?
     @State private var displayedItemIDs: [ItemID] = []
 
     let onOpenNotes: (NotesDestination) -> Void
 
-    private var todayTodos: [Todo] {
+    private var todos: [TodoRecordSnapshot] {
+        dataStore.todos
+    }
+
+    private var events: [EventRecordSnapshot] {
+        dataStore.events
+    }
+
+    private var todayTodos: [TodoRecordSnapshot] {
         let calendar = Calendar.autoupdatingCurrent
         guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now)) else {
             return todos.filter { $0.completedAt == nil }
@@ -27,7 +28,7 @@ struct TodayView: View {
         }
     }
 
-    private var todayEvents: [Event] {
+    private var todayEvents: [EventRecordSnapshot] {
         let calendar = Calendar.autoupdatingCurrent
         let today = calendar.startOfDay(for: .now)
         guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else {
@@ -39,15 +40,15 @@ struct TodayView: View {
         }
     }
 
-    private var persistedTodayItems: [Item] {
-        Item.ordered(todos: todayTodos, events: todayEvents)
+    private var persistedTodayItems: [ItemRecordSnapshot] {
+        ItemRecordSnapshot.ordered(todos: todayTodos, events: todayEvents)
     }
 
     private var persistedTodayItemIDs: [ItemID] {
         persistedTodayItems.map(\.id)
     }
 
-    private var todayItems: [Item] {
+    private var todayItems: [ItemRecordSnapshot] {
         guard !displayedItemIDs.isEmpty else {
             return persistedTodayItems
         }
@@ -149,27 +150,19 @@ struct TodayView: View {
         )
     }
 
-    private func complete(_ todo: Todo) {
+    private func complete(_ todo: TodoRecordSnapshot) {
         do {
             try withAnimation {
-                _ = try RecurrencePersistence.complete(
-                    todo,
-                    in: modelContext
-                )
+                try dataStore.completeTodo(todo.id)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func delete(_ item: Item) {
+    private func delete(_ item: ItemRecordSnapshot) {
         do {
-            switch item {
-            case .todo(let todo):
-                try RecurrencePersistence.delete(todo, in: modelContext)
-            case .event(let event):
-                try RecurrencePersistence.delete(event, in: modelContext)
-            }
+            try dataStore.deleteItem(item.id)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -177,14 +170,16 @@ struct TodayView: View {
 
     private func saveDisplayedOrder() {
         do {
-            let today = Calendar.autoupdatingCurrent.startOfDay(for: .now)
-            try ItemOrdering.saveDisplayedOrder(
+            let plan = try OrderingPlanner.displayedOrder(
                 displayedItemIDs,
-                on: today,
-                in: modelContext
+                contains: persistedTodayItems.map {
+                    OrderingPlanner.Entry(id: $0.id, order: $0.order)
+                }
             )
+            try dataStore.saveItemOrdering(plan.assignments.map {
+                ItemOrderingChange(id: $0.id, order: $0.order)
+            })
         } catch {
-            modelContext.rollback()
             displayedItemIDs = persistedTodayItemIDs
             errorMessage = error.localizedDescription
         }
@@ -192,8 +187,7 @@ struct TodayView: View {
 
     private func performMaintenance() {
         do {
-            try TodoMaintenance.rollUnfinishedTodosForward(in: modelContext)
-            try EventMaintenance.deletePastEvents(in: modelContext)
+            try dataStore.performMaintenance()
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum Item: Identifiable {
+enum SwiftDataItem: Identifiable {
     case todo(Todo)
     case event(Event)
 
@@ -19,6 +19,20 @@ enum Item: Identifiable {
             todo.order
         case .event(let event):
             event.order
+        }
+    }
+
+    var kind: ItemDraftKind {
+        switch self {
+        case .todo: .todo
+        case .event: .event
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .todo(let todo): todo.createdAt
+        case .event(let event): event.createdAt
         }
     }
 
@@ -150,18 +164,18 @@ enum Item: Identifiable {
     }
 
     @MainActor
-    static func ordered(todos: [Todo], events: [Event]) -> [Item] {
-        ordered(todos.map(Item.todo) + events.map(Item.event))
+    static func ordered(todos: [Todo], events: [Event]) -> [SwiftDataItem] {
+        ordered(todos.map(SwiftDataItem.todo) + events.map(SwiftDataItem.event))
     }
 
     @MainActor
-    static func ordered(_ items: [Item]) -> [Item] {
+    static func ordered(_ items: [SwiftDataItem]) -> [SwiftDataItem] {
         items.sorted(by: areInIncreasingOrder)
     }
 
     @MainActor
-    static func orderedInProject(todos: [Todo], events: [Event]) -> [Item] {
-        (todos.map(Item.todo) + events.map(Item.event)).sorted {
+    static func orderedInProject(todos: [Todo], events: [Event]) -> [SwiftDataItem] {
+        (todos.map(SwiftDataItem.todo) + events.map(SwiftDataItem.event)).sorted {
             switch ($0.projectOrder, $1.projectOrder) {
             case let (.some(first), .some(second)) where first != second:
                 return first < second
@@ -176,8 +190,8 @@ enum Item: Identifiable {
     }
 
     private static func areInIncreasingOrder(
-        _ first: Item,
-        _ second: Item
+        _ first: SwiftDataItem,
+        _ second: SwiftDataItem
     ) -> Bool {
         if first.order != second.order {
             return first.order < second.order

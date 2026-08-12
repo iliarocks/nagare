@@ -15,18 +15,20 @@ never back up:
 4. **Features/App/AppIntents/Widgets** are delivery mechanisms. They render
    state, collect user input, and invoke a facade or orchestrator.
 
-The ordering flow is the reference vertical slice:
+The application data flow is the reference vertical slice:
 
 ```text
-SwiftUI / App Intent
-        |
-compatibility facade
-        |
-ItemOrderingOrchestrator ---- ItemOrderingPersistence (port)
-        |                              |
-OrderingPlanner (pure)       SwiftDataOrderingAdapter
-        |                              |
-immutable snapshots                 SwiftData
+SwiftUI -- ID-addressed command --> NagareDataStore
+                                        |
+                              NagareDataOrchestrator
+                               /                 \
+                    pure deterministic plan   persistence port
+                                               |
+                                  SwiftDataNagareRepository
+                                               |
+                                fresh short-lived ModelContext
+                                               |
+                                           SwiftData
 ```
 
 Sync reconciliation follows the same shape:
@@ -41,6 +43,15 @@ SyncReconciliationPlanner (pure)   SwiftDataSyncReconciliationAdapter
 immutable graph + explicit plan             SwiftData / CloudKit
 ```
 
+Live reads cross one strict value boundary. `SwiftDataNagareRepository` creates
+a new short-lived `ModelContext` for each load, maps the complete persisted
+graph to `NagareDataSnapshot`, and releases every managed object before the
+value reaches the application layer. `NagareDataStore` publishes that one
+immutable graph. Persistent-history events trigger reconciliation in another
+fresh context, followed by a fresh snapshot load. No managed object is UI
+state, and features may not introduce `@Query`, `ResultsObserver`, or direct
+SwiftData access.
+
 `Scripts/lint-imports.sh` enforces framework allowlists for each inner layer,
 rejects side-effect APIs in Domain/Application, and rejects direct
 `ModelContext.save()` calls outside Infrastructure. The Xcode app target runs
@@ -54,11 +65,11 @@ the linter before compilation.
   parameters. They return a value, plan, or explicit change set.
 - I/O adapters are intentionally boring: load, translate, apply, save, and
   rollback.
-- Orchestrators own transaction order and always roll back before propagating
-  an I/O failure.
-- UI code must not call `ModelContext.save()` directly. Existing record-editing
-  screens use `SwiftDataTransaction` while their larger workflows are migrated
-  behind ports.
+- Orchestrators own use-case sequencing; persistence adapters own their single
+  transaction and roll it back before propagating an I/O failure.
+- UI code retains semantic IDs and immutable values only. All reads and writes
+  cross application ports. SwiftData is limited to Infrastructure plus the App
+  composition root and persistent-history bridge that construct those adapters.
 
 ## Persistence and sync
 
@@ -86,8 +97,9 @@ application invariant:
 2. `SwiftDataTransaction` stamps every changed record's `modifiedAt` and is the
    only production save boundary.
 3. `SyncIntegrityMonitor` owns continuous persistent-history observation and
-   debounces reconciliation after remote events. No view lifecycle keeps data
-   correct.
+   debounces reconciliation after remote events. Every repair and following
+   publication uses fresh contexts. No view lifecycle keeps data correct, and
+   a repair rollback can never discard an in-progress UI transaction.
 4. `SyncReconciliationPlanner` receives one immutable graph and returns an
    explicit deterministic plan. Missing relationship edges are pending import
    states. It never reads SwiftData identity or performs I/O.
@@ -97,6 +109,12 @@ application invariant:
 The repair rules are idempotent and preserve records when a related CloudKit
 record may still be in flight. The same complete input therefore converges to
 the same result on every device.
+
+Calendar invite UIDs are an additional semantic identity for nonrepeating
+imports. If two offline devices import the same invite before either record is
+replicated, reconciliation keeps one deterministic canonical event. Repeating
+events are deliberately excluded from this simple merge because their series
+template names the occurrence UUID.
 
 A migrated V1 record without a physical identity deterministically uses its
 semantic UUID. Random IDs and store-local persistent identifiers are forbidden
@@ -109,6 +127,11 @@ and occurrence fetched independently. It identifies the current item by
 semantic ID and sequence even before CloudKit imports the inverse relationship.
 A template imported before its current occurrence is skipped as pending; it
 never empties unrelated projections or turns a reorder into a save failure.
+
+Published snapshot indexes use the same canonical replicated-record ordering
+as reconciliation. A duplicate that is visible during a partial import is
+therefore one deterministic read value rather than a trapping dictionary
+initializer; the history-driven repair still removes the redundant record.
 
 All future persisted-model changes must keep the CloudKit contract:
 

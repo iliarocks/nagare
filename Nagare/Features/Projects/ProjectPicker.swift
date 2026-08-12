@@ -2,16 +2,16 @@ import Foundation
 import SwiftUI
 
 struct ProjectPicker: View {
-    let projects: [Project]
-    let selectedProject: Project?
-    let onSelect: (Project?) -> Void
+    let projects: [ProjectRecordSnapshot]
+    let selectedProject: ProjectRecordSnapshot?
+    let onSelect: (ProjectRecordSnapshot?) -> Void
 
-    private var priorityProjects: [Project] {
-        Project.ordered(projects.filter(\.isPriority))
+    private var priorityProjects: [ProjectRecordSnapshot] {
+        ordered(projects.filter(\.isPriority))
     }
 
-    private var backgroundProjects: [Project] {
-        Project.ordered(projects.filter { !$0.isPriority })
+    private var backgroundProjects: [ProjectRecordSnapshot] {
+        ordered(projects.filter { !$0.isPriority })
     }
 
     var body: some View {
@@ -43,5 +43,14 @@ struct ProjectPicker: View {
                 onSelect(project)
             }
         )
+    }
+
+    private func ordered(
+        _ projects: [ProjectRecordSnapshot]
+    ) -> [ProjectRecordSnapshot] {
+        projects.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 }

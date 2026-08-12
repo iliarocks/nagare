@@ -5,7 +5,7 @@ struct ICalendarExportFile {
     let filename: String
     let subject: String
 
-    init(event: Event, generatedAt: Date = .now) {
+    init(event: EventRecordSnapshot, generatedAt: Date = .now) {
         let draft = ICalendarEventDraft(
             sourceIdentifier: event.calendarIdentifier
                 ?? "\(event.id.uuidString)@nagare",

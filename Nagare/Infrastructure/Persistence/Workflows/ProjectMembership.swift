@@ -18,13 +18,14 @@ enum ProjectMembership {
 
     @MainActor
     static func assign(
-        _ item: Item,
+        _ item: SwiftDataItem,
         to project: Project?,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
         do {
             try prepare(item, for: project, in: context)
-            try SwiftDataTransaction.save(context)
+            try SwiftDataTransaction.save(context, at: modificationDate)
         } catch let error as MembershipError {
             context.rollback()
             throw error
@@ -38,15 +39,21 @@ enum ProjectMembership {
     static func assign(
         _ template: RecurrenceTemplate,
         to project: Project?,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
         let currentItem = try currentItem(for: template)
-        try assign(currentItem, to: project, in: context)
+        try assign(
+            currentItem,
+            to: project,
+            at: modificationDate,
+            in: context
+        )
     }
 
     @MainActor
     static func prepare(
-        _ item: Item,
+        _ item: SwiftDataItem,
         for project: Project?,
         in context: ModelContext
     ) throws {
@@ -81,7 +88,7 @@ enum ProjectMembership {
     }
 
     private static func synchronizeTemplate(
-        for item: Item,
+        for item: SwiftDataItem,
         with project: Project?
     ) {
         switch item {
@@ -94,7 +101,7 @@ enum ProjectMembership {
 
     private static func currentItem(
         for template: RecurrenceTemplate
-    ) throws -> Item {
+    ) throws -> SwiftDataItem {
         switch template.itemType {
         case .todo:
             guard let todo = template.todoOccurrences.first(where: {

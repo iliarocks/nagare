@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProjectRepeatRow: View {
-    let template: RecurrenceTemplate
+    let template: RecurrenceTemplateRecordSnapshot
     let onOpen: () -> Void
     let onChangeRepeat: () -> Void
     let onMoveProject: () -> Void

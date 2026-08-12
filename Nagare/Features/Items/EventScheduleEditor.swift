@@ -1,12 +1,11 @@
-import SwiftData
 import SwiftUI
 
 struct EventScheduleEditor: View {
     static let sheetDetent = PresentationDetent.height(230)
 
-    @Environment(\.modelContext) private var modelContext
+    @NagareDataStoreEnvironment private var dataStore
 
-    let event: Event
+    let event: EventRecordSnapshot
 
     @State private var scheduledDate: Date
     @State private var startTime: Date
@@ -14,7 +13,7 @@ struct EventScheduleEditor: View {
     @State private var endTime: Date
     @State private var errorMessage: String?
 
-    init(event: Event) {
+    init(event: EventRecordSnapshot) {
         self.event = event
         _scheduledDate = State(initialValue: event.scheduledDate)
         _startTime = State(initialValue: event.scheduledDate)
@@ -108,15 +107,12 @@ struct EventScheduleEditor: View {
         }
 
         do {
-            let calendar = Calendar.autoupdatingCurrent
-            if !calendar.isDate(event.scheduledDate, inSameDayAs: eventScheduledDate) {
-                event.order = try ItemOrdering.nextOrder(in: modelContext)
-            }
-            event.scheduledDate = eventScheduledDate
-            event.endDate = endDate
-            try SwiftDataTransaction.save(modelContext)
+            try dataStore.updateEventSchedule(
+                event.id,
+                scheduledDate: eventScheduledDate,
+                endDate: endDate
+            )
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }

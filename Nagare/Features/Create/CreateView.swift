@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct CreateView: View {
@@ -22,10 +21,8 @@ struct CreateView: View {
 
     }
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-
-    @Query private var projects: [Project]
+    @NagareDataStoreEnvironment private var dataStore
 
     @State private var itemType = ItemType.todo
     @State private var title = ""
@@ -40,18 +37,22 @@ struct CreateView: View {
             to: .now
         ) ?? .now
     @State private var recurrence = RecurrenceFormState.disabled
-    @State private var selectedProject: Project?
+    @State private var selectedProject: ProjectRecordSnapshot?
     @State private var isShowingDetails = false
     @State private var fieldToRestoreAfterDetails = Field.title
-    @State private var persistedItem: Item?
+    @State private var persistedItemID: ItemID?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
     private let onDismiss: (() -> Void)?
 
+    private var projects: [ProjectRecordSnapshot] {
+        dataStore.projects
+    }
+
     init(
-        project: Project? = nil,
+        project: ProjectRecordSnapshot? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         _selectedProject = State(initialValue: project)
@@ -392,247 +393,30 @@ struct CreateView: View {
                 : eventScheduledDate
             let rule = try recurrence.rule(referenceDate: referenceDate)
 
-            if let persistedItem {
-                if persistedType(of: persistedItem) == itemType {
-                    try update(persistedItem, rule: rule)
-                } else {
-                    self.persistedItem = try replace(
-                        persistedItem,
-                        rule: rule
-                    )
-                }
-            } else {
-                persistedItem = try createPersistedItem(rule: rule)
-            }
+            persistedItemID = try dataStore.upsertItem(
+                ItemDraft(
+                    kind: itemType == .todo ? .todo : .event,
+                    title: trimmedTitle,
+                    notes: savedNotes,
+                    scheduledDate: itemType == .todo
+                        ? scheduledDate
+                        : eventScheduledDate,
+                    endDate: itemType == .event ? eventEndDate : nil,
+                    projectID: selectedProject?.id,
+                    recurrenceRule: rule,
+                    eventStartTimeSeconds: itemType == .event
+                        ? wallTimeSeconds(eventScheduledDate)
+                        : nil,
+                    eventEndTimeSeconds: itemType == .event
+                        ? eventEndDate.map(wallTimeSeconds)
+                        : nil
+                ),
+                existingID: persistedItemID
+            )
             return true
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
             return false
-        }
-    }
-
-    private func createPersistedItem(
-        rule: RecurrenceRule?
-    ) throws -> Item {
-        let order = try ItemOrdering.nextOrder(in: modelContext)
-
-        switch itemType {
-        case .todo:
-            let todo = Todo(
-                title: trimmedTitle,
-                notes: savedNotes,
-                scheduledDate: scheduledDate,
-                order: order
-            )
-            modelContext.insert(todo)
-            try ProjectMembership.prepare(
-                .todo(todo),
-                for: selectedProject,
-                in: modelContext
-            )
-            try persistRecurrence(for: todo, rule: rule)
-            return .todo(todo)
-
-        case .event:
-            let event = Event(
-                title: trimmedTitle,
-                notes: savedNotes,
-                scheduledDate: eventScheduledDate,
-                endDate: eventEndDate,
-                order: order
-            )
-            modelContext.insert(event)
-            try ProjectMembership.prepare(
-                .event(event),
-                for: selectedProject,
-                in: modelContext
-            )
-            try persistRecurrence(for: event, rule: rule)
-            return .event(event)
-        }
-    }
-
-    private func update(
-        _ item: Item,
-        rule: RecurrenceRule?
-    ) throws {
-        let calendar = Calendar.autoupdatingCurrent
-
-        switch item {
-        case .todo(let todo):
-            if !calendar.isDate(
-                todo.scheduledDate,
-                inSameDayAs: scheduledDate
-            ) {
-                todo.order = try ItemOrdering.nextOrder(in: modelContext)
-            }
-            todo.title = trimmedTitle
-            todo.notes = savedNotes
-            todo.scheduledDate = calendar.startOfDay(for: scheduledDate)
-            try ProjectMembership.prepare(
-                .todo(todo),
-                for: selectedProject,
-                in: modelContext
-            )
-            try persistRecurrence(for: todo, rule: rule)
-
-        case .event(let event):
-            if !calendar.isDate(
-                event.scheduledDate,
-                inSameDayAs: eventScheduledDate
-            ) {
-                event.order = try ItemOrdering.nextOrder(in: modelContext)
-            }
-            event.title = trimmedTitle
-            event.notes = savedNotes
-            event.scheduledDate = eventScheduledDate
-            event.endDate = eventEndDate
-            try ProjectMembership.prepare(
-                .event(event),
-                for: selectedProject,
-                in: modelContext
-            )
-            try persistRecurrence(for: event, rule: rule)
-        }
-    }
-
-    private func replace(
-        _ item: Item,
-        rule: RecurrenceRule?
-    ) throws -> Item {
-        let previousProject = item.project
-        let previousProjectOrder = item.projectOrder
-        let order = item.order
-        let createdAt: Date
-
-        switch item {
-        case .todo(let todo):
-            createdAt = todo.createdAt
-            if let template = todo.recurrenceTemplate {
-                modelContext.delete(template)
-            }
-            modelContext.delete(todo)
-        case .event(let event):
-            createdAt = event.createdAt
-            if let template = event.recurrenceTemplate {
-                modelContext.delete(template)
-            }
-            modelContext.delete(event)
-        }
-
-        switch itemType {
-        case .todo:
-            let todo = Todo(
-                title: trimmedTitle,
-                notes: savedNotes,
-                scheduledDate: scheduledDate,
-                createdAt: createdAt,
-                order: order,
-                projectOrder: previousProjectOrder
-            )
-            todo.project = previousProject
-            modelContext.insert(todo)
-            try ProjectMembership.prepare(
-                .todo(todo),
-                for: selectedProject,
-                in: modelContext
-            )
-            try persistRecurrence(for: todo, rule: rule)
-            return .todo(todo)
-
-        case .event:
-            let event = Event(
-                title: trimmedTitle,
-                notes: savedNotes,
-                scheduledDate: eventScheduledDate,
-                endDate: eventEndDate,
-                createdAt: createdAt,
-                order: order,
-                projectOrder: previousProjectOrder
-            )
-            event.project = previousProject
-            modelContext.insert(event)
-            try ProjectMembership.prepare(
-                .event(event),
-                for: selectedProject,
-                in: modelContext
-            )
-            try persistRecurrence(for: event, rule: rule)
-            return .event(event)
-        }
-    }
-
-    private func persistRecurrence(
-        for todo: Todo,
-        rule: RecurrenceRule?
-    ) throws {
-        if let template = todo.recurrenceTemplate {
-            template.title = trimmedTitle
-            template.notes = savedNotes
-            if let rule {
-                try RecurrencePersistence.updateTemplate(
-                    template,
-                    rule: rule,
-                    in: modelContext
-                )
-            } else {
-                try RecurrencePersistence.deleteTemplate(
-                    template,
-                    in: modelContext
-                )
-            }
-        } else if let rule {
-            _ = try RecurrencePersistence.createTemplate(
-                for: todo,
-                rule: rule,
-                in: modelContext
-            )
-        } else {
-            try SwiftDataTransaction.save(modelContext)
-        }
-    }
-
-    private func persistRecurrence(
-        for event: Event,
-        rule: RecurrenceRule?
-    ) throws {
-        if let template = event.recurrenceTemplate {
-            template.title = trimmedTitle
-            template.notes = savedNotes
-            if let rule {
-                try RecurrencePersistence.updateTemplate(
-                    template,
-                    rule: rule,
-                    eventStartTimeSeconds: wallTimeSeconds(
-                        event.scheduledDate
-                    ),
-                    eventEndTimeSeconds: event.endDate.map(
-                        wallTimeSeconds
-                    ),
-                    in: modelContext
-                )
-            } else {
-                try RecurrencePersistence.deleteTemplate(
-                    template,
-                    in: modelContext
-                )
-            }
-        } else if let rule {
-            _ = try RecurrencePersistence.createTemplate(
-                for: event,
-                rule: rule,
-                in: modelContext
-            )
-        } else {
-            try SwiftDataTransaction.save(modelContext)
-        }
-    }
-
-    private func persistedType(of item: Item) -> ItemType {
-        switch item {
-        case .todo: .todo
-        case .event: .event
         }
     }
 

@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct RecurrenceEditor: View {
@@ -12,9 +11,9 @@ struct RecurrenceEditor: View {
         let errorMessage: String?
     }
 
-    @Environment(\.modelContext) private var modelContext
+    @NagareDataStoreEnvironment private var dataStore
 
-    let template: RecurrenceTemplate
+    let template: RecurrenceTemplateRecordSnapshot
     private let itemType: RecurrenceItemType
     private let referenceDate: Date
     private let initialErrorMessage: String?
@@ -26,7 +25,7 @@ struct RecurrenceEditor: View {
     @State private var errorMessage: String?
     @State private var pendingSave: Task<Void, Never>?
 
-    init(template: RecurrenceTemplate) {
+    init(template: RecurrenceTemplateRecordSnapshot) {
         self.template = template
         let values = Self.initialValues(for: template)
         itemType = values.itemType
@@ -170,28 +169,19 @@ struct RecurrenceEditor: View {
                 throw RecurrenceEditorError.missingRule
             }
 
-            try update(template, rule: rule)
+            try dataStore.updateRecurrenceTemplate(
+                template.id,
+                rule: rule,
+                eventStartTimeSeconds: itemType == .event
+                    ? wallTimeSeconds(startTime)
+                    : nil,
+                eventEndTimeSeconds: itemType == .event && includesEndTime
+                    ? wallTimeSeconds(endTime)
+                    : nil
+            )
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func update(
-        _ template: RecurrenceTemplate,
-        rule: RecurrenceRule
-    ) throws {
-        try RecurrencePersistence.updateTemplate(
-            template,
-            rule: rule,
-            eventStartTimeSeconds: itemType == .event
-                ? wallTimeSeconds(startTime)
-                : nil,
-            eventEndTimeSeconds: itemType == .event && includesEndTime
-                ? wallTimeSeconds(endTime)
-                : nil,
-            in: modelContext
-        )
     }
 
     private func wallTimeSeconds(_ date: Date) -> Int {
@@ -205,7 +195,7 @@ struct RecurrenceEditor: View {
     }
 
     private static func initialValues(
-        for template: RecurrenceTemplate
+        for template: RecurrenceTemplateRecordSnapshot
     ) -> InitialValues {
         let calendar = Calendar.autoupdatingCurrent
         let now = Date.now
@@ -253,7 +243,7 @@ struct RecurrenceEditor: View {
     }
 
     private static func itemType(
-        for template: RecurrenceTemplate
+        for template: RecurrenceTemplateRecordSnapshot
     ) throws -> RecurrenceItemType {
         guard let itemType = template.itemType else {
             throw RecurrencePersistenceError.wrongItemType
@@ -262,30 +252,16 @@ struct RecurrenceEditor: View {
     }
 
     private static func referenceDate(
-        for template: RecurrenceTemplate
+        for template: RecurrenceTemplateRecordSnapshot
     ) throws -> Date {
-        switch template.itemType {
-        case .todo:
-            guard let todo = template.todoOccurrences.first(where: {
-                $0.id == template.currentItemID && $0.completedAt == nil
-            }) else {
-                throw RecurrenceEditorError.missingCurrentOccurrence
-            }
-            return todo.scheduledDate
-        case .event:
-            guard let event = template.eventOccurrences.first(where: {
-                $0.id == template.currentItemID
-            }) else {
-                throw RecurrenceEditorError.missingCurrentOccurrence
-            }
-            return event.scheduledDate
-        case nil:
-            throw RecurrencePersistenceError.wrongItemType
+        guard let date = template.currentScheduledDate else {
+            throw RecurrenceEditorError.missingCurrentOccurrence
         }
+        return date
     }
 
     private static func eventTimes(
-        for template: RecurrenceTemplate,
+        for template: RecurrenceTemplateRecordSnapshot,
         itemType: RecurrenceItemType,
         fallback: Date,
         calendar: Calendar

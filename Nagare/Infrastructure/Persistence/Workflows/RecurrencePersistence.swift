@@ -6,9 +6,10 @@ enum RecurrencePersistence {
     static func createTemplate(
         for todo: Todo,
         rule: RecurrenceRule,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws -> RecurrenceTemplate {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             guard todo.recurrenceTemplate == nil,
                   todo.recurrenceSequence == nil else {
                 throw RecurrencePersistenceError.itemAlreadyRepeats
@@ -23,7 +24,8 @@ enum RecurrencePersistence {
                 title: todo.title,
                 notes: todo.notes,
                 rule: rule,
-                currentItemID: todo.id
+                currentItemID: todo.id,
+                createdAt: modificationDate
             )
             context.insert(template)
             template.project = todo.project
@@ -36,10 +38,11 @@ enum RecurrencePersistence {
     static func createTemplate(
         for event: Event,
         rule: RecurrenceRule,
+        at modificationDate: Date = .now,
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> RecurrenceTemplate {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             guard event.recurrenceTemplate == nil,
                   event.recurrenceSequence == nil else {
                 throw RecurrencePersistenceError.itemAlreadyRepeats
@@ -57,7 +60,8 @@ enum RecurrencePersistence {
                 rule: rule,
                 startTimeSeconds: times.start,
                 endTimeSeconds: times.end,
-                currentItemID: event.id
+                currentItemID: event.id,
+                createdAt: modificationDate
             )
             context.insert(template)
             template.project = event.project
@@ -72,9 +76,10 @@ enum RecurrencePersistence {
         rule: RecurrenceRule,
         eventStartTimeSeconds: Int? = nil,
         eventEndTimeSeconds: Int? = nil,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             guard let itemType = template.itemType else {
                 throw RecurrencePersistenceError.wrongItemType
             }
@@ -120,7 +125,7 @@ enum RecurrencePersistence {
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Todo? {
-        try perform(in: context) {
+        try perform(in: context, at: completionDate) {
             guard todo.completedAt == nil else {
                 throw RecurrencePersistenceError.todoAlreadyCompleted
             }
@@ -156,10 +161,11 @@ enum RecurrencePersistence {
     static func reinstate(
         _ todo: Todo,
         on date: Date = .now,
+        at modificationDate: Date = .now,
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             guard todo.completedAt != nil else {
                 throw RecurrencePersistenceError.todoNotCompleted
             }
@@ -181,9 +187,10 @@ enum RecurrencePersistence {
     /// recurrence history does not affect the template's current occurrence.
     static func deleteCompleted(
         _ todo: Todo,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             try prepareCompletedDeletion(todo, in: context)
         }
     }
@@ -197,7 +204,7 @@ enum RecurrencePersistence {
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Todo? {
-        try perform(in: context) {
+        try perform(in: context, at: transitionDate) {
             try prepareDeletion(
                 todo,
                 at: transitionDate,
@@ -216,7 +223,7 @@ enum RecurrencePersistence {
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> [Todo?] {
-        try perform(in: context) {
+        try perform(in: context, at: transitionDate) {
             guard Set(todos.map(\.id)).count == todos.count else {
                 throw RecurrencePersistenceError.duplicateItems
             }
@@ -244,7 +251,7 @@ enum RecurrencePersistence {
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Event? {
-        try perform(in: context) {
+        try perform(in: context, at: transitionDate) {
             guard let template = event.recurrenceTemplate else {
                 context.delete(event)
                 return nil
@@ -275,9 +282,10 @@ enum RecurrencePersistence {
     /// and every future occurrence represented by the series.
     static func deleteSeries(
         containing event: Event,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             guard let template = event.recurrenceTemplate else {
                 context.delete(event)
                 return
@@ -300,7 +308,7 @@ enum RecurrencePersistence {
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Event {
-        try perform(in: context) {
+        try perform(in: context, at: transitionDate) {
             try advanceCurrentEvent(
                 event,
                 through: date,
@@ -320,7 +328,7 @@ enum RecurrencePersistence {
         in context: ModelContext,
         calendar: Calendar = .autoupdatingCurrent
     ) throws {
-        try perform(in: context) {
+        try perform(in: context, at: transitionDate) {
             let cutoff = calendar.startOfDay(for: date)
             for event in events where event.scheduledDate < cutoff {
                 if event.recurrenceTemplate == nil {
@@ -342,9 +350,10 @@ enum RecurrencePersistence {
     /// normal item. Completed Todo history also remains persisted.
     static func deleteTemplate(
         _ template: RecurrenceTemplate,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
-        try perform(in: context) {
+        try perform(in: context, at: modificationDate) {
             for todo in template.todoOccurrences {
                 todo.recurrenceTemplate = nil
                 todo.recurrenceSequence = nil
@@ -604,11 +613,12 @@ enum RecurrencePersistence {
 
     private static func perform<Result>(
         in context: ModelContext,
+        at modificationDate: Date,
         _ changes: () throws -> Result
     ) throws -> Result {
         do {
             let result = try changes()
-            try SwiftDataTransaction.save(context)
+            try SwiftDataTransaction.save(context, at: modificationDate)
             return result
         } catch {
             context.rollback()

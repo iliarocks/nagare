@@ -172,12 +172,21 @@ struct ICalendarTests {
             directoryHint: .isDirectory
         )
         defer { try? FileManager.default.removeItem(at: directory) }
-        let event = Event(
+        let event = EventRecordSnapshot(
+            id: UUID(),
+            syncRecordID: nil,
+            createdAt: Date(timeIntervalSince1970: 50),
+            modifiedAt: nil,
             title: "Birthday/Dinner",
             notes: "Bring cake",
             scheduledDate: Date(timeIntervalSince1970: 100),
             endDate: Date(timeIntervalSince1970: 200),
-            order: "i"
+            calendarIdentifier: nil,
+            order: "i",
+            projectOrder: nil,
+            recurrenceSequence: nil,
+            recurrenceTemplateID: nil,
+            projectID: nil
         )
 
         let sharedFile = try ICalendarExportStore.write(
@@ -209,7 +218,9 @@ struct ICalendarTests {
 @MainActor
 struct CalendarImportPersistenceTests {
     @Test func repeatedUIDUpdatesExistingEventInsteadOfDuplicating() throws {
-        let context = try makeContext()
+        let repository = SwiftDataNagareRepository(
+            modelContainer: try makeContainer()
+        )
         let sourceIdentifier = "same-invite@example.com"
         let first = ICalendarEventDraft(
             sourceIdentifier: sourceIdentifier,
@@ -228,12 +239,22 @@ struct CalendarImportPersistenceTests {
             isAllDay: false
         )
 
-        _ = try CalendarImportPersistence.importDraft(first, in: context)
-        let updated = try CalendarImportPersistence.importDraft(
-            second,
-            in: context
+        _ = try repository.upsertCalendarEvent(
+            try NagareCommandPlanner.upsertCalendarEvent(
+                first,
+                in: repository.load()
+            ),
+            at: .now
         )
-        let events = try context.fetch(FetchDescriptor<Event>())
+        let updatedID = try repository.upsertCalendarEvent(
+            try NagareCommandPlanner.upsertCalendarEvent(
+                second,
+                in: repository.load()
+            ),
+            at: .now
+        )
+        let events = try repository.load().events
+        let updated = try #require(events.first { $0.id == updatedID })
 
         #expect(events.count == 1)
         #expect(updated.title == "Updated")
@@ -243,18 +264,17 @@ struct CalendarImportPersistenceTests {
         #expect(updated.calendarIdentifier == sourceIdentifier)
     }
 
-    private func makeContext() throws -> ModelContext {
+    private func makeContainer() throws -> ModelContainer {
         let configuration = ModelConfiguration(
             isStoredInMemoryOnly: true,
             cloudKitDatabase: .none
         )
-        let container = try ModelContainer(
+        return try ModelContainer(
             for: Project.self,
             Todo.self,
             Event.self,
             RecurrenceTemplate.self,
             configurations: configuration
         )
-        return ModelContext(container)
     }
 }

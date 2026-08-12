@@ -9,6 +9,7 @@ struct NagareApp: App {
         case ready(
             NagareIntentStore,
             SyncIntegrityMonitor?,
+            NagareDataStore,
             cloudSyncEnabled: Bool
         )
         case failed
@@ -71,28 +72,52 @@ struct NagareApp: App {
             _ = try SyncIntegrityRepair.repair(
                 in: modelContainer.mainContext
             )
-            let intentStore = NagareIntentStore(modelContainer: modelContainer)
+            let repository = SwiftDataNagareRepository(
+                modelContainer: modelContainer
+            )
+            let dataOrchestrator = NagareDataOrchestrator(
+                reader: repository,
+                writer: repository
+            )
+            let intentStore = NagareIntentStore(
+                orchestrator: dataOrchestrator
+            )
+            let dataStore = try NagareDataStore(
+                orchestrator: dataOrchestrator,
+                calendarImportOrchestrator: CalendarImportOrchestrator(
+                    reader: repository,
+                    writer: repository,
+                    inbox: PendingCalendarImportAdapter()
+                )
+            )
             let syncMonitor: SyncIntegrityMonitor?
-            if cloudSyncEnabled {
-                do {
-                    syncMonitor = try SyncIntegrityMonitor(
-                        modelContainer: modelContainer
-                    )
-                } catch {
-                    // Sync remains functional without this observer; only
-                    // semantic post-import repair waits until next launch.
-                    Self.logger.error(
-                        "Unable to monitor sync history: \(error.localizedDescription, privacy: .public)"
-                    )
-                    syncMonitor = nil
-                }
-            } else {
+            do {
+                // History drives publication for local App Intent/import
+                // contexts as well as CloudKit, so observation is required
+                // even when iCloud is disabled.
+                syncMonitor = try SyncIntegrityMonitor(
+                    modelContainer: modelContainer,
+                    onReconciled: { [dataStore] in
+                        do {
+                            try dataStore.reload()
+                        } catch {
+                            Self.logger.error(
+                                "Unable to publish persisted data: \(error.localizedDescription, privacy: .public)"
+                            )
+                        }
+                    }
+                )
+            } catch {
+                Self.logger.error(
+                    "Unable to monitor persistent history: \(error.localizedDescription, privacy: .public)"
+                )
                 syncMonitor = nil
             }
             AppDependencyManager.shared.add(dependency: intentStore)
             startupState = .ready(
                 intentStore,
                 syncMonitor,
+                dataStore,
                 cloudSyncEnabled: cloudSyncEnabled
             )
         } catch {
@@ -129,6 +154,7 @@ struct NagareApp: App {
         case .ready(
             let intentStore,
             let syncMonitor,
+            let dataStore,
             cloudSyncEnabled: let cloudSyncEnabled
         ):
             RootView(
@@ -136,7 +162,7 @@ struct NagareApp: App {
                 syncMonitor: syncMonitor,
                 cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled
             )
-                .modelContainer(intentStore.modelContainer)
+                .nagareDataStore(dataStore)
         case .failed:
             StoreStartupFailureView()
         }
@@ -147,14 +173,15 @@ struct NagareApp: App {
     private var settingsContent: some View {
         switch startupState {
         case .ready(
-            let intentStore,
             _,
+            _,
+            let dataStore,
             cloudSyncEnabled: let cloudSyncEnabled
         ):
             NagareSettingsView(
                 cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled
             )
-                .modelContainer(intentStore.modelContainer)
+                .nagareDataStore(dataStore)
         case .failed:
             StoreStartupFailureView()
         }

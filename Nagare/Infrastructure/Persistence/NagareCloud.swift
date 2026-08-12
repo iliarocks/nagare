@@ -10,6 +10,10 @@ enum NagareCloud {
     /// Nagare writes from framework-generated/imported transactions if needed.
     static let localHistoryAuthor = "Nagare"
 
+    /// Semantic repairs use a separate context and author so they cannot roll
+    /// back an in-progress edit in the UI's context.
+    static let reconciliationHistoryAuthor = "Nagare.Reconciliation"
+
     static func configuration(
         schema: Schema,
         cloudEnabled: Bool

@@ -385,7 +385,7 @@ struct ItemOrderingTests {
         let todos = try context.fetch(FetchDescriptor<Todo>()).filter {
             calendar.isDate($0.scheduledDate, inSameDayAs: day)
         }
-        return Item.ordered(todos: todos, events: []).compactMap { item in
+        return SwiftDataItem.ordered(todos: todos, events: []).compactMap { item in
             guard case .todo(let todo) = item else { return nil }
             return todo
         }

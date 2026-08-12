@@ -16,6 +16,7 @@ enum ProjectPersistence {
     @MainActor
     static func delete(
         _ project: Project,
+        at modificationDate: Date = .now,
         in context: ModelContext
     ) throws {
         for todo in project.todos {
@@ -32,7 +33,7 @@ enum ProjectPersistence {
         context.delete(project)
 
         do {
-            try SwiftDataTransaction.save(context)
+            try SwiftDataTransaction.save(context, at: modificationDate)
         } catch {
             context.rollback()
             throw PersistenceError.saveFailed(error.localizedDescription)

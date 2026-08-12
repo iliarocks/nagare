@@ -9,7 +9,7 @@ final class SwiftDataOrderingAdapter:
     ProjectOrderingPersistence
 {
     private let context: ModelContext
-    private var itemsByID: [ItemID: Item] = [:]
+    private var itemsByID: [ItemID: SwiftDataItem] = [:]
     private var projectsByID: [UUID: Project] = [:]
 
     init(context: ModelContext) {
@@ -18,8 +18,8 @@ final class SwiftDataOrderingAdapter:
 
     func loadItems() throws -> [ItemSnapshot] {
         do {
-            let items = try context.fetch(FetchDescriptor<Todo>()).map(Item.todo)
-                + context.fetch(FetchDescriptor<Event>()).map(Item.event)
+            let items = try context.fetch(FetchDescriptor<Todo>()).map(SwiftDataItem.todo)
+                + context.fetch(FetchDescriptor<Event>()).map(SwiftDataItem.event)
             itemsByID = Dictionary(
                 uniqueKeysWithValues: items.map { ($0.id, $0) }
             )

@@ -1,7 +1,6 @@
 import AppIntents
 import CoreSpotlight
 import Foundation
-import SwiftData
 
 struct NagareIntentItemSnapshot: Sendable {
     let id: UUID
@@ -17,13 +16,11 @@ struct NagareIntentItemSnapshot: Sendable {
 /// remain app-only operations.
 @MainActor
 final class NagareIntentStore: @unchecked Sendable {
-    let modelContainer: ModelContainer
-    private let modelContext: ModelContext
+    private let orchestrator: NagareDataOrchestrator
     nonisolated(unsafe) private let searchableIndex: CSSearchableIndex
 
-    init(modelContainer: ModelContainer) {
-        self.modelContainer = modelContainer
-        self.modelContext = modelContainer.mainContext
+    init(orchestrator: NagareDataOrchestrator) {
+        self.orchestrator = orchestrator
         self.searchableIndex = CSSearchableIndex(name: "NagareIntentContainers")
     }
 
@@ -33,17 +30,34 @@ final class NagareIntentStore: @unchecked Sendable {
         scheduledDate: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> NagareIntentItemSnapshot {
-        let order = try ItemOrdering.nextOrder(in: modelContext)
-        let todo = Todo(
-            title: title,
-            notes: notes,
-            scheduledDate: scheduledDate,
-            order: order,
-            calendar: calendar
+        let result = try orchestrator.upsertItem(
+            ItemDraft(
+                kind: .todo,
+                title: title,
+                notes: notes,
+                scheduledDate: calendar.startOfDay(for: scheduledDate),
+                endDate: nil,
+                projectID: nil,
+                recurrenceRule: nil,
+                eventStartTimeSeconds: nil,
+                eventEndTimeSeconds: nil
+            ),
+            existingID: nil,
+            calendar: calendar,
+            at: .now
         )
-        modelContext.insert(todo)
-        try SwiftDataTransaction.save(modelContext)
-        return snapshot(todo)
+        guard case .todo(let id) = result.id,
+              let todo = result.snapshot.todosByID[id] else {
+            throw NagareIntentStoreError.missingCreatedItem
+        }
+        return NagareIntentItemSnapshot(
+            id: todo.id,
+            title: todo.title,
+            notes: todo.notes,
+            scheduledDate: todo.scheduledDate,
+            endDate: nil,
+            createdAt: todo.createdAt
+        )
     }
 
     func createEvent(
@@ -52,17 +66,34 @@ final class NagareIntentStore: @unchecked Sendable {
         scheduledDate: Date,
         endDate: Date?
     ) throws -> NagareIntentItemSnapshot {
-        let order = try ItemOrdering.nextOrder(in: modelContext)
-        let event = Event(
-            title: title,
-            notes: notes,
-            scheduledDate: scheduledDate,
-            endDate: endDate,
-            order: order
+        let result = try orchestrator.upsertItem(
+            ItemDraft(
+                kind: .event,
+                title: title,
+                notes: notes,
+                scheduledDate: scheduledDate,
+                endDate: endDate,
+                projectID: nil,
+                recurrenceRule: nil,
+                eventStartTimeSeconds: nil,
+                eventEndTimeSeconds: nil
+            ),
+            existingID: nil,
+            calendar: .autoupdatingCurrent,
+            at: .now
         )
-        modelContext.insert(event)
-        try SwiftDataTransaction.save(modelContext)
-        return snapshot(event)
+        guard case .event(let id) = result.id,
+              let event = result.snapshot.eventsByID[id] else {
+            throw NagareIntentStoreError.missingCreatedItem
+        }
+        return NagareIntentItemSnapshot(
+            id: event.id,
+            title: event.title,
+            notes: event.notes,
+            scheduledDate: event.scheduledDate,
+            endDate: event.endDate,
+            createdAt: event.createdAt
+        )
     }
 
     /// The static Nagare list and calendar are the only indexed entities Siri
@@ -77,25 +108,12 @@ final class NagareIntentStore: @unchecked Sendable {
         ])
     }
 
-    private func snapshot(_ todo: Todo) -> NagareIntentItemSnapshot {
-        NagareIntentItemSnapshot(
-            id: todo.id,
-            title: todo.title,
-            notes: todo.notes,
-            scheduledDate: todo.scheduledDate,
-            endDate: nil,
-            createdAt: todo.createdAt
-        )
-    }
+}
 
-    private func snapshot(_ event: Event) -> NagareIntentItemSnapshot {
-        NagareIntentItemSnapshot(
-            id: event.id,
-            title: event.title,
-            notes: event.notes,
-            scheduledDate: event.scheduledDate,
-            endDate: event.endDate,
-            createdAt: event.createdAt
-        )
+private enum NagareIntentStoreError: LocalizedError {
+    case missingCreatedItem
+
+    var errorDescription: String? {
+        "Nagare saved the item but couldn't read it back."
     }
 }

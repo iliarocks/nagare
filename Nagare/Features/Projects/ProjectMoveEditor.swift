@@ -1,58 +1,51 @@
-import SwiftData
 import SwiftUI
 
 enum ProjectMoveTarget: Identifiable {
-    case todo(Todo)
-    case event(Event)
-    case template(RecurrenceTemplate)
+    case item(ItemRecordSnapshot)
+    case template(RecurrenceTemplateRecordSnapshot)
 
     var id: String {
         switch self {
-        case .todo(let todo):
-            "todo-\(todo.id)"
-        case .event(let event):
-            "event-\(event.id)"
+        case .item(let item):
+            item.id.description
         case .template(let template):
             "template-\(template.id)"
         }
     }
 
-    var project: Project? {
+    var projectID: UUID? {
         switch self {
-        case .todo(let todo):
-            todo.project
-        case .event(let event):
-            event.project
+        case .item(let item):
+            item.projectID
         case .template(let template):
-            template.project
+            template.projectID
         }
     }
 
-    init(_ item: Item) {
-        switch item {
-        case .todo(let todo):
-            self = .todo(todo)
-        case .event(let event):
-            self = .event(event)
-        }
+    init(_ item: ItemRecordSnapshot) {
+        self = .item(item)
     }
 }
 
 struct ProjectMoveEditor: View {
-    @Environment(\.modelContext) private var modelContext
-
-    @Query private var projects: [Project]
+    @NagareDataStoreEnvironment private var dataStore
 
     let target: ProjectMoveTarget
 
     @State private var errorMessage: String?
+
+    private var projects: [ProjectRecordSnapshot] {
+        dataStore.projects
+    }
 
     var body: some View {
         Form {
             Section {
                 ProjectPicker(
                     projects: projects,
-                    selectedProject: target.project,
+                    selectedProject: target.projectID.flatMap { projectID in
+                        projects.first { $0.id == projectID }
+                    },
                     onSelect: move
                 )
             }
@@ -73,26 +66,15 @@ struct ProjectMoveEditor: View {
         )
     }
 
-    private func move(to project: Project?) {
+    private func move(to project: ProjectRecordSnapshot?) {
         do {
             switch target {
-            case .todo(let todo):
-                try ProjectMembership.assign(
-                    .todo(todo),
-                    to: project,
-                    in: modelContext
-                )
-            case .event(let event):
-                try ProjectMembership.assign(
-                    .event(event),
-                    to: project,
-                    in: modelContext
-                )
+            case .item(let item):
+                try dataStore.assign(.item(item.id), to: project?.id)
             case .template(let template):
-                try ProjectMembership.assign(
-                    template,
-                    to: project,
-                    in: modelContext
+                try dataStore.assign(
+                    .recurrenceTemplate(template.id),
+                    to: project?.id
                 )
             }
         } catch {

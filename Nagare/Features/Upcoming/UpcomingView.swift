@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct UpcomingView: View {
@@ -8,17 +7,8 @@ struct UpcomingView: View {
         let message: String
     }
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-
-    @Query(sort: \Todo.scheduledDate)
-    private var todos: [Todo]
-
-    @Query(sort: \Event.scheduledDate)
-    private var events: [Event]
-
-    @Query(sort: \RecurrenceTemplate.createdAt)
-    private var recurrenceTemplates: [RecurrenceTemplate]
+    @NagareDataStoreEnvironment private var dataStore
 
     @State private var presentedFailure: PresentedFailure?
     @State private var displayedItemIDsByDate: [Date: [ItemID]] = [:]
@@ -26,13 +16,21 @@ struct UpcomingView: View {
 
     let onOpenNotes: (NotesDestination) -> Void
 
+    private var todos: [TodoRecordSnapshot] {
+        dataStore.todos
+    }
+
+    private var events: [EventRecordSnapshot] {
+        dataStore.events
+    }
+
+    private var recurrenceTemplates: [RecurrenceTemplateRecordSnapshot] {
+        dataStore.recurrenceTemplates
+    }
+
     @MainActor
     private var recurrenceProjectionInput: RecurrenceProjectionInput {
-        VirtualItemProjection.input(
-            templates: recurrenceTemplates,
-            todos: todos,
-            events: events
-        )
+        dataStore.snapshot.recurrenceProjectionInput
     }
 
     private var persistedItemGroups: [ReorderableItemGroup] {
@@ -78,7 +76,7 @@ struct UpcomingView: View {
 
             return ReorderableItemGroup(
                 date: date,
-                items: Item.ordered(
+                items: ItemRecordSnapshot.ordered(
                     todos: todosForDate,
                     events: eventsForDate
                 ),
@@ -140,7 +138,7 @@ struct UpcomingView: View {
                     showsDateHeaders: true,
                     onOpen: { onOpenNotes(NotesDestination($0)) },
                     onOpenVirtual: {
-                        onOpenNotes(.template($0.template))
+                        onOpenNotes(.template($0.template.id))
                     },
                     onComplete: complete,
                     onDelete: delete,
@@ -195,38 +193,29 @@ struct UpcomingView: View {
         }
     }
 
-    private func complete(_ todo: Todo) {
+    private func complete(_ todo: TodoRecordSnapshot) {
         do {
             try withAnimation {
-                _ = try RecurrencePersistence.complete(
-                    todo,
-                    in: modelContext
-                )
+                try dataStore.completeTodo(todo.id)
             }
         } catch {
             presentSaveFailure(error)
         }
     }
 
-    private func delete(_ item: Item) {
+    private func delete(_ item: ItemRecordSnapshot) {
         do {
-            switch item {
-            case .todo(let todo):
-                try RecurrencePersistence.delete(todo, in: modelContext)
-            case .event(let event):
-                try RecurrencePersistence.delete(event, in: modelContext)
-            }
+            try dataStore.deleteItem(item.id)
         } catch {
             presentSaveFailure(error)
         }
     }
 
-    private func deleteTemplate(_ template: RecurrenceTemplate) {
+    private func deleteTemplate(
+        _ template: RecurrenceTemplateRecordSnapshot
+    ) {
         do {
-            try RecurrencePersistence.deleteTemplate(
-                template,
-                in: modelContext
-            )
+            try dataStore.deleteRecurrenceTemplate(template.id)
         } catch {
             presentSaveFailure(error)
         }
@@ -289,13 +278,16 @@ struct UpcomingView: View {
             }
 
             displayedItemIDsByDate[date] = newItemIDs
-            try ItemOrdering.saveDisplayedOrder(
+            let plan = try OrderingPlanner.displayedOrder(
                 newItemIDs,
-                on: date,
-                in: modelContext
+                contains: group.items.map {
+                    OrderingPlanner.Entry(id: $0.id, order: $0.order)
+                }
             )
+            try dataStore.saveItemOrdering(plan.assignments.map {
+                ItemOrderingChange(id: $0.id, order: $0.order)
+            })
         } catch {
-            modelContext.rollback()
             displayedItemIDsByDate = persistedItemIDsByDate
             presentSaveFailure(error)
         }
@@ -318,14 +310,12 @@ struct UpcomingView: View {
                 before: destinationID,
                 in: displayedGroups
             )
-            try ItemOrdering.move(
+            try dataStore.moveItems(
                 sourceIDs,
                 to: destinationDate,
-                before: destinationID,
-                in: modelContext
+                before: destinationID
             )
         } catch {
-            modelContext.rollback()
             displayedItemIDsByDate = persistedItemIDsByDate
             presentSaveFailure(error)
         }

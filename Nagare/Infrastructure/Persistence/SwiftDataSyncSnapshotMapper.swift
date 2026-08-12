@@ -35,6 +35,7 @@ enum SwiftDataSyncSnapshotMapper {
     static func event(_ record: Event) -> SyncEventSnapshot {
         SyncEventSnapshot(
             metadata: eventMetadata(record),
+            calendarIdentifier: record.calendarIdentifier,
             recurrenceSequence: record.recurrenceSequence,
             recurrenceTemplateID: record.recurrenceTemplate?.id,
             projectID: record.project?.id
@@ -188,42 +189,42 @@ enum SwiftDataSyncSnapshotMapper {
     }
 
     private static func stable(_ value: String) -> String {
-        "s:\(Data(value.utf8).base64EncodedString())"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: String?) -> String {
-        value.map(stable) ?? "nil"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: Bool) -> String {
-        value ? "b:1" : "b:0"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: Int) -> String {
-        "i:\(value)"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: Int?) -> String {
-        value.map(stable) ?? "nil"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: [Int]) -> String {
-        "a:" + value.map(String.init).joined(separator: ",")
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: Date) -> String {
-        "d:\(value.timeIntervalSinceReferenceDate.bitPattern)"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: Date?) -> String {
-        value.map(stable) ?? "nil"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: UUID) -> String {
-        "u:\(value.uuidString)"
+        SyncStableValue.encode(value)
     }
 
     private static func stable(_ value: UUID?) -> String {
-        value.map(stable) ?? "nil"
+        SyncStableValue.encode(value)
     }
 }

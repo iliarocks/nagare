@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 nonisolated private enum ProjectTier: Hashable, Sendable {
@@ -16,9 +15,7 @@ nonisolated private struct PersistedProjectProjection: Equatable {
 }
 
 struct ProjectsView: View {
-    @Environment(\.modelContext) private var modelContext
-
-    @Query private var projects: [Project]
+    @NagareDataStoreEnvironment private var dataStore
 
     @State private var isCreatingProject = false
     @State private var errorMessage: String?
@@ -27,16 +24,20 @@ struct ProjectsView: View {
 
     let onOpenSettings: () -> Void
 
+    private var projects: [ProjectRecordSnapshot] {
+        dataStore.projects
+    }
+
     init(onOpenSettings: @escaping () -> Void = {}) {
         self.onOpenSettings = onOpenSettings
     }
 
-    private var persistedPriorityProjects: [Project] {
-        Project.ordered(projects.filter(\.isPriority))
+    private var persistedPriorityProjects: [ProjectRecordSnapshot] {
+        ordered(projects.filter(\.isPriority))
     }
 
-    private var persistedBackgroundProjects: [Project] {
-        Project.ordered(projects.filter { !$0.isPriority })
+    private var persistedBackgroundProjects: [ProjectRecordSnapshot] {
+        ordered(projects.filter { !$0.isPriority })
     }
 
     private var persistedPriorityProjectIDs: [UUID] {
@@ -54,14 +55,14 @@ struct ProjectsView: View {
         )
     }
 
-    private var priorityProjects: [Project] {
+    private var priorityProjects: [ProjectRecordSnapshot] {
         displayedProjects(
             persistedPriorityProjects,
             using: displayedPriorityProjectIDs
         )
     }
 
-    private var backgroundProjects: [Project] {
+    private var backgroundProjects: [ProjectRecordSnapshot] {
         displayedProjects(
             persistedBackgroundProjects,
             using: displayedBackgroundProjectIDs
@@ -134,12 +135,15 @@ struct ProjectsView: View {
             }
         }
         .nagareListSectionSpacing(.custom(48))
-        .reorderContainer(for: Project.self, in: ProjectTier.self) {
+        .reorderContainer(
+            for: ProjectRecordSnapshot.self,
+            in: ProjectTier.self
+        ) {
             reorder($0)
         }
     }
 
-    private func projectRow(_ project: Project) -> some View {
+    private func projectRow(_ project: ProjectRecordSnapshot) -> some View {
         NavigationLink(value: project.id) {
             Text(project.title)
                 .fixedSize(horizontal: false, vertical: true)
@@ -234,22 +238,20 @@ struct ProjectsView: View {
             }
 
             setDisplayedProjectIDs(newProjectIDs, for: tier)
-            try ProjectOrdering.saveDisplayedOrder(
+            try dataStore.reorderProjects(
                 newProjectIDs,
                 isPriority: tier.isPriority,
-                in: modelContext
             )
         } catch {
-            modelContext.rollback()
             restoreDisplayedProjectIDs(for: tier)
             errorMessage = error.localizedDescription
         }
     }
 
     private func displayedProjects(
-        _ persistedProjects: [Project],
+        _ persistedProjects: [ProjectRecordSnapshot],
         using displayedProjectIDs: [UUID]?
-    ) -> [Project] {
+    ) -> [ProjectRecordSnapshot] {
         guard let displayedProjectIDs else {
             return persistedProjects
         }
@@ -290,7 +292,7 @@ struct ProjectsView: View {
         )
     }
 
-    private func changePriority(of project: Project) {
+    private func changePriority(of project: ProjectRecordSnapshot) {
         let destinationTier: ProjectTier = project.isPriority
             ? .background
             : .priority
@@ -332,14 +334,12 @@ struct ProjectsView: View {
         }
 
         do {
-            try ProjectOrdering.move(
+            try dataStore.moveProjects(
                 [project.id],
                 toPriority: destinationTier.isPriority,
-                before: destinationID,
-                in: modelContext
+                before: destinationID
             )
         } catch {
-            modelContext.rollback()
             withAnimation(.smooth) {
                 restoreDisplayedProjectIDs(for: sourceTier)
                 restoreDisplayedProjectIDs(for: destinationTier)
@@ -348,11 +348,20 @@ struct ProjectsView: View {
         }
     }
 
-    private func delete(_ project: Project) {
+    private func delete(_ project: ProjectRecordSnapshot) {
         do {
-            try ProjectPersistence.delete(project, in: modelContext)
+            try dataStore.deleteProject(project.id)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func ordered(
+        _ projects: [ProjectRecordSnapshot]
+    ) -> [ProjectRecordSnapshot] {
+        projects.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            return $0.id.uuidString < $1.id.uuidString
         }
     }
 

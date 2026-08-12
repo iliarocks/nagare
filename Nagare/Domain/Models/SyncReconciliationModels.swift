@@ -17,7 +17,7 @@ nonisolated struct SyncRecordReference: Hashable, Sendable {
 /// Immutable replicated identity and revision metadata. Legacy V1 records do
 /// not have a physical ID; their semantic UUID is the deterministic upgrade
 /// value, avoiding a different random repair on every device.
-nonisolated struct SyncRecordMetadata: Equatable, Sendable {
+nonisolated struct SyncRecordMetadata: Hashable, Sendable {
     let reference: SyncRecordReference
     let semanticID: UUID
     let physicalID: UUID?
@@ -56,6 +56,7 @@ nonisolated struct SyncTodoSnapshot: Equatable, Sendable {
 
 nonisolated struct SyncEventSnapshot: Equatable, Sendable {
     let metadata: SyncRecordMetadata
+    let calendarIdentifier: String?
     let recurrenceSequence: Int?
     let recurrenceTemplateID: UUID?
     let projectID: UUID?

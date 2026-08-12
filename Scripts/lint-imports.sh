@@ -129,8 +129,64 @@ done <<< "${domain_stored_var_matches}"
 
 lint_forbidden_symbols \
     "Nagare/Application" \
-    'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex' \
+    'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex|URLSession|NotificationCenter\.default|ProcessInfo|Bundle\.main|autoupdatingCurrent|Date\.now|\.now\b' \
     "Application orchestrators must perform I/O through ports"
+
+# Features render immutable snapshots and send ID-addressed commands. They may
+# not import, observe, save, or retain persistence-framework objects.
+lint_forbidden_symbols \
+    "Nagare/Features" \
+    'import[[:space:]]+SwiftData|@Query|@Model|ModelContext|SwiftDataTransaction|SwiftDataLiveResults|ResultsObserver' \
+    "Features may only consume immutable snapshots and application commands"
+lint_forbidden_symbols \
+    "Nagare/Features" \
+    '(^|[^A-Za-z0-9_])(RecurrencePersistence|ProjectMembership|ProjectItemOrdering|ProjectOrdering|ItemOrdering)([^A-Za-z0-9_]|$)' \
+    "Persistence workflows belong behind application ports"
+lint_forbidden_symbols \
+    "Nagare/Features" \
+    '(:|->|as[?!]?|<|\[)[[:space:]]*(Todo|Event|Project|RecurrenceTemplate)([?>,\])[:space:]]|$)' \
+    "Features may not retain mutable SwiftData record types"
+lint_forbidden_symbols \
+    "Nagare/App" \
+    '@Query|SwiftDataLiveResults|ResultsObserver|dataStore\?\.' \
+    "App views must publish the immutable NagareDataSnapshot"
+lint_forbidden_symbols \
+    "Nagare/Features" \
+    'dataStore\?\.' \
+    "Feature commands must not silently disappear when composition is invalid"
+lint_forbidden_symbols \
+    "Nagare/AppIntents" \
+    'import[[:space:]]+SwiftData|ModelContext|SwiftDataTransaction|(^|[^A-Za-z0-9_])(RecurrencePersistence|ProjectMembership|ProjectItemOrdering|ProjectOrdering|ItemOrdering)([^A-Za-z0-9_]|$)' \
+    "App Intents must send immutable drafts through application orchestrators"
+
+# Only the composition root, schema bootstrap, and history bridge may know
+# SwiftData in App. SwiftUI delivery views and observable stores are values-only.
+app_swiftdata_matches=""
+app_swiftdata_status=0
+app_swiftdata_matches="$(
+    grep -RInE \
+        --include='*.swift' \
+        'import[[:space:]]+SwiftData' \
+        "${repository_root}/Nagare/App"
+)" || app_swiftdata_status=$?
+if (( app_swiftdata_status > 1 )); then
+    report_failure \
+        "${repository_root}/Nagare/App" \
+        0 \
+        "Architecture lint could not scan App SwiftData imports"
+fi
+while IFS=: read -r source_file line_number _; do
+    [[ -n "${source_file}" ]] || continue
+    case "$(basename "${source_file}")" in
+        NagareApp.swift|NagareCloudSchemaInitializer.swift|SyncIntegrityMonitor.swift)
+            continue
+            ;;
+    esac
+    report_failure \
+        "${source_file}" \
+        "${line_number}" \
+        "Only App composition and history bridge files may import SwiftData"
+done <<< "${app_swiftdata_matches}"
 
 # Save/rollback and sync-metadata semantics belong to one transaction adapter.
 # A second save path can silently bypass modification stamps or rollback.

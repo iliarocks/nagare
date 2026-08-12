@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EventRow: View {
-    let event: Event
+    let event: EventRecordSnapshot
     let onOpen: () -> Void
     let onChangeSchedule: () -> Void
     let onMoveProject: () -> Void

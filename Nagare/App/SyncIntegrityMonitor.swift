@@ -12,8 +12,9 @@ final class SyncIntegrityMonitor {
         category: "SyncIntegrity"
     )
 
-    private let context: ModelContext
+    private let modelContainer: ModelContainer
     private let historyObserver: HistoryObserver
+    private let onReconciled: () -> Void
     private var observationToken: ObservationTracking.Token?
     private var scheduledRepair: Task<Void, Never>?
     private var pendingRetryIndex = 0
@@ -25,12 +26,16 @@ final class SyncIntegrityMonitor {
         .seconds(15)
     ]
 
-    init(modelContainer: ModelContainer) throws {
-        context = modelContainer.mainContext
+    init(
+        modelContainer: ModelContainer,
+        onReconciled: @escaping () -> Void = {}
+    ) throws {
+        self.modelContainer = modelContainer
         historyObserver = try HistoryObserver(
             observedModels: NagareSchemaV2.models,
             modelContainer: modelContainer
         )
+        self.onReconciled = onReconciled
         observationToken = withContinuousObservation(
             options: [.didSet]
         ) { [weak self] _ in
@@ -43,6 +48,13 @@ final class SyncIntegrityMonitor {
     }
 
     func repair() {
+        let context = ModelContext(modelContainer)
+        context.autosaveEnabled = false
+        context.author = NagareCloud.reconciliationHistoryAuthor
+        // Publication must not depend on semantic repair succeeding. A title
+        // edit is still valid imported state when an unrelated relationship
+        // arrives partially and repair needs a later retry.
+        defer { onReconciled() }
         do {
             let plan = try SyncReconciliationOrchestrator.reconcile(
                 using: SwiftDataSyncReconciliationAdapter(context: context)
@@ -63,7 +75,6 @@ final class SyncIntegrityMonitor {
         } catch {
             // A later history event or foreground activation will retry. Never
             // make a transient repair failure fatal to opening the local store.
-            context.rollback()
             Self.logger.error(
                 "Unable to reconcile imported sync state: \(error.localizedDescription, privacy: .public)"
             )

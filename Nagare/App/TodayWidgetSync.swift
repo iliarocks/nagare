@@ -1,10 +1,16 @@
-import SwiftData
 import SwiftUI
 import WidgetKit
 
 struct TodayWidgetSync: ViewModifier {
-    @Query private var todos: [Todo]
-    @Query private var events: [Event]
+    @NagareDataStoreEnvironment private var dataStore
+
+    private var todos: [TodoRecordSnapshot] {
+        dataStore.todos
+    }
+
+    private var events: [EventRecordSnapshot] {
+        dataStore.events
+    }
 
     private var widgetData: NagareWidgetData {
         NagareWidgetData(
