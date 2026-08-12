@@ -64,6 +64,7 @@ struct EventScheduleEditor: View {
             }
 
         }
+        .nagareDetailsForm(height: 300)
         .onChange(of: scheduledDate) {
             save()
         }

@@ -88,6 +88,10 @@ struct ProjectsView: View {
                 }
             }
 
+#if os(macOS)
+            ToolbarSpacer(.flexible)
+#endif
+
             ToolbarItem(placement: .nagareTrailing) {
                 Button {
                     isCreatingProject = true
@@ -125,6 +129,7 @@ struct ProjectsView: View {
                     projectRow(project)
                 }
                 .reorderable(collectionID: ProjectTier.priority)
+                .nagareDesktopListRow()
             }
 
             Section {
@@ -132,6 +137,7 @@ struct ProjectsView: View {
                     projectRow(project)
                 }
                 .reorderable(collectionID: ProjectTier.background)
+                .nagareDesktopListRow()
             }
         }
         .nagareListSectionSpacing(.custom(48))

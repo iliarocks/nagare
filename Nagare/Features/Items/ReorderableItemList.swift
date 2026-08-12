@@ -133,6 +133,7 @@ struct ReorderableItemList: View {
             )
         }
         .reorderable(collectionID: group.date)
+        .nagareDesktopListRow()
 
         ForEach(group.virtualItems) { item in
             VirtualItemRow(
@@ -149,6 +150,7 @@ struct ReorderableItemList: View {
                 }
             )
         }
+        .nagareDesktopListRow()
     }
 
     private func presentScheduleEditor(_ item: ItemRecordSnapshot) {

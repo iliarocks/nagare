@@ -96,6 +96,7 @@ struct RecurrenceEditor: View {
                 }
             }
         }
+        .nagareDetailsForm(height: 520)
         .scrollIndicators(.hidden)
         .alert("Repeat Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {

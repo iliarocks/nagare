@@ -6,6 +6,19 @@ enum NagareListSectionSpacing {
     case custom(CGFloat)
 }
 
+struct NagareEditableTitle: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+#if os(macOS)
+        TextField(placeholder, text: $text)
+#else
+        TextField(placeholder, text: $text, axis: .vertical)
+#endif
+    }
+}
+
 extension ToolbarItemPlacement {
     static var nagareLeading: ToolbarItemPlacement {
 #if os(macOS)
@@ -40,6 +53,68 @@ extension View {
         font(.system(size: 14))
 #else
         font(.subheadline)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareEditorBodyFont() -> some View {
+#if os(macOS)
+        font(.system(size: 14))
+#else
+        font(.body)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareDocumentEditorStyle() -> some View {
+        scrollContentBackground(.hidden)
+            .nagareEditorBodyFont()
+    }
+
+    @ViewBuilder
+    func nagareDocumentPlaceholderStyle() -> some View {
+        nagareEditorBodyFont()
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 8)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    func nagareDesktopListRow() -> some View {
+#if os(macOS)
+        listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareDetailsForm(
+        width: CGFloat = 440,
+        height: CGFloat
+    ) -> some View {
+#if os(macOS)
+        formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .padding(16)
+            .frame(width: width, height: height)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareDetailsPanel(
+        width: CGFloat = 440,
+        height: CGFloat
+    ) -> some View {
+#if os(macOS)
+        padding(20)
+            .frame(width: width, height: height)
+#else
+        self
 #endif
     }
 
@@ -161,7 +236,7 @@ extension View {
     @ViewBuilder
     func nagareProjectNavigationTitle(_ title: String) -> some View {
 #if os(macOS)
-        navigationTitle(title)
+        self
 #else
         navigationTitle("")
 #endif

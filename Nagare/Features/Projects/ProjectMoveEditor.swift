@@ -50,6 +50,7 @@ struct ProjectMoveEditor: View {
                 )
             }
         }
+        .nagareDetailsForm(height: 240)
         .alert("Project Couldn't Be Changed", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil

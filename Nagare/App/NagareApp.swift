@@ -132,8 +132,10 @@ struct NagareApp: App {
 #if os(macOS)
         WindowGroup {
             startupContent
+                .windowFullScreenBehavior(.disabled)
         }
         .defaultSize(width: 1_100, height: 720)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
             NagareCommands()
         }

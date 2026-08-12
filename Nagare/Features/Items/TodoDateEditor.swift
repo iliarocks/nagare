@@ -22,7 +22,7 @@ struct TodoDateEditor: View {
         )
         .datePickerStyle(.graphical)
         .labelsHidden()
-        .padding()
+        .nagareDetailsPanel(width: 400, height: 360)
         .onChange(of: scheduledDate) {
             save()
         }

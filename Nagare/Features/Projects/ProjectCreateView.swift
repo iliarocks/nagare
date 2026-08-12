@@ -40,16 +40,14 @@ struct ProjectCreateView: View {
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $notes)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, -5)
+                    .nagareDocumentEditorStyle()
                     .focused($focusedField, equals: .notes)
                     .accessibilityIdentifier("Create Project Notes")
 
                 if notes.isEmpty {
                     Text("Notes")
-                        .foregroundStyle(.tertiary)
-                        .allowsHitTesting(false)
-            }
+                        .nagareDocumentPlaceholderStyle()
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

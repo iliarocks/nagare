@@ -56,6 +56,7 @@ struct CompletedView: View {
                             ForEach(group.todos) { todo in
                                 completedRow(todo)
                             }
+                            .nagareDesktopListRow()
                         } header: {
                             dateHeader(group.date)
                         }

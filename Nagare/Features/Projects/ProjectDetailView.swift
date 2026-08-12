@@ -68,6 +68,10 @@ struct ProjectDetailView: View {
         .nagareProjectNavigationTitle(currentProject.title)
         .nagareInlineNavigationTitle()
         .toolbar {
+#if os(macOS)
+            ToolbarSpacer(.flexible)
+#endif
+
             ToolbarItem(placement: .nagareTrailing) {
                 Button {
                     isCreatingItem = true
@@ -166,6 +170,7 @@ struct ProjectDetailView: View {
                         )
                     }
                     .reorderable(collectionID: project.id)
+                    .nagareDesktopListRow()
                 }
             }
 
@@ -184,6 +189,7 @@ struct ProjectDetailView: View {
                             onDelete: { deleteTemplate(template) }
                         )
                     }
+                    .nagareDesktopListRow()
                 }
             }
         }
@@ -196,7 +202,10 @@ struct ProjectDetailView: View {
     private var projectDetailsSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
-                TextField("Project Title", text: $title, axis: .vertical)
+                NagareEditableTitle(
+                    placeholder: "Project Title",
+                    text: $title
+                )
                     .font(.title.weight(.semibold))
                     .textFieldStyle(.plain)
                     .submitLabel(.done)
@@ -204,19 +213,18 @@ struct ProjectDetailView: View {
 
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $notes)
-                        .scrollContentBackground(.hidden)
-                        .padding(.horizontal, -5)
+                        .nagareDocumentEditorStyle()
                         .accessibilityIdentifier("Project Notes")
 
                     if notes.isEmpty {
                         Text("Notes")
-                            .foregroundStyle(.tertiary)
-                            .allowsHitTesting(false)
+                            .nagareDocumentPlaceholderStyle()
                     }
                 }
                 .frame(minHeight: 88)
             }
             .padding(.vertical, 4)
+            .nagareDesktopListRow()
         }
     }
 

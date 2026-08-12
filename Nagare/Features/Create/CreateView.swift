@@ -186,15 +186,13 @@ struct CreateView: View {
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $notes)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, -5)
+                    .nagareDocumentEditorStyle()
                     .focused($focusedField, equals: .notes)
                     .accessibilityIdentifier("Create Notes")
 
                 if notes.isEmpty {
                     Text("Notes")
-                        .foregroundStyle(.tertiary)
-                        .allowsHitTesting(false)
+                        .nagareDocumentPlaceholderStyle()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -280,6 +278,14 @@ struct CreateView: View {
                     : eventScheduledDate
             )
         }
+        .nagareDetailsForm(height: detailsHeight)
+    }
+
+    private var detailsHeight: CGFloat {
+        guard recurrence.isEnabled else {
+            return itemType == .event ? 360 : 300
+        }
+        return 540
     }
 
     private var detailsSummary: String {

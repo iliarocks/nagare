@@ -67,7 +67,7 @@ struct NotesView: View {
             metadata(record)
 
             HStack(alignment: .center, spacing: 12) {
-                TextField("Title", text: $title, axis: .vertical)
+                NagareEditableTitle(placeholder: "Title", text: $title)
                     .font(.title.weight(.semibold))
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,14 +92,12 @@ struct NotesView: View {
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $notes)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, -5)
+                    .nagareDocumentEditorStyle()
                     .accessibilityIdentifier("Item Notes")
 
                 if notes.isEmpty {
                     Text("Notes")
-                        .foregroundStyle(.tertiary)
-                        .allowsHitTesting(false)
+                        .nagareDocumentPlaceholderStyle()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -132,7 +130,7 @@ struct NotesView: View {
                     .accessibilityIdentifier("Event Time")
                 }
             }
-            .font(.subheadline)
+            .nagareEditorBodyFont()
             .foregroundStyle(.secondary)
             .buttonStyle(.plain)
         }

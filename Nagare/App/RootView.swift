@@ -173,7 +173,7 @@ struct RootView: View {
 
 #if os(macOS)
     private var macContent: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             List(selection: $selectedSection) {
                 Label("Today", systemImage: "sun.max")
                     .tag(NavigationSection.today)
@@ -182,31 +182,26 @@ struct RootView: View {
                 Label("Projects", systemImage: "folder")
                     .tag(NavigationSection.projects)
             }
-            .navigationTitle("Nagare")
-            .navigationSplitViewColumnWidth(
-                min: 180,
-                ideal: 220,
-                max: 280
-            )
-        } detail: {
+            .listStyle(.sidebar)
+            .frame(width: 180)
+
+            Divider()
+
             Group {
                 switch selectedSection {
                 case .today:
                     NavigationStack {
                         TodayView(onOpenNotes: openNotes)
-                            .navigationTitle("Today")
                             .toolbar { itemToolbar }
                     }
                 case .upcoming:
                     NavigationStack {
                         UpcomingView(onOpenNotes: openNotes)
-                            .navigationTitle("Upcoming")
                             .toolbar { itemToolbar }
                     }
                 case .projects:
                     NavigationStack(path: $projectPath) {
                         ProjectsView(onOpenSettings: openSettings)
-                            .navigationTitle("Projects")
                             .navigationDestination(for: UUID.self) { projectID in
                                 projectDestination(for: projectID)
                             }
@@ -250,6 +245,10 @@ struct RootView: View {
                 .labelStyle(.iconOnly)
             }
         }
+
+#if os(macOS)
+        ToolbarSpacer(.flexible)
+#endif
 
         ToolbarItem(placement: .nagareTrailing) {
             Button {
