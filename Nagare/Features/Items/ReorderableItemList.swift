@@ -82,7 +82,9 @@ struct ReorderableItemList: View {
                                     .day()
                             )
                         }
-                        .font(.caption)
+                        .nagareDateSectionHeader(
+                            isFirst: group.id == groups.first?.id
+                        )
                         .fontWeight(.regular)
                     }
                 }
