@@ -19,6 +19,34 @@ struct NagareEditableTitle: View {
     }
 }
 
+struct NagarePrimaryRowAction<Label: View>: View {
+    let action: () -> Void
+    private let label: Label
+
+    init(
+        action: @escaping () -> Void,
+        @ViewBuilder label: () -> Label
+    ) {
+        self.action = action
+        self.label = label()
+    }
+
+    var body: some View {
+#if os(macOS)
+        label
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, action)
+#else
+        Button(action: action) {
+            label
+        }
+        .buttonStyle(.plain)
+#endif
+    }
+}
+
 extension ToolbarItemPlacement {
     static var nagareLeading: ToolbarItemPlacement {
 #if os(macOS)
@@ -98,6 +126,16 @@ extension View {
 #if os(macOS)
         listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareReorderHitTarget() -> some View {
+#if os(macOS)
+        frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
 #else
         self
 #endif

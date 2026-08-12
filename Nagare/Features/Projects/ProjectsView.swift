@@ -129,6 +129,7 @@ struct ProjectsView: View {
             Section {
                 ForEach(priorityProjects) { project in
                     projectRow(project)
+                        .nagareReorderHitTarget()
                 }
                 .reorderable(collectionID: ProjectTier.priority)
                 .nagareDesktopListRow()
@@ -137,6 +138,7 @@ struct ProjectsView: View {
             Section {
                 ForEach(backgroundProjects) { project in
                     projectRow(project)
+                        .nagareReorderHitTarget()
                 }
                 .reorderable(collectionID: ProjectTier.background)
                 .nagareDesktopListRow()

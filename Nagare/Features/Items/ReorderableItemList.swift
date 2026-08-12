@@ -131,6 +131,7 @@ struct ReorderableItemList: View {
                 },
                 onDelete: onDelete
             )
+            .nagareReorderHitTarget()
         }
         .reorderable(collectionID: group.date)
         .nagareDesktopListRow()

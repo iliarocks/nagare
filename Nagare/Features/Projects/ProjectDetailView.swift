@@ -169,6 +169,7 @@ struct ProjectDetailView: View {
                             },
                             onDelete: delete
                         )
+                        .nagareReorderHitTarget()
                     }
                     .reorderable(collectionID: project.id)
                     .nagareDesktopListRow()

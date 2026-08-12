@@ -11,14 +11,12 @@ struct TodoRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onOpen) {
+            NagarePrimaryRowAction(action: onOpen) {
                 Text(todo.title)
                     .nagareItemTitleFont()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .accessibilityAction(named: "Change Date", onChangeDate)
             .accessibilityAction(named: "Move Project", onMoveProject)
             .accessibilityAction(named: "Delete", onDelete)

@@ -8,7 +8,7 @@ struct EventRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
+        NagarePrimaryRowAction(action: onOpen) {
             HStack(spacing: 12) {
                 Text(event.title)
                     .nagareItemTitleFont()
@@ -20,9 +20,7 @@ struct EventRow: View {
                     endDate: event.endDate
                 )
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .padding(.vertical, 4)
         .accessibilityAction(named: "Change Date and Time", onChangeSchedule)
         .accessibilityAction(named: "Move Project", onMoveProject)

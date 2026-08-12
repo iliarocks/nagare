@@ -8,7 +8,7 @@ struct VirtualItemRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
+        NagarePrimaryRowAction(action: onOpen) {
             HStack(spacing: 12) {
                 Text(item.template.title)
                     .nagareItemTitleFont()
@@ -27,9 +27,7 @@ struct VirtualItemRow: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .padding(.vertical, 4)
         .accessibilityLabel("\(item.template.title), future repeating item")
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
