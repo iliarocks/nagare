@@ -17,60 +17,64 @@ struct ProjectCreateView: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
+    private let onDismiss: (() -> Void)?
+
+    init(onDismiss: (() -> Void)? = nil) {
+        self.onDismiss = onDismiss
+    }
+
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                TextField("Project Title", text: $title)
-                    .font(.title.weight(.semibold))
-                    .focused($focusedField, equals: .title)
-                    .submitLabel(.done)
-                    .onSubmit {
-                        submit()
-                    }
-                    .accessibilityIdentifier("Create Project Title")
-
-                ZStack(alignment: .topLeading) {
-                    if notes.isEmpty {
-                        Text("Notes")
-                            .foregroundStyle(.tertiary)
-                            .padding(.vertical, 8)
-                    }
-
-                    TextEditor(text: $notes)
-                        .scrollContentBackground(.hidden)
-                        .padding(.horizontal, -5)
-                        .focused($focusedField, equals: .notes)
-                        .accessibilityIdentifier("Create Project Notes")
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("Project Title", text: $title)
+                .font(.title.weight(.semibold))
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .title)
+                .submitLabel(.done)
+                .onSubmit {
+                    submit()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityIdentifier("Create Project Title")
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $notes)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, -5)
+                    .focused($focusedField, equals: .notes)
+                    .accessibilityIdentifier("Create Project Notes")
+
+                if notes.isEmpty {
+                    Text("Notes")
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
             }
-            .padding(24)
-            .padding(.top, 8)
-            .navigationBarTitleDisplayMode(.inline)
-            .task {
-                focusedField = .title
             }
-            .onChange(of: title) {
-                scheduleSave()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(24)
+        .nagareComposerFrame(width: 600, height: 280)
+        .task {
+            focusedField = .title
+        }
+        .onChange(of: title) {
+            scheduleSave()
+        }
+        .onChange(of: notes) {
+            scheduleSave()
+        }
+        .onDisappear {
+            pendingSave?.cancel()
+            saveProject()
+        }
+        .alert("Project Couldn't Be Saved", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
             }
-            .onChange(of: notes) {
-                scheduleSave()
-            }
-            .onDisappear {
-                pendingSave?.cancel()
-                saveProject()
-            }
-            .alert("Project Couldn't Be Saved", isPresented: isShowingError) {
-                Button("OK", role: .cancel) {
-                    errorMessage = nil
-                }
-            } message: {
-                Text(errorMessage ?? "An unknown error occurred.")
-            }
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
         }
     }
 
@@ -97,7 +101,11 @@ struct ProjectCreateView: View {
     private func submit() {
         pendingSave?.cancel()
         guard saveProject(allowingEmptyTitle: true) else { return }
-        dismiss()
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
     }
 
     @discardableResult

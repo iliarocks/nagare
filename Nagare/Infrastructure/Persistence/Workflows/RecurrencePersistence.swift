@@ -608,7 +608,7 @@ enum RecurrencePersistence {
     ) throws -> Result {
         do {
             let result = try changes()
-            try context.save()
+            try SwiftDataTransaction.save(context)
             return result
         } catch {
             context.rollback()

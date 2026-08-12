@@ -245,11 +245,8 @@ struct CalendarImportPersistenceTests {
 
     private func makeContext() throws -> ModelContext {
         let configuration = ModelConfiguration(
-            for: Project.self,
-            Todo.self,
-            Event.self,
-            RecurrenceTemplate.self,
-            isStoredInMemoryOnly: true
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
         )
         let container = try ModelContainer(
             for: Project.self,

@@ -14,7 +14,7 @@ enum NagareAppDestination: String, AppEnum {
     ]
 }
 
-struct OpenNagareIntent: OpenIntent, TargetContentProvidingIntent {
+struct OpenNagareIntent: OpenIntent {
     static let title: LocalizedStringResource = "Open Nagare"
     static let description = IntentDescription(
         "Opens a specific part of Nagare."
@@ -32,3 +32,7 @@ struct OpenNagareIntent: OpenIntent, TargetContentProvidingIntent {
         self.target = target
     }
 }
+
+#if !os(macOS)
+extension OpenNagareIntent: TargetContentProvidingIntent {}
+#endif

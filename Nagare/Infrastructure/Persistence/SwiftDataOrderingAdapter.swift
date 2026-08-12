@@ -101,7 +101,7 @@ final class SwiftDataOrderingAdapter:
 
     func save() throws {
         do {
-            try context.save()
+            try SwiftDataTransaction.save(context)
         } catch {
             throw OrderingPersistenceError.saveFailed(
                 error.localizedDescription

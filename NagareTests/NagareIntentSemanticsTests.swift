@@ -169,7 +169,10 @@ struct NagareIntentSemanticsTests {
             Todo.self,
             Event.self,
             RecurrenceTemplate.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(
+                isStoredInMemoryOnly: true,
+                cloudKitDatabase: .none
+            )
         )
         return NagareIntentStore(modelContainer: container)
     }

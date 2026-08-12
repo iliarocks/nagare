@@ -68,6 +68,45 @@ struct ItemRow: View {
                 .accessibilityLabel("Share Event")
             }
         }
+        .nagareDesktopContextMenu {
+            if case .todo(let todo) = item {
+                Button {
+                    onComplete(todo)
+                } label: {
+                    Label("Complete", systemImage: "checkmark.circle")
+                }
+
+                Divider()
+            }
+
+            Button {
+                onChangeSchedule(item)
+            } label: {
+                Label(scheduleActionTitle, systemImage: scheduleActionIcon)
+            }
+
+            Button {
+                onMoveProject(item)
+            } label: {
+                Label("Move Project", systemImage: "folder")
+            }
+
+            if case .event(let event) = item {
+                Button {
+                    share(event)
+                } label: {
+                    Label("Share Event", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                onDelete(item)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
         .sheet(item: $sharedCalendarFile) { file in
             CalendarActivityView(file: file)
                 .ignoresSafeArea()

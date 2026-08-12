@@ -52,10 +52,10 @@ struct ProjectDetailView: View {
 
     var body: some View {
         itemList
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .nagareProjectNavigationTitle(project.title)
+        .nagareInlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .nagareTrailing) {
                 Button {
                     isCreatingItem = true
                 } label: {
@@ -64,8 +64,12 @@ struct ProjectDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $isCreatingItem) {
-            CreateView(project: project)
+        .nagareDraftComposer(
+            isPresented: $isCreatingItem
+        ) {
+            CreateView(project: project) {
+                isCreatingItem = false
+            }
         }
         .sheet(item: $notesDestination, onDismiss: resetNotesSheet) {
             NotesSheet(
@@ -167,7 +171,7 @@ struct ProjectDetailView: View {
                 }
             }
         }
-        .listSectionSpacing(.custom(48))
+        .nagareListSectionSpacing(.custom(48))
         .reorderContainer(for: Item.self, in: UUID.self) {
             apply($0)
         }
@@ -178,20 +182,21 @@ struct ProjectDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("Project Title", text: $title, axis: .vertical)
                     .font(.title.weight(.semibold))
+                    .textFieldStyle(.plain)
                     .submitLabel(.done)
                     .accessibilityIdentifier("Project Title")
 
                 ZStack(alignment: .topLeading) {
-                    if notes.isEmpty {
-                        Text("Notes")
-                            .foregroundStyle(.tertiary)
-                            .padding(.vertical, 8)
-                    }
-
                     TextEditor(text: $notes)
                         .scrollContentBackground(.hidden)
                         .padding(.horizontal, -5)
                         .accessibilityIdentifier("Project Notes")
+
+                    if notes.isEmpty {
+                        Text("Notes")
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                    }
                 }
                 .frame(minHeight: 88)
             }

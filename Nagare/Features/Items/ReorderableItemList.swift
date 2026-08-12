@@ -87,8 +87,8 @@ struct ReorderableItemList: View {
                 rows(for: group)
             }
         }
-        .listSectionSpacing(
-            showsDateHeaders ? .custom(48) : .default
+        .nagareListSectionSpacing(
+            showsDateHeaders ? .custom(48) : .standard
         )
         .reorderContainer(for: Item.self, in: Date.self) { difference in
             apply(difference)

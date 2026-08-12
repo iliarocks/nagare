@@ -25,6 +25,12 @@ struct ProjectsView: View {
     @State private var displayedPriorityProjectIDs: [UUID]?
     @State private var displayedBackgroundProjectIDs: [UUID]?
 
+    let onOpenSettings: () -> Void
+
+    init(onOpenSettings: @escaping () -> Void = {}) {
+        self.onOpenSettings = onOpenSettings
+    }
+
     private var persistedPriorityProjects: [Project] {
         Project.ordered(projects.filter(\.isPriority))
     }
@@ -74,7 +80,14 @@ struct ProjectsView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .nagareLeading) {
+                Button(action: onOpenSettings) {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
+                }
+            }
+
+            ToolbarItem(placement: .nagareTrailing) {
                 Button {
                     isCreatingProject = true
                 } label: {
@@ -83,10 +96,12 @@ struct ProjectsView: View {
                 }
             }
         }
-        .sheet(isPresented: $isCreatingProject) {
-            ProjectCreateView()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+        .nagareDraftComposer(
+            isPresented: $isCreatingProject
+        ) {
+            ProjectCreateView {
+                isCreatingProject = false
+            }
         }
         .onChange(of: persistedProjectProjection, initial: true) {
             _, projection in
@@ -118,7 +133,7 @@ struct ProjectsView: View {
                 .reorderable(collectionID: ProjectTier.background)
             }
         }
-        .listSectionSpacing(.custom(48))
+        .nagareListSectionSpacing(.custom(48))
         .reorderContainer(for: Project.self, in: ProjectTier.self) {
             reorder($0)
         }
@@ -153,6 +168,26 @@ struct ProjectsView: View {
                 Image(systemName: "trash")
             }
             .accessibilityLabel("Delete")
+        }
+        .nagareDesktopContextMenu {
+            Button {
+                changePriority(of: project)
+            } label: {
+                Label(
+                    project.isPriority ? "Deprioritize" : "Prioritize",
+                    systemImage: project.isPriority
+                        ? "arrow.down"
+                        : "arrow.up"
+                )
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                delete(project)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 

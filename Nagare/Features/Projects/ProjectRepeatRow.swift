@@ -11,6 +11,7 @@ struct ProjectRepeatRow: View {
         Button(action: onOpen) {
             HStack(spacing: 12) {
                 Text(template.title)
+                    .nagareItemTitleFont()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -46,5 +47,20 @@ struct ProjectRepeatRow: View {
         .accessibilityAction(named: "Change Repeat", onChangeRepeat)
         .accessibilityAction(named: "Move Project", onMoveProject)
         .accessibilityAction(named: "Stop Repeat", onDelete)
+        .nagareDesktopContextMenu {
+            Button(action: onChangeRepeat) {
+                Label("Change Repeat", systemImage: "repeat")
+            }
+
+            Button(action: onMoveProject) {
+                Label("Move Project", systemImage: "folder")
+            }
+
+            Divider()
+
+            Button(role: .destructive, action: onDelete) {
+                Label("Stop Repeat", systemImage: "trash")
+            }
+        }
     }
 }

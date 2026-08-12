@@ -7,28 +7,43 @@ enum RecurrenceItemType: String, Codable, Sendable {
 }
 
 @Model
-final class RecurrenceTemplate: Note {
-    @Attribute(.unique) var id: UUID
-    var itemTypeRawValue: String
-    var title: String
+final class RecurrenceTemplate: Note, SyncRecord {
+    #Index<RecurrenceTemplate>([\.id])
+
+    @Attribute(.preserveValueOnDeletion) var id: UUID = UUID()
+    var itemTypeRawValue: String = RecurrenceItemType.todo.rawValue
+    var title: String = ""
     var notes: String?
-    var modeRawValue: String
-    var unitRawValue: String
-    var interval: Int
-    var anchors: [Int]
+    var modeRawValue: String = RecurrenceMode.relative.rawValue
+    var unitRawValue: String = RecurrenceUnit.day.rawValue
+    var interval: Int = 1
+    var anchors: [Int] = []
     var reference: Date?
     var startTimeSeconds: Int?
     var endTimeSeconds: Int?
-    var currentItemID: UUID
-    var currentSequence: Int
-    var createdAt: Date
+    var currentItemID: UUID = UUID()
+    var currentSequence: Int = 0
+    var createdAt: Date = Date.now
+    var modifiedAt: Date?
+    var syncRecordID: UUID?
     var project: Project?
 
-    @Relationship(deleteRule: .nullify, inverse: \Todo.recurrenceTemplate)
-    var todoOccurrences: [Todo]
+    @Relationship(
+        deleteRule: .nullify,
+        originalName: "todoOccurrences",
+        inverse: \Todo.recurrenceTemplate
+    )
+    private var storedTodoOccurrences: [Todo]?
 
-    @Relationship(deleteRule: .nullify, inverse: \Event.recurrenceTemplate)
-    var eventOccurrences: [Event]
+    @Relationship(
+        deleteRule: .nullify,
+        originalName: "eventOccurrences",
+        inverse: \Event.recurrenceTemplate
+    )
+    private var storedEventOccurrences: [Event]?
+
+    var todoOccurrences: [Todo] { storedTodoOccurrences ?? [] }
+    var eventOccurrences: [Event] { storedEventOccurrences ?? [] }
 
     init(
         id: UUID = UUID(),
@@ -56,9 +71,11 @@ final class RecurrenceTemplate: Note {
         self.currentItemID = currentItemID
         self.currentSequence = currentSequence
         self.createdAt = createdAt
+        self.modifiedAt = createdAt
+        self.syncRecordID = UUID()
         self.project = nil
-        self.todoOccurrences = []
-        self.eventOccurrences = []
+        self.storedTodoOccurrences = []
+        self.storedEventOccurrences = []
     }
 
     var itemType: RecurrenceItemType? {

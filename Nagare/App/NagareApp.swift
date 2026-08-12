@@ -6,7 +6,11 @@ import SwiftUI
 @main
 struct NagareApp: App {
     private enum StartupState {
-        case ready(NagareIntentStore)
+        case ready(
+            NagareIntentStore,
+            SyncIntegrityMonitor?,
+            cloudSyncEnabled: Bool
+        )
         case failed
     }
 
@@ -18,7 +22,11 @@ struct NagareApp: App {
     private let startupState: StartupState
 
     init() {
-        let arguments = ProcessInfo.processInfo.arguments
+        let processInfo = ProcessInfo.processInfo
+        let arguments = processInfo.arguments
+        let isRunningUnitTests = !arguments.contains(
+            "--use-reorder-ui-test-store"
+        ) && Self.isRunningUnitTests(environment: processInfo.environment)
 
         do {
 #if DEBUG
@@ -27,9 +35,23 @@ struct NagareApp: App {
             }
 #endif
 
-            let modelContainer = try Self.makeModelContainer(
-                arguments: arguments
+#if DEBUG
+            try NagareCloudSchemaInitializer.runIfRequested(
+                arguments,
+                schema: NagareSchema.current
             )
+#endif
+            let cloudSyncEnabled = !isRunningUnitTests
+                && NagareCloudPreferences.shouldEnableSync(
+                    arguments: arguments
+                )
+            let modelContainer = try Self.makeModelContainer(
+                arguments: arguments,
+                cloudSyncEnabled: cloudSyncEnabled,
+                isRunningUnitTests: isRunningUnitTests
+            )
+            modelContainer.mainContext.autosaveEnabled = false
+            modelContainer.mainContext.author = NagareCloud.localHistoryAuthor
             try Self.prepareReorderRegressionTestDataIfRequested(
                 in: modelContainer.mainContext,
                 arguments: arguments
@@ -46,9 +68,33 @@ struct NagareApp: App {
                 )
             }
 #endif
+            _ = try SyncIntegrityRepair.repair(
+                in: modelContainer.mainContext
+            )
             let intentStore = NagareIntentStore(modelContainer: modelContainer)
+            let syncMonitor: SyncIntegrityMonitor?
+            if cloudSyncEnabled {
+                do {
+                    syncMonitor = try SyncIntegrityMonitor(
+                        modelContainer: modelContainer
+                    )
+                } catch {
+                    // Sync remains functional without this observer; only
+                    // semantic post-import repair waits until next launch.
+                    Self.logger.error(
+                        "Unable to monitor sync history: \(error.localizedDescription, privacy: .public)"
+                    )
+                    syncMonitor = nil
+                }
+            } else {
+                syncMonitor = nil
+            }
             AppDependencyManager.shared.add(dependency: intentStore)
-            startupState = .ready(intentStore)
+            startupState = .ready(
+                intentStore,
+                syncMonitor,
+                cloudSyncEnabled: cloudSyncEnabled
+            )
         } catch {
             Self.logger.fault(
                 "Unable to open Nagare's data store: \(error.localizedDescription, privacy: .public)"
@@ -58,20 +104,84 @@ struct NagareApp: App {
     }
 
     var body: some Scene {
+#if os(macOS)
         WindowGroup {
-            switch startupState {
-            case .ready(let intentStore):
-                RootView(intentStore: intentStore)
-                    .modelContainer(intentStore.modelContainer)
-            case .failed:
-                StoreStartupFailureView()
-            }
+            startupContent
+        }
+        .defaultSize(width: 1_100, height: 720)
+        .commands {
+            NagareCommands()
+        }
+
+        Settings {
+            settingsContent
+        }
+#else
+        WindowGroup {
+            startupContent
+        }
+#endif
+    }
+
+    @ViewBuilder
+    private var startupContent: some View {
+        switch startupState {
+        case .ready(
+            let intentStore,
+            let syncMonitor,
+            cloudSyncEnabled: let cloudSyncEnabled
+        ):
+            RootView(
+                intentStore: intentStore,
+                syncMonitor: syncMonitor,
+                cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled
+            )
+                .modelContainer(intentStore.modelContainer)
+        case .failed:
+            StoreStartupFailureView()
         }
     }
 
+#if os(macOS)
+    @ViewBuilder
+    private var settingsContent: some View {
+        switch startupState {
+        case .ready(
+            let intentStore,
+            _,
+            cloudSyncEnabled: let cloudSyncEnabled
+        ):
+            NagareSettingsView(
+                cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled
+            )
+                .modelContainer(intentStore.modelContainer)
+        case .failed:
+            StoreStartupFailureView()
+        }
+    }
+#endif
+
     private static func makeModelContainer(
-        arguments: [String]
+        arguments: [String],
+        cloudSyncEnabled: Bool,
+        isRunningUnitTests: Bool
     ) throws -> ModelContainer {
+        // Hosted tests launch the application before XCTest invokes any test
+        // method. Giving that host an isolated store prevents a test run from
+        // reading, migrating, syncing, or otherwise depending on developer data.
+        if isRunningUnitTests {
+            let configuration = ModelConfiguration(
+                schema: NagareSchema.current,
+                isStoredInMemoryOnly: true,
+                cloudKitDatabase: .none
+            )
+            return try ModelContainer(
+                for: NagareSchema.current,
+                migrationPlan: NagareMigrationPlan.self,
+                configurations: configuration
+            )
+        }
+
         if arguments.contains("--use-reorder-ui-test-store") {
             let storeURL = URL.applicationSupportDirectory
                 .appending(path: "reorder-regression.store")
@@ -86,39 +196,35 @@ struct NagareApp: App {
             }
             let configuration = ModelConfiguration(
                 "ReorderRegression",
-                schema: Schema([
-                    Project.self,
-                    Todo.self,
-                    Event.self,
-                    RecurrenceTemplate.self
-                ]),
+                schema: NagareSchema.current,
                 url: storeURL,
                 cloudKitDatabase: .none
             )
             return try ModelContainer(
-                for: Project.self,
-                Todo.self,
-                Event.self,
-                RecurrenceTemplate.self,
+                for: NagareSchema.current,
+                migrationPlan: NagareMigrationPlan.self,
                 configurations: configuration
             )
         }
 
-        let schema = Schema([
-            Project.self,
-            Todo.self,
-            Event.self,
-            RecurrenceTemplate.self
-        ])
-        let configuration = ModelConfiguration(
-            schema: schema,
-            groupContainer: .none,
-            cloudKitDatabase: .none
+        let configuration = NagareCloud.configuration(
+            schema: NagareSchema.current,
+            cloudEnabled: cloudSyncEnabled
         )
         return try ModelContainer(
-            for: schema,
+            for: NagareSchema.current,
+            migrationPlan: NagareMigrationPlan.self,
             configurations: configuration
         )
+    }
+
+    private static func isRunningUnitTests(
+        environment: [String: String]
+    ) -> Bool {
+        // XCTestConfigurationFilePath is set by both Xcode and xcodebuild for
+        // hosted unit-test processes. UI-test application processes do not
+        // receive it and continue to use their explicitly named test store.
+        environment["XCTestConfigurationFilePath"] != nil
     }
 
     private static func prepareReorderRegressionTestDataIfRequested(

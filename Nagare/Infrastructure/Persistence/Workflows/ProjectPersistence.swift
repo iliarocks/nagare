@@ -32,7 +32,7 @@ enum ProjectPersistence {
         context.delete(project)
 
         do {
-            try context.save()
+            try SwiftDataTransaction.save(context)
         } catch {
             context.rollback()
             throw PersistenceError.saveFailed(error.localizedDescription)

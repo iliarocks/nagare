@@ -24,7 +24,7 @@ enum ProjectMembership {
     ) throws {
         do {
             try prepare(item, for: project, in: context)
-            try context.save()
+            try SwiftDataTransaction.save(context)
         } catch let error as MembershipError {
             context.rollback()
             throw error

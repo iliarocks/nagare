@@ -11,6 +11,7 @@ struct VirtualItemRow: View {
         Button(action: onOpen) {
             HStack(spacing: 12) {
                 Text(item.template.title)
+                    .nagareItemTitleFont()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -58,6 +59,21 @@ struct VirtualItemRow: View {
         }
         .accessibilityAction(named: "Delete") {
             onDelete()
+        }
+        .nagareDesktopContextMenu {
+            Button(action: onChangeRepeat) {
+                Label("Change Repeat", systemImage: "repeat")
+            }
+
+            Button(action: onMoveProject) {
+                Label("Move Project", systemImage: "folder")
+            }
+
+            Divider()
+
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 }

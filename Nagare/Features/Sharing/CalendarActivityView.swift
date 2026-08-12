@@ -1,4 +1,5 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
 import UniformTypeIdentifiers
 
@@ -53,3 +54,46 @@ private final class CalendarActivityItemSource: NSObject,
         UTType.calendarEvent.identifier
     }
 }
+#elseif canImport(AppKit)
+import AppKit
+
+struct CalendarActivityView: NSViewRepresentable {
+    let file: SharedCalendarFile
+
+    func makeNSView(context: Context) -> NSView {
+        SharingPickerView(file: file)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class SharingPickerView: NSView {
+    private let file: SharedCalendarFile
+    private var hasPresentedPicker = false
+
+    init(file: SharedCalendarFile) {
+        self.file = file
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, !hasPresentedPicker else { return }
+        hasPresentedPicker = true
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            NSSharingServicePicker(items: [file.fileURL]).show(
+                relativeTo: bounds,
+                of: self,
+                preferredEdge: .minY
+            )
+        }
+    }
+}
+#endif

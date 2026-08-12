@@ -47,3 +47,50 @@ the linter before compilation.
 - UI code must not call `ModelContext.save()` directly. Existing record-editing
   screens use `SwiftDataTransaction` while their larger workflows are migrated
   behind ports.
+
+## Persistence and sync
+
+Nagare has one persisted model and one transaction path. SwiftData remains the
+local source of truth; CloudKit replicates that store's records through the
+user's private database. There is no second "cloud DTO" graph to translate,
+version independently, or accidentally let drift from the local graph.
+
+iCloud is an explicit user preference and defaults to off. Startup always
+passes either `.private(...)` or `.none` to `ModelConfiguration`; capabilities
+alone never decide whether a person's store syncs. A preference change applies
+on the next launch so only one stack ever has the SQLite store open.
+
+`NagareSchemaV1` is the frozen model shipped before sync. `NagareSchemaV2` is
+the first CloudKit-compatible model, and `NagareMigrationPlan` owns the
+additive migration between them. Historical schemas are immutable once
+released.
+
+CloudKit cannot enforce the old SQLite uniqueness constraints while records
+are imported asynchronously. Semantic UUID identity is therefore an
+application invariant:
+
+1. Every record has a replicated physical `syncRecordID`, distinct from its
+   semantic UUID, so exact timestamp ties have a device-independent survivor.
+2. `SwiftDataTransaction` stamps every changed record's `modifiedAt` and is the
+   only production save boundary.
+3. `SyncIntegrityMonitor` observes persistent-history changes and debounces a
+   reconciliation pass after imports.
+4. `SyncIntegrityRepair` deterministically selects one canonical record for a
+   duplicated UUID, reconnects relationships, and repairs concurrent
+   recurrence successors in a single transaction.
+
+The repair rules are idempotent and preserve records when a related CloudKit
+record may still be in flight. The same complete input therefore converges to
+the same result on every device.
+
+All future persisted-model changes must keep the CloudKit contract:
+
+- no database uniqueness constraints;
+- every nonoptional attribute has a schema-level default;
+- relationships are optional, have explicit inverses, and do not deny deletes;
+- migrations are additive, with a new frozen `VersionedSchema` for every
+  released shape;
+- all writes go through `SwiftDataTransaction`.
+
+See `SYNC_AND_MACOS.md` for conflict behavior, platform design, and the release
+checklist.

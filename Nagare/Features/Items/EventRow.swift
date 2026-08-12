@@ -11,6 +11,7 @@ struct EventRow: View {
         Button(action: onOpen) {
             HStack(spacing: 12) {
                 Text(event.title)
+                    .nagareItemTitleFont()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -42,7 +43,7 @@ struct EventTimeLabel: View {
                 Text(endDate, format: .dateTime.hour().minute())
             }
         }
-        .font(.subheadline)
+        .nagareEventTimeFont()
         .foregroundStyle(.secondary)
         .fixedSize()
         .accessibilityElement(children: .combine)

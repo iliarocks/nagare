@@ -48,8 +48,14 @@ struct CreateView: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
-    init(project: Project? = nil) {
+    private let onDismiss: (() -> Void)?
+
+    init(
+        project: Project? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         _selectedProject = State(initialValue: project)
+        self.onDismiss = onDismiss
     }
 
     private var trimmedTitle: String {
@@ -169,6 +175,7 @@ struct CreateView: View {
                 text: $title
             )
             .font(.title.weight(.semibold))
+            .textFieldStyle(.plain)
             .focused($focusedField, equals: .title)
             .submitLabel(.done)
             .onSubmit {
@@ -177,17 +184,17 @@ struct CreateView: View {
             .accessibilityIdentifier("Create Title")
 
             ZStack(alignment: .topLeading) {
-                if notes.isEmpty {
-                    Text("Notes")
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 8)
-                }
-
                 TextEditor(text: $notes)
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, -5)
                     .focused($focusedField, equals: .notes)
                     .accessibilityIdentifier("Create Notes")
+
+                if notes.isEmpty {
+                    Text("Notes")
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -217,6 +224,7 @@ struct CreateView: View {
         .padding(.horizontal, 24)
         .padding(.top, 32)
         .padding(.bottom, 16)
+        .nagareComposerFrame(width: 620, height: 400)
     }
 
     private var details: some View {
@@ -350,7 +358,11 @@ struct CreateView: View {
     private func submit() {
         pendingSave?.cancel()
         guard saveDraft(allowingEmptyTitle: true) else { return }
-        dismiss()
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
     }
 
     private func restoreFocusAfterDetails() {

@@ -104,14 +104,14 @@ lint_forbidden_symbols \
     'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex' \
     "Application orchestrators must perform I/O through ports"
 
-# Save/rollback semantics belong to the transaction adapters. UI and app
-# intent code can request a commit but cannot call ModelContext.save directly.
+# Save/rollback and sync-metadata semantics belong to one transaction adapter.
+# A second save path can silently bypass modification stamps or rollback.
 direct_save_matches=""
 direct_save_grep_status=0
 direct_save_matches="$(
     grep -RInE \
         --include='*.swift' \
-        --exclude-dir='Infrastructure' \
+        --exclude='SwiftDataTransaction.swift' \
         '(modelContext|context)\.save\(' \
         "${repository_root}/Nagare"
 )" || direct_save_grep_status=$?
@@ -127,7 +127,7 @@ while IFS=: read -r source_file line_number _; do
     report_failure \
         "${source_file}" \
         "${line_number}" \
-        "Direct ModelContext saves belong in Infrastructure/Persistence"
+        "Direct ModelContext saves must use SwiftDataTransaction"
 done <<< "${direct_save_matches}"
 
 if (( failure_count > 0 )); then

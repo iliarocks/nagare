@@ -329,9 +329,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         ]
         app.launch()
 
-        let completedButton = app.buttons["Completed"]
-        XCTAssertTrue(completedButton.waitForExistence(timeout: 5))
-        completedButton.tap()
+        openCompletedItems(in: app)
 
         let completedTodo = app.buttons["Completed Todo UI, completed"]
         XCTAssertTrue(completedTodo.waitForExistence(timeout: 2))
@@ -360,9 +358,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         ]
         app.launch()
 
-        let completedButton = app.buttons["Completed"]
-        XCTAssertTrue(completedButton.waitForExistence(timeout: 5))
-        completedButton.tap()
+        openCompletedItems(in: app)
 
         let completedTodo = app.buttons["Completed Todo UI, completed"]
         XCTAssertTrue(completedTodo.waitForExistence(timeout: 2))
@@ -1180,6 +1176,17 @@ final class ReorderPersistenceUITests: XCTestCase {
         in app: XCUIApplication
     ) -> XCUIElement {
         app.descendants(matching: .any)["Project \(title)"]
+    }
+
+    @MainActor
+    private func openCompletedItems(in app: XCUIApplication) {
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+
+        let completedItems = app.buttons["Completed Items"]
+        XCTAssertTrue(completedItems.waitForExistence(timeout: 2))
+        completedItems.tap()
     }
 
     @MainActor

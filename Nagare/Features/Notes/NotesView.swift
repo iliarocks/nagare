@@ -31,6 +31,7 @@ struct NotesView<Record: Note>: View {
             HStack(alignment: .center, spacing: 12) {
                 TextField("Title", text: $title, axis: .vertical)
                     .font(.title.weight(.semibold))
+                    .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(1)
                     .accessibilityIdentifier("Item Title")
@@ -53,16 +54,16 @@ struct NotesView<Record: Note>: View {
             }
 
             ZStack(alignment: .topLeading) {
-                if notes.isEmpty {
-                    Text("Notes")
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 8)
-                }
-
                 TextEditor(text: $notes)
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, -5)
                     .accessibilityIdentifier("Item Notes")
+
+                if notes.isEmpty {
+                    Text("Notes")
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

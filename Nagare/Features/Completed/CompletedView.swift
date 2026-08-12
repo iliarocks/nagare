@@ -60,7 +60,7 @@ struct CompletedView: View {
                         }
                     }
                 }
-                .listSectionSpacing(.custom(48))
+                .nagareListSectionSpacing(.custom(48))
                 .contentMargins(.top, 24, for: .scrollContent)
             }
         }
@@ -101,6 +101,7 @@ struct CompletedView: View {
         } label: {
             HStack(spacing: 12) {
                 Text(todo.title)
+                    .nagareItemTitleFont()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -136,6 +137,21 @@ struct CompletedView: View {
                 Image(systemName: "trash")
             }
             .accessibilityLabel("Delete")
+        }
+        .nagareDesktopContextMenu {
+            Button {
+                reinstate(todo)
+            } label: {
+                Label("Reinstate", systemImage: "arrow.uturn.backward")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                delete(todo)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
