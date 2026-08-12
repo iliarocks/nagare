@@ -1,0 +1,229 @@
+import Foundation
+import SwiftData
+
+/// Pure record-to-value translation shared by sync reconciliation and virtual
+/// recurrence projection. Encoding every tie field here prevents two policies
+/// from quietly disagreeing about replicated identity.
+@MainActor
+enum SwiftDataSyncSnapshotMapper {
+    static func project(_ record: Project) -> SyncProjectSnapshot {
+        SyncProjectSnapshot(metadata: projectMetadata(record))
+    }
+
+    static func recurrenceTemplate(
+        _ record: RecurrenceTemplate
+    ) -> SyncRecurrenceTemplateSnapshot {
+        SyncRecurrenceTemplateSnapshot(
+            metadata: templateMetadata(record),
+            itemTypeRawValue: record.itemTypeRawValue,
+            currentItemID: record.currentItemID,
+            currentSequence: record.currentSequence,
+            projectID: record.project?.id
+        )
+    }
+
+    static func todo(_ record: Todo) -> SyncTodoSnapshot {
+        SyncTodoSnapshot(
+            metadata: todoMetadata(record),
+            completedAt: record.completedAt,
+            recurrenceSequence: record.recurrenceSequence,
+            recurrenceTemplateID: record.recurrenceTemplate?.id,
+            projectID: record.project?.id
+        )
+    }
+
+    static func event(_ record: Event) -> SyncEventSnapshot {
+        SyncEventSnapshot(
+            metadata: eventMetadata(record),
+            recurrenceSequence: record.recurrenceSequence,
+            recurrenceTemplateID: record.recurrenceTemplate?.id,
+            projectID: record.project?.id
+        )
+    }
+
+    static func recurrenceProjectionInput(
+        templates: [RecurrenceTemplate],
+        todos: [Todo],
+        events: [Event]
+    ) -> RecurrenceProjectionInput {
+        RecurrenceProjectionInput(
+            templates: templates.map {
+                RecurrenceProjectionTemplateSnapshot(
+                    metadata: templateMetadata($0),
+                    itemTypeRawValue: $0.itemTypeRawValue,
+                    modeRawValue: $0.modeRawValue,
+                    unitRawValue: $0.unitRawValue,
+                    interval: $0.interval,
+                    anchors: $0.anchors,
+                    reference: $0.reference,
+                    startTimeSeconds: $0.startTimeSeconds,
+                    endTimeSeconds: $0.endTimeSeconds,
+                    currentItemID: $0.currentItemID,
+                    currentSequence: $0.currentSequence
+                )
+            },
+            occurrences: todos.map {
+                RecurrenceProjectionOccurrenceSnapshot(
+                    metadata: todoMetadata($0),
+                    itemType: .todo,
+                    scheduledDate: $0.scheduledDate,
+                    completedAt: $0.completedAt,
+                    order: $0.order,
+                    recurrenceSequence: $0.recurrenceSequence,
+                    recurrenceTemplateID: $0.recurrenceTemplate?.id
+                )
+            } + events.map {
+                RecurrenceProjectionOccurrenceSnapshot(
+                    metadata: eventMetadata($0),
+                    itemType: .event,
+                    scheduledDate: $0.scheduledDate,
+                    completedAt: nil,
+                    order: $0.order,
+                    recurrenceSequence: $0.recurrenceSequence,
+                    recurrenceTemplateID: $0.recurrenceTemplate?.id
+                )
+            }
+        )
+    }
+
+    static func reference<Record>(
+        for record: Record,
+        kind: SyncEntityKind
+    ) -> SyncRecordReference where Record: PersistentModel {
+        SyncRecordReference(
+            kind: kind,
+            localID: String(describing: ObjectIdentifier(record))
+        )
+    }
+
+    private static func projectMetadata(
+        _ record: Project
+    ) -> SyncRecordMetadata {
+        metadata(
+            for: record,
+            kind: .project,
+            tieBreaker: [
+                stable(record.title),
+                stable(record.notes),
+                stable(record.isPriority),
+                stable(record.order)
+            ]
+        )
+    }
+
+    private static func templateMetadata(
+        _ record: RecurrenceTemplate
+    ) -> SyncRecordMetadata {
+        metadata(
+            for: record,
+            kind: .recurrenceTemplate,
+            tieBreaker: [
+                stable(record.itemTypeRawValue),
+                stable(record.title),
+                stable(record.notes),
+                stable(record.modeRawValue),
+                stable(record.unitRawValue),
+                stable(record.interval),
+                stable(record.anchors),
+                stable(record.reference),
+                stable(record.startTimeSeconds),
+                stable(record.endTimeSeconds),
+                stable(record.currentItemID),
+                stable(record.currentSequence),
+                stable(record.project?.id)
+            ]
+        )
+    }
+
+    private static func todoMetadata(_ record: Todo) -> SyncRecordMetadata {
+        metadata(
+            for: record,
+            kind: .todo,
+            tieBreaker: [
+                stable(record.title),
+                stable(record.notes),
+                stable(record.scheduledDate),
+                stable(record.completedAt),
+                stable(record.order),
+                stable(record.projectOrder),
+                stable(record.recurrenceSequence),
+                stable(record.recurrenceTemplate?.id),
+                stable(record.project?.id)
+            ]
+        )
+    }
+
+    private static func eventMetadata(_ record: Event) -> SyncRecordMetadata {
+        metadata(
+            for: record,
+            kind: .event,
+            tieBreaker: [
+                stable(record.title),
+                stable(record.notes),
+                stable(record.scheduledDate),
+                stable(record.endDate),
+                stable(record.calendarIdentifier),
+                stable(record.order),
+                stable(record.projectOrder),
+                stable(record.recurrenceSequence),
+                stable(record.recurrenceTemplate?.id),
+                stable(record.project?.id)
+            ]
+        )
+    }
+
+    private static func metadata<Record>(
+        for record: Record,
+        kind: SyncEntityKind,
+        tieBreaker: [String]
+    ) -> SyncRecordMetadata where Record: PersistentModel & SyncRecord {
+        SyncRecordMetadata(
+            reference: reference(for: record, kind: kind),
+            semanticID: record.id,
+            physicalID: record.syncRecordID,
+            createdAt: record.createdAt,
+            modifiedAt: record.modifiedAt,
+            stableTieBreaker: tieBreaker
+        )
+    }
+
+    private static func stable(_ value: String) -> String {
+        "s:\(Data(value.utf8).base64EncodedString())"
+    }
+
+    private static func stable(_ value: String?) -> String {
+        value.map(stable) ?? "nil"
+    }
+
+    private static func stable(_ value: Bool) -> String {
+        value ? "b:1" : "b:0"
+    }
+
+    private static func stable(_ value: Int) -> String {
+        "i:\(value)"
+    }
+
+    private static func stable(_ value: Int?) -> String {
+        value.map(stable) ?? "nil"
+    }
+
+    private static func stable(_ value: [Int]) -> String {
+        "a:" + value.map(String.init).joined(separator: ",")
+    }
+
+    private static func stable(_ value: Date) -> String {
+        "d:\(value.timeIntervalSinceReferenceDate.bitPattern)"
+    }
+
+    private static func stable(_ value: Date?) -> String {
+        value.map(stable) ?? "nil"
+    }
+
+    private static func stable(_ value: UUID) -> String {
+        "u:\(value.uuidString)"
+    }
+
+    private static func stable(_ value: UUID?) -> String {
+        value.map(stable) ?? "nil"
+    }
+}

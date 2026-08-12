@@ -98,7 +98,7 @@ Framework import/export failures are retried by the persistent CloudKit stack;
 semantic repair failures are nonfatal and retry on the next history event,
 foreground activation, or launch.
 
-### Development finding: `VIRTUAL-001`
+### Resolved development finding: `VIRTUAL-001`
 
 Two-device testing exposed an eventual-consistency edge case after the initial
 import. A recurrence template can become visible before the occurrence named by
@@ -106,19 +106,20 @@ its `currentItemID`. Reordering is one way to refresh Upcoming while the graph
 is in that partial state, so it surfaces `VIRTUAL-001`; this does not imply that
 the ordering transaction itself is invalid.
 
-Do not repair this by inventing an occurrence, clearing the template pointer,
-or deleting the template. Those responses can turn an ordinary out-of-order
-CloudKit import into permanent cross-device data loss. The follow-up should:
+The architecture now handles this without inventing an occurrence, clearing
+the pointer, or deleting the template:
 
-- treat a temporarily unresolved template as pending during virtual projection;
-- retry projection after persistent-history imports and integrity repair;
-- log the template identity, current-item identity, sequence, and import state;
-- cover template-before-occurrence and occurrence-before-template imports in
-  two-context integration tests; and
-- continue to report truly persistent corruption after a bounded repair window.
+- projection consumes immutable snapshots of all templates and occurrences;
+- current identity and sequence work before an inverse relationship edge;
+- an unresolved current occurrence is a nonfatal pending projection;
+- persistent-history observation retries reconciliation outside the UI; and
+- planner and SwiftData integration tests cover import-order permutations,
+  missing relationship edges, conflict convergence, and idempotence.
 
-Until that work is complete, `VIRTUAL-001` remains a known development-build
-sync defect and the development schema should not be promoted to production.
+The development schema still must not be promoted until the full physical
+two-device matrix below passes. Automated partial-import coverage removes the
+known `VIRTUAL-001` architecture defect; it does not substitute for CloudKit
+transport testing on real devices.
 
 In a development-signed build, pass `--initialize-cloudkit-schema` once after
 an intentional model change. The debug-only initializer derives the managed

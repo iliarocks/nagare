@@ -269,14 +269,14 @@ struct RecurrenceEditor: View {
             guard let todo = template.todoOccurrences.first(where: {
                 $0.id == template.currentItemID && $0.completedAt == nil
             }) else {
-                throw VirtualItemProjectionError.missingCurrentOccurrence
+                throw RecurrenceEditorError.missingCurrentOccurrence
             }
             return todo.scheduledDate
         case .event:
             guard let event = template.eventOccurrences.first(where: {
                 $0.id == template.currentItemID
             }) else {
-                throw VirtualItemProjectionError.missingCurrentOccurrence
+                throw RecurrenceEditorError.missingCurrentOccurrence
             }
             return event.scheduledDate
         case nil:
@@ -324,8 +324,14 @@ struct RecurrenceEditor: View {
 
 enum RecurrenceEditorError: Error, LocalizedError {
     case missingRule
+    case missingCurrentOccurrence
 
     var errorDescription: String? {
-        "Nagare couldn't construct the repeat rule. (RECURRENCE-UI-003)"
+        switch self {
+        case .missingRule:
+            "Nagare couldn't construct the repeat rule. (RECURRENCE-UI-003)"
+        case .missingCurrentOccurrence:
+            "This repeat is still waiting for its current item to sync. (RECURRENCE-UI-004)"
+        }
     }
 }

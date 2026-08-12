@@ -97,15 +97,6 @@ struct RootView: View {
         .task {
             importPendingCalendarEvents()
         }
-        .task(id: syncMonitor?.eventCounter) {
-            guard let syncMonitor else { return }
-            do {
-                try await Task.sleep(for: .milliseconds(750))
-            } catch {
-                return
-            }
-            syncMonitor.repair()
-        }
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 importPendingCalendarEvents()

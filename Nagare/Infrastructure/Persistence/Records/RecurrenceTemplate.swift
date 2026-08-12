@@ -1,11 +1,6 @@
 import Foundation
 import SwiftData
 
-enum RecurrenceItemType: String, Codable, Sendable {
-    case todo
-    case event
-}
-
 @Model
 final class RecurrenceTemplate: Note, SyncRecord {
     #Index<RecurrenceTemplate>([\.id])

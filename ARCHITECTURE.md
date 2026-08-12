@@ -29,6 +29,18 @@ OrderingPlanner (pure)       SwiftDataOrderingAdapter
 immutable snapshots                 SwiftData
 ```
 
+Sync reconciliation follows the same shape:
+
+```text
+HistoryObserver / app activation
+              |
+SyncReconciliationOrchestrator -- SyncReconciliationPersistence (port)
+              |                                  |
+SyncReconciliationPlanner (pure)   SwiftDataSyncReconciliationAdapter
+              |                                  |
+immutable graph + explicit plan             SwiftData / CloudKit
+```
+
 `Scripts/lint-imports.sh` enforces framework allowlists for each inner layer,
 rejects side-effect APIs in Domain/Application, and rejects direct
 `ModelContext.save()` calls outside Infrastructure. The Xcode app target runs
@@ -73,15 +85,30 @@ application invariant:
    semantic UUID, so exact timestamp ties have a device-independent survivor.
 2. `SwiftDataTransaction` stamps every changed record's `modifiedAt` and is the
    only production save boundary.
-3. `SyncIntegrityMonitor` observes persistent-history changes and debounces a
-   reconciliation pass after imports.
-4. `SyncIntegrityRepair` deterministically selects one canonical record for a
-   duplicated UUID, reconnects relationships, and repairs concurrent
-   recurrence successors in a single transaction.
+3. `SyncIntegrityMonitor` owns continuous persistent-history observation and
+   debounces reconciliation after remote events. No view lifecycle keeps data
+   correct.
+4. `SyncReconciliationPlanner` receives one immutable graph and returns an
+   explicit deterministic plan. Missing relationship edges are pending import
+   states. It never reads SwiftData identity or performs I/O.
+5. `SwiftDataSyncReconciliationAdapter` translates records, applies the plan,
+   and saves atomically. It contains no conflict or recurrence policy.
 
 The repair rules are idempotent and preserve records when a related CloudKit
 record may still be in flight. The same complete input therefore converges to
 the same result on every device.
+
+A migrated V1 record without a physical identity deterministically uses its
+semantic UUID. Random IDs and store-local persistent identifiers are forbidden
+as replicated conflict tie-breakers. A local token may choose between records
+only after every replicated field is equal, when either deletion produces the
+same replicated result.
+
+Virtual recurrence projection consumes an immutable graph of every template
+and occurrence fetched independently. It identifies the current item by
+semantic ID and sequence even before CloudKit imports the inverse relationship.
+A template imported before its current occurrence is skipped as pending; it
+never empties unrelated projections or turns a reorder into a save failure.
 
 All future persisted-model changes must keep the CloudKit contract:
 

@@ -2,6 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct UpcomingView: View {
+    private struct PresentedFailure: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
 
@@ -14,15 +20,19 @@ struct UpcomingView: View {
     @Query(sort: \RecurrenceTemplate.createdAt)
     private var recurrenceTemplates: [RecurrenceTemplate]
 
-    @State private var errorMessage: String?
+    @State private var presentedFailure: PresentedFailure?
     @State private var displayedItemIDsByDate: [Date: [ItemID]] = [:]
     @State private var virtualItems: [VirtualItem] = []
 
     let onOpenNotes: (NotesDestination) -> Void
 
     @MainActor
-    private var recurrenceProjectionRevisions: [RecurrenceProjectionRevision] {
-        recurrenceTemplates.map(RecurrenceProjectionRevision.init)
+    private var recurrenceProjectionInput: RecurrenceProjectionInput {
+        VirtualItemProjection.input(
+            templates: recurrenceTemplates,
+            todos: todos,
+            events: events
+        )
     }
 
     private var persistedItemGroups: [ReorderableItemGroup] {
@@ -144,7 +154,7 @@ struct UpcomingView: View {
             displayedItemIDsByDate = itemIDsByDate
         }
         .onChange(
-            of: recurrenceProjectionRevisions,
+            of: recurrenceProjectionInput,
             initial: true
         ) {
             refreshVirtualItems()
@@ -160,7 +170,9 @@ struct UpcomingView: View {
                 Button("Test reorder upcoming last before first") {
                     guard let group = itemGroups.first,
                           group.items.count > 1 else {
-                        errorMessage = "Nagare couldn't prepare the upcoming reorder regression action. (ORDER-UI-009)"
+                        presentSaveFailure(
+                            message: "Nagare couldn't prepare the upcoming reorder regression action. (ORDER-UI-009)"
+                        )
                         return
                     }
                     move(
@@ -174,24 +186,13 @@ struct UpcomingView: View {
             }
 #endif
         }
-        .alert("Nagare Couldn't Save", isPresented: isShowingError) {
-            Button("OK", role: .cancel) {
-                errorMessage = nil
-            }
-        } message: {
-            Text(errorMessage ?? "An unknown error occurred.")
+        .alert(item: $presentedFailure) { failure in
+            Alert(
+                title: Text(failure.title),
+                message: Text(failure.message),
+                dismissButton: .default(Text("OK"))
+            )
         }
-    }
-
-    private var isShowingError: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    errorMessage = nil
-                }
-            }
-        )
     }
 
     private func complete(_ todo: Todo) {
@@ -203,7 +204,7 @@ struct UpcomingView: View {
                 )
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentSaveFailure(error)
         }
     }
 
@@ -216,7 +217,7 @@ struct UpcomingView: View {
                 try RecurrencePersistence.delete(event, in: modelContext)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentSaveFailure(error)
         }
     }
 
@@ -227,7 +228,7 @@ struct UpcomingView: View {
                 in: modelContext
             )
         } catch {
-            errorMessage = error.localizedDescription
+            presentSaveFailure(error)
         }
     }
 
@@ -245,22 +246,27 @@ struct UpcomingView: View {
             to: today
         ) else {
             virtualItems = []
-            errorMessage = VirtualItemProjectionError
+            presentProjectionFailure(
+                UpcomingProjectionError
                 .horizonCalculationFailed
-                .localizedDescription
+            )
             return
         }
 
-        do {
-            virtualItems = try VirtualItemProjection.generate(
-                from: recurrenceTemplates,
-                starting: tomorrow,
-                through: horizon,
-                calendar: calendar
+        let result = VirtualItemProjection.generate(
+            from: recurrenceProjectionInput,
+            templates: recurrenceTemplates,
+            starting: tomorrow,
+            through: horizon,
+            calendar: calendar
+        )
+        virtualItems = result.items
+        if let invalidIssue = result.issues.first(where: {
+            !$0.isPendingImport
+        }) {
+            presentProjectionFailure(
+                UpcomingProjectionError.invalidTemplate(invalidIssue)
             )
-        } catch {
-            virtualItems = []
-            errorMessage = error.localizedDescription
         }
     }
 
@@ -291,7 +297,7 @@ struct UpcomingView: View {
         } catch {
             modelContext.rollback()
             displayedItemIDsByDate = persistedItemIDsByDate
-            errorMessage = error.localizedDescription
+            presentSaveFailure(error)
         }
     }
 
@@ -321,8 +327,26 @@ struct UpcomingView: View {
         } catch {
             modelContext.rollback()
             displayedItemIDsByDate = persistedItemIDsByDate
-            errorMessage = error.localizedDescription
+            presentSaveFailure(error)
         }
+    }
+
+    private func presentSaveFailure(_ error: Error) {
+        presentSaveFailure(message: error.localizedDescription)
+    }
+
+    private func presentSaveFailure(message: String) {
+        presentedFailure = PresentedFailure(
+            title: "Nagare Couldn't Save",
+            message: message
+        )
+    }
+
+    private func presentProjectionFailure(_ error: Error) {
+        presentedFailure = PresentedFailure(
+            title: "Nagare Couldn't Update Upcoming",
+            message: error.localizedDescription
+        )
     }
 
 }

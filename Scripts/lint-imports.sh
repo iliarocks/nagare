@@ -99,6 +99,34 @@ lint_forbidden_symbols \
     'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex|autoupdatingCurrent|Date\.now|\.now\b' \
     "Domain code may only use immutable values and explicit deterministic inputs"
 
+# Domain structs are values, not mutable bags shared between planners. Local
+# variables inside pure functions may mutate; stored properties may not.
+domain_stored_var_matches=""
+domain_stored_var_status=0
+domain_stored_var_matches="$(
+    grep -RInE \
+        --include='*.swift' \
+        '^[[:space:]]{4}(private[[:space:]]+)?var[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(:|=).*(\{|get[[:space:]]*\{)?[[:space:]]*$' \
+        "${repository_root}/Nagare/Domain/Models"
+)" || domain_stored_var_status=$?
+if (( domain_stored_var_status > 1 )); then
+    report_failure \
+        "${repository_root}/Nagare/Domain/Models" \
+        0 \
+        "Architecture lint could not scan immutable Domain models"
+fi
+while IFS=: read -r source_file line_number _; do
+    [[ -n "${source_file}" ]] || continue
+    source_line="$(sed -n "${line_number}p" "${source_file}")"
+    if [[ "${source_line}" == *"{"* ]]; then
+        continue
+    fi
+    report_failure \
+        "${source_file}" \
+        "${line_number}" \
+        "Domain model stored properties must be immutable let values"
+done <<< "${domain_stored_var_matches}"
+
 lint_forbidden_symbols \
     "Nagare/Application" \
     'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex' \
@@ -129,6 +157,13 @@ while IFS=: read -r source_file line_number _; do
         "${line_number}" \
         "Direct ModelContext saves must use SwiftDataTransaction"
 done <<< "${direct_save_matches}"
+
+# SwiftData and CloudKit policy belongs in Domain planners, never in an
+# Infrastructure adapter or mutable record type.
+lint_forbidden_symbols \
+    "Nagare/Infrastructure/Persistence" \
+    'canonicalRecord|canonicalOccurrence|groupsWithDuplicateIDs|isLowerPriority|SyncReconciliationPlanner\.plan|RecurrenceProjectionLogic\.generate' \
+    "Persistence adapters may translate and apply plans but may not decide conflict policy"
 
 if (( failure_count > 0 )); then
     printf 'Import boundary lint failed with %d violation(s).\n' "${failure_count}" >&2

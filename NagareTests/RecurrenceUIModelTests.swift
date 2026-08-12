@@ -220,12 +220,12 @@ struct RecurrenceUIModelTests {
             in: context
         )
 
-        let items = try VirtualItemProjection.generate(
-            from: template,
+        let items = try project(
+            template,
+            in: context,
             starting: date(2026, 7, 2),
-            through: date(2027, 1, 1),
-            calendar: calendar
-        )
+            through: date(2027, 1, 1)
+        ).items
 
         #expect(items.count == 1)
         #expect(items.first?.date == date(2026, 7, 3))
@@ -253,12 +253,12 @@ struct RecurrenceUIModelTests {
             in: context
         )
 
-        let items = try VirtualItemProjection.generate(
-            from: template,
+        let items = try project(
+            template,
+            in: context,
             starting: date(2026, 7, 7),
-            through: date(2026, 7, 15),
-            calendar: calendar
-        )
+            through: date(2026, 7, 15)
+        ).items
 
         #expect(items.map(\.date) == [
             date(2026, 7, 8),
@@ -291,12 +291,12 @@ struct RecurrenceUIModelTests {
             calendar: calendar
         )
 
-        let items = try VirtualItemProjection.generate(
-            from: template,
+        let items = try project(
+            template,
+            in: context,
             starting: date(2026, 7, 7),
-            through: date(2026, 7, 13),
-            calendar: calendar
-        )
+            through: date(2026, 7, 13)
+        ).items
         let item = try #require(items.first)
 
         #expect(item.startDate == date(2026, 7, 13, hour: 9, minute: 30))
@@ -318,12 +318,12 @@ struct RecurrenceUIModelTests {
             in: context
         )
         let item = try #require(
-            VirtualItemProjection.generate(
-                from: template,
+            try project(
+                template,
+                in: context,
                 starting: date(2026, 7, 2),
-                through: date(2026, 7, 2),
-                calendar: calendar
-            ).first
+                through: date(2026, 7, 2)
+            ).items.first
         )
 
         template.title = "New future title"
@@ -332,7 +332,7 @@ struct RecurrenceUIModelTests {
         #expect(todo.title == "Old future title")
     }
 
-    @Test func corruptTemplateProjectionFailsWithDiagnosticCode() throws {
+    @Test func templateFirstImportWaitsWithoutFailingProjection() throws {
         let context = try makeContext()
         let todo = insertTodo(
             "Repeat",
@@ -347,17 +347,42 @@ struct RecurrenceUIModelTests {
         )
         template.currentItemID = UUID()
 
-        do {
-            _ = try VirtualItemProjection.generate(
-                from: template,
-                starting: date(2026, 7, 2),
-                through: date(2026, 7, 3),
-                calendar: calendar
-            )
-            Issue.record("Expected virtual projection to fail")
-        } catch {
-            #expect(error.localizedDescription.contains("VIRTUAL-001"))
-        }
+        let result = try project(
+            template,
+            in: context,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 3)
+        )
+
+        #expect(result.items.isEmpty)
+        #expect(result.issues.count == 1)
+        #expect(result.issues.first?.isPendingImport == true)
+    }
+
+    @Test func missingRelationshipEdgeStillProjectsFromCurrentIdentity() throws {
+        let context = try makeContext()
+        let todo = insertTodo(
+            "Repeat",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let rule = try RecurrenceRule.relative(every: 1, unit: .day)
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: rule,
+            in: context
+        )
+        todo.recurrenceTemplate = nil
+
+        let result = try project(
+            template,
+            in: context,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 3)
+        )
+
+        #expect(result.issues.isEmpty)
+        #expect(result.items.map(\.date) == [date(2026, 7, 2)])
     }
 
     private func makeContext() throws -> ModelContext {
@@ -373,6 +398,28 @@ struct RecurrenceUIModelTests {
             configurations: configuration
         )
         return ModelContext(container)
+    }
+
+    private func project(
+        _ template: RecurrenceTemplate,
+        in context: ModelContext,
+        starting startDate: Date,
+        through horizon: Date
+    ) throws -> VirtualItemProjectionResult {
+        let todos = try context.fetch(FetchDescriptor<Todo>())
+        let events = try context.fetch(FetchDescriptor<Event>())
+        let input = VirtualItemProjection.input(
+            templates: [template],
+            todos: todos,
+            events: events
+        )
+        return VirtualItemProjection.generate(
+            from: input,
+            templates: [template],
+            starting: startDate,
+            through: horizon,
+            calendar: calendar
+        )
     }
 
     @discardableResult

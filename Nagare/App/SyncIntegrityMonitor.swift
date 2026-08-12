@@ -1,3 +1,4 @@
+import Observation
 import OSLog
 import SwiftData
 
@@ -13,6 +14,16 @@ final class SyncIntegrityMonitor {
 
     private let context: ModelContext
     private let historyObserver: HistoryObserver
+    private var observationToken: ObservationTracking.Token?
+    private var scheduledRepair: Task<Void, Never>?
+    private var pendingRetryIndex = 0
+
+    private static let pendingRetryDelays: [Duration] = [
+        .milliseconds(750),
+        .seconds(2),
+        .seconds(5),
+        .seconds(15)
+    ]
 
     init(modelContainer: ModelContainer) throws {
         context = modelContainer.mainContext
@@ -20,19 +31,35 @@ final class SyncIntegrityMonitor {
             observedModels: NagareSchemaV2.models,
             modelContainer: modelContainer
         )
-    }
-
-    var eventCounter: Int {
-        historyObserver.eventCounter
+        observationToken = withContinuousObservation(
+            options: [.didSet]
+        ) { [weak self] _ in
+            guard let self else { return }
+            _ = self.historyObserver.eventCounter
+            self.pendingRetryIndex = 0
+            self.scheduleRepair(after: .milliseconds(750))
+        }
+        repair()
     }
 
     func repair() {
         do {
-            let report = try SyncIntegrityRepair.repair(in: context)
-            guard report.madeChanges else { return }
-            Self.logger.notice(
-                "Reconciled imported sync state: projects=\(report.duplicateProjectsRemoved), todos=\(report.duplicateTodosRemoved), events=\(report.duplicateEventsRemoved), templates=\(report.duplicateTemplatesRemoved), recurrence=\(report.recurrenceConflictsRepaired), recordIDs=\(report.syncRecordIDsAssigned)"
+            let plan = try SyncReconciliationOrchestrator.reconcile(
+                using: SwiftDataSyncReconciliationAdapter(context: context)
             )
+            if plan.report.madeChanges {
+                Self.logger.notice(
+                    "Reconciled imported sync state: projects=\(plan.report.duplicateProjectsRemoved), todos=\(plan.report.duplicateTodosRemoved), events=\(plan.report.duplicateEventsRemoved), templates=\(plan.report.duplicateTemplatesRemoved), recurrence=\(plan.report.recurrenceConflictsRepaired), links=\(plan.report.recurrenceLinksRepaired), recordIDs=\(plan.report.syncRecordIDsAssigned)"
+                )
+            }
+            if !plan.pendingTemplates.isEmpty {
+                Self.logger.debug(
+                    "Waiting for \(plan.pendingTemplates.count) partial recurrence import(s)."
+                )
+                retryPendingImports(plan.pendingTemplates)
+            } else {
+                pendingRetryIndex = 0
+            }
         } catch {
             // A later history event or foreground activation will retry. Never
             // make a transient repair failure fatal to opening the local store.
@@ -40,6 +67,40 @@ final class SyncIntegrityMonitor {
             Self.logger.error(
                 "Unable to reconcile imported sync state: \(error.localizedDescription, privacy: .public)"
             )
+        }
+    }
+
+    private func retryPendingImports(
+        _ pending: [SyncPendingTemplate]
+    ) {
+        guard pendingRetryIndex < Self.pendingRetryDelays.count else {
+            if pendingRetryIndex == Self.pendingRetryDelays.count {
+                let diagnostics = pending.map {
+                    "\($0.templateID.uuidString):\(String(describing: $0.reason))"
+                }.joined(separator: ",")
+                Self.logger.error(
+                    "Recurrence imports remained partial after bounded retries: \(diagnostics, privacy: .public)"
+                )
+                pendingRetryIndex += 1
+            }
+            return
+        }
+
+        let delay = Self.pendingRetryDelays[pendingRetryIndex]
+        pendingRetryIndex += 1
+        scheduleRepair(after: delay)
+    }
+
+    private func scheduleRepair(after delay: Duration) {
+        scheduledRepair?.cancel()
+        scheduledRepair = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.repair()
         }
     }
 }

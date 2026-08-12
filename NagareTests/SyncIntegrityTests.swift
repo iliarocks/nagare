@@ -416,6 +416,72 @@ struct SyncIntegrityTests {
         #expect(firstReport.syncRecordIDsAssigned == 1)
         #expect(secondReport.syncRecordIDsAssigned == 0)
         #expect(todo.syncRecordID == assignedID)
+        #expect(assignedID == todo.id)
+    }
+
+    @Test func templateAndOccurrenceImportBeforeRelationshipConverge() throws {
+        let context = try makeContext()
+        let day = Date(timeIntervalSince1970: 1_750_000_000)
+        let todo = Todo(
+            title: "Imported occurrence",
+            scheduledDate: day,
+            createdAt: day,
+            order: "i"
+        )
+        todo.recurrenceSequence = 0
+        let template = RecurrenceTemplate(
+            itemType: .todo,
+            title: "Imported template",
+            notes: nil,
+            rule: try RecurrenceRule.relative(every: 1, unit: .day),
+            currentItemID: todo.id,
+            currentSequence: 0,
+            createdAt: day
+        )
+        context.insert(template)
+        context.insert(todo)
+
+        let report = try SyncIntegrityRepair.repair(in: context)
+
+        #expect(report.recurrenceLinksRepaired == 1)
+        #expect(report.pendingTemplates == 0)
+        #expect(todo.recurrenceTemplate === template)
+    }
+
+    @Test func templateBeforeOccurrenceImportIsAStablePendingState() throws {
+        let context = try makeContext()
+        let day = Date(timeIntervalSince1970: 1_750_000_000)
+        let missingItemID = UUID()
+        let template = RecurrenceTemplate(
+            itemType: .todo,
+            title: "Imported template",
+            notes: nil,
+            rule: try RecurrenceRule.relative(every: 1, unit: .day),
+            currentItemID: missingItemID,
+            currentSequence: 2,
+            createdAt: day
+        )
+        context.insert(template)
+
+        let first = try SyncReconciliationOrchestrator.reconcile(
+            using: SwiftDataSyncReconciliationAdapter(context: context)
+        )
+        let second = try SyncReconciliationOrchestrator.reconcile(
+            using: SwiftDataSyncReconciliationAdapter(context: context)
+        )
+
+        #expect(first.mutations.isEmpty)
+        #expect(first.pendingTemplates == [
+            SyncPendingTemplate(
+                templateID: template.id,
+                reason: .noSequencedOccurrences
+            )
+        ])
+        #expect(second == first)
+        #expect(
+            try context.fetch(FetchDescriptor<RecurrenceTemplate>()).count
+                == 1
+        )
     }
 
     @Test func concurrentRecurringTodoSuccessorsConvergeToTemplatePointer() throws {
