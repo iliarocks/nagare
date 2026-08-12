@@ -49,43 +49,11 @@ struct RecurrenceEditor: View {
 
             if itemType == .event {
                 Section {
-                    LabeledContent("Time") {
-                        HStack(spacing: 8) {
-                            DatePicker(
-                                "Start Time",
-                                selection: $startTime,
-                                displayedComponents: .hourAndMinute
-                            )
-                            .labelsHidden()
-
-                            if includesEndTime {
-                                Text("–")
-                                    .foregroundStyle(.secondary)
-
-                                DatePicker(
-                                    "End Time",
-                                    selection: $endTime,
-                                    displayedComponents: .hourAndMinute
-                                )
-                                .labelsHidden()
-                            }
-
-                            Button {
-                                includesEndTime.toggle()
-                            } label: {
-                                Label(
-                                    includesEndTime
-                                        ? "Remove End Time"
-                                        : "Add End Time",
-                                    systemImage: includesEndTime
-                                        ? "minus.circle.fill"
-                                        : "plus.circle"
-                                )
-                                .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                    TimeRangeFields(
+                        startTime: $startTime,
+                        includesEndTime: $includesEndTime,
+                        endTime: $endTime
+                    )
                 } header: {
                     Text("Future Event Time")
                 } footer: {
@@ -96,8 +64,10 @@ struct RecurrenceEditor: View {
                 }
             }
         }
-        .nagareDetailsForm(height: 520)
+        .nagareDetailsForm(height: editorHeight)
         .scrollIndicators(.hidden)
+        .animation(.snappy, value: form.mode)
+        .animation(.snappy, value: form.unit)
         .alert("Repeat Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
@@ -133,6 +103,24 @@ struct RecurrenceEditor: View {
             return true
         }
         return wallTimeSeconds(endTime) >= wallTimeSeconds(startTime)
+    }
+
+    private var editorHeight: CGFloat {
+        var height: CGFloat = itemType == .event ? 300 : 230
+
+        guard form.mode == .absolute else {
+            return height
+        }
+
+        switch form.unit {
+        case .day, .year:
+            return height
+        case .week:
+            height += 90
+        case .month:
+            height += 260
+        }
+        return min(height, 520)
     }
 
     private var canSave: Bool {

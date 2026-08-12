@@ -64,12 +64,17 @@ struct RootView: View {
             )
         }
         .sheet(isPresented: $isShowingCompleted) {
+#if os(macOS)
+            CompletedView()
+                .frame(width: 620, height: 480)
+#else
             NavigationStack {
                 CompletedView()
                     .navigationTitle("Completed")
             }
-            .presentationDetents([.large])
+            .nagareSheetDetents([.large])
             .presentationDragIndicator(.visible)
+#endif
         }
         .sheet(
             item: $notesDestination,
@@ -348,7 +353,8 @@ struct NotesSheet: View {
 
     var body: some View {
         notesView
-            .presentationDetents(
+            .nagareDocumentSheetFrame()
+            .nagareSheetDetents(
                 [.medium, .large],
                 selection: $detent
             )

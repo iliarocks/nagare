@@ -58,7 +58,10 @@ struct CompletedView: View {
                             }
                             .nagareDesktopListRow()
                         } header: {
-                            dateHeader(group.date)
+                            dateHeader(
+                                group.date,
+                                isFirst: group.id == groups.first?.id
+                            )
                         }
                     }
                 }
@@ -157,7 +160,10 @@ struct CompletedView: View {
         }
     }
 
-    private func dateHeader(_ date: Date) -> some View {
+    private func dateHeader(
+        _ date: Date,
+        isFirst: Bool
+    ) -> some View {
         HStack {
             Text(date, format: .dateTime.weekday(.wide))
 
@@ -168,7 +174,7 @@ struct CompletedView: View {
                 format: .dateTime.month(.wide).day()
             )
         }
-        .font(.caption)
+        .nagareDateSectionHeader(isFirst: isFirst)
         .fontWeight(.regular)
     }
 

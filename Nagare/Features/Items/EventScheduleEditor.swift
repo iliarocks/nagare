@@ -64,7 +64,10 @@ struct EventScheduleEditor: View {
             }
 
         }
-        .nagareDetailsForm(height: 300)
+        .nagareDetailsForm(
+            height: includesEndTime || !isScheduleValid ? 230 : 180
+        )
+        .animation(.snappy, value: includesEndTime)
         .onChange(of: scheduledDate) {
             save()
         }

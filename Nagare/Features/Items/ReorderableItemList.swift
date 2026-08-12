@@ -100,22 +100,22 @@ struct ReorderableItemList: View {
         }
         .sheet(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
-                .presentationDetents([.medium])
+                .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
-                .presentationDetents([EventScheduleEditor.sheetDetent])
+                .nagareSheetDetents([EventScheduleEditor.sheetDetent])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
             RecurrenceEditor(template: template)
-                .presentationDetents([.medium])
+                .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $projectMoveTarget) { target in
             ProjectMoveEditor(target: target)
-                .presentationDetents([.fraction(0.25)])
+                .nagareSheetDetents([.fraction(0.25)])
                 .presentationDragIndicator(.visible)
         }
     }

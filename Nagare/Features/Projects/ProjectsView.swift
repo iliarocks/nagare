@@ -133,9 +133,7 @@ struct ProjectsView: View {
                 }
                 .reorderable(collectionID: ProjectTier.priority)
                 .nagareDesktopListRow()
-            }
 
-            Section {
                 ForEach(backgroundProjects) { project in
                     projectRow(project)
                         .nagareReorderHitTarget()
@@ -144,7 +142,6 @@ struct ProjectsView: View {
                 .nagareDesktopListRow()
             }
         }
-        .nagareListSectionSpacing(.custom(48))
         .reorderContainer(
             for: ProjectRecordSnapshot.self,
             in: ProjectTier.self

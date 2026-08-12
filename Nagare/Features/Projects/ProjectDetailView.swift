@@ -99,22 +99,22 @@ struct ProjectDetailView: View {
         }
         .sheet(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
-                .presentationDetents([.medium])
+                .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
-                .presentationDetents([EventScheduleEditor.sheetDetent])
+                .nagareSheetDetents([EventScheduleEditor.sheetDetent])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $recurrenceTemplateBeingEdited) { template in
             RecurrenceEditor(template: template)
-                .presentationDetents([.medium])
+                .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $projectMoveTarget) { target in
             ProjectMoveEditor(target: target)
-                .presentationDetents([.fraction(0.25)])
+                .nagareSheetDetents([.fraction(0.25)])
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: title) {
@@ -173,6 +173,9 @@ struct ProjectDetailView: View {
                     }
                     .reorderable(collectionID: project.id)
                     .nagareDesktopListRow()
+                } header: {
+                    Text("Items")
+                        .nagareContentSectionHeader()
                 }
             }
 
@@ -192,6 +195,9 @@ struct ProjectDetailView: View {
                         )
                     }
                     .nagareDesktopListRow()
+                } header: {
+                    Text("Repeating")
+                        .nagareContentSectionHeader()
                 }
             }
         }
@@ -213,16 +219,10 @@ struct ProjectDetailView: View {
                     .submitLabel(.done)
                     .accessibilityIdentifier("Project Title")
 
-                ZStack(alignment: .topLeading) {
-                    TextEditor(text: $notes)
-                        .nagareDocumentEditorStyle()
-                        .accessibilityIdentifier("Project Notes")
-
-                    if notes.isEmpty {
-                        Text("Notes")
-                            .nagareDocumentPlaceholderStyle()
-                    }
-                }
+                NagareDocumentEditor(
+                    text: $notes,
+                    accessibilityIdentifier: "Project Notes"
+                )
                 .frame(minHeight: 88)
             }
             .padding(.vertical, 4)

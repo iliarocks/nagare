@@ -1,11 +1,6 @@
 import SwiftUI
 
 struct ProjectCreateView: View {
-    private enum Field: Hashable {
-        case title
-        case notes
-    }
-
     @Environment(\.dismiss) private var dismiss
     @NagareDataStoreEnvironment private var dataStore
 
@@ -14,7 +9,7 @@ struct ProjectCreateView: View {
     @State private var persistedProjectID: UUID?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
-    @FocusState private var focusedField: Field?
+    @FocusState private var focusedField: NagareEditorField?
 
     private let onDismiss: (() -> Void)?
 
@@ -38,20 +33,14 @@ struct ProjectCreateView: View {
                 }
                 .accessibilityIdentifier("Create Project Title")
 
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $notes)
-                    .nagareDocumentEditorStyle()
-                    .focused($focusedField, equals: .notes)
-                    .accessibilityIdentifier("Create Project Notes")
-
-                if notes.isEmpty {
-                    Text("Notes")
-                        .nagareDocumentPlaceholderStyle()
-                }
-            }
+            NagareDocumentEditor(
+                text: $notes,
+                accessibilityIdentifier: "Create Project Notes",
+                focus: $focusedField
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(24)
+        .nagareComposerContentPadding()
         .nagareComposerFrame(width: 600, height: 280)
         .task {
             focusedField = .title

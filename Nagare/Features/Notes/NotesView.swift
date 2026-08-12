@@ -47,12 +47,12 @@ struct NotesView: View {
         }
         .sheet(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
-                .presentationDetents([.medium])
+                .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
-                .presentationDetents([EventScheduleEditor.sheetDetent])
+                .nagareSheetDetents([EventScheduleEditor.sheetDetent])
                 .presentationDragIndicator(.visible)
         }
         .alert("Nagare Couldn't Complete That Action", isPresented: isShowingError) {
@@ -81,7 +81,7 @@ struct NotesView: View {
                             .lineLimit(1)
                             .frame(minWidth: 44, alignment: .trailing)
                     }
-                    .font(.subheadline)
+                    .nagareMetadataFont()
                     .foregroundStyle(.secondary)
                     .buttonStyle(.plain)
                     .frame(maxWidth: 140, alignment: .trailing)
@@ -90,16 +90,10 @@ struct NotesView: View {
                 }
             }
 
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $notes)
-                    .nagareDocumentEditorStyle()
-                    .accessibilityIdentifier("Item Notes")
-
-                if notes.isEmpty {
-                    Text("Notes")
-                        .nagareDocumentPlaceholderStyle()
-                }
-            }
+            NagareDocumentEditor(
+                text: $notes,
+                accessibilityIdentifier: "Item Notes"
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(24)
@@ -130,7 +124,7 @@ struct NotesView: View {
                     .accessibilityIdentifier("Event Time")
                 }
             }
-            .nagareEditorBodyFont()
+            .nagareMetadataFont()
             .foregroundStyle(.secondary)
             .buttonStyle(.plain)
         }

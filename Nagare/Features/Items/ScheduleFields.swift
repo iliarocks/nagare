@@ -13,8 +13,23 @@ struct ScheduleFields: View {
             in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
             displayedComponents: .date
         )
+        .nagareCompactDatePickerStyle()
         .accessibilityIdentifier("Schedule Date Picker")
 
+        TimeRangeFields(
+            startTime: $startTime,
+            includesEndTime: $includesEndTime,
+            endTime: $endTime
+        )
+    }
+}
+
+struct TimeRangeFields: View {
+    @Binding var startTime: Date
+    @Binding var includesEndTime: Bool
+    @Binding var endTime: Date
+
+    var body: some View {
         LabeledContent("Time") {
             HStack(spacing: 8) {
                 DatePicker(
@@ -22,6 +37,7 @@ struct ScheduleFields: View {
                     selection: $startTime,
                     displayedComponents: .hourAndMinute
                 )
+                .nagareCompactDatePickerStyle()
                 .labelsHidden()
 
                 if includesEndTime {
@@ -33,6 +49,7 @@ struct ScheduleFields: View {
                         selection: $endTime,
                         displayedComponents: .hourAndMinute
                     )
+                    .nagareCompactDatePickerStyle()
                     .labelsHidden()
                 }
 
@@ -46,6 +63,7 @@ struct ScheduleFields: View {
                     .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.plain)
+                .font(.body)
             }
         }
     }

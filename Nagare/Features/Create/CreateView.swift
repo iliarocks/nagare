@@ -1,11 +1,6 @@
 import SwiftUI
 
 struct CreateView: View {
-    private enum Field: Hashable {
-        case title
-        case notes
-    }
-
     private enum ItemType: String, CaseIterable, Identifiable {
         case todo
         case event
@@ -39,11 +34,11 @@ struct CreateView: View {
     @State private var recurrence = RecurrenceFormState.disabled
     @State private var selectedProject: ProjectRecordSnapshot?
     @State private var isShowingDetails = false
-    @State private var fieldToRestoreAfterDetails = Field.title
+    @State private var fieldToRestoreAfterDetails = NagareEditorField.title
     @State private var persistedItemID: ItemID?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
-    @FocusState private var focusedField: Field?
+    @FocusState private var focusedField: NagareEditorField?
 
     private let onDismiss: (() -> Void)?
 
@@ -97,14 +92,14 @@ struct CreateView: View {
 
     var body: some View {
         composer
-            .presentationDetents([.large])
+            .nagareSheetDetents([.large])
             .presentationDragIndicator(.visible)
             .sheet(
                 isPresented: $isShowingDetails,
                 onDismiss: restoreFocusAfterDetails
             ) {
                 details
-                    .presentationDetents([.large])
+                    .nagareSheetDetents([.large])
                     .presentationDragIndicator(.visible)
             }
             .alert(
@@ -184,17 +179,11 @@ struct CreateView: View {
             }
             .accessibilityIdentifier("Create Title")
 
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $notes)
-                    .nagareDocumentEditorStyle()
-                    .focused($focusedField, equals: .notes)
-                    .accessibilityIdentifier("Create Notes")
-
-                if notes.isEmpty {
-                    Text("Notes")
-                        .nagareDocumentPlaceholderStyle()
-                }
-            }
+            NagareDocumentEditor(
+                text: $notes,
+                accessibilityIdentifier: "Create Notes",
+                focus: $focusedField
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -220,9 +209,7 @@ struct CreateView: View {
             .accessibilityIdentifier("Create Details")
             .padding(.vertical, 8)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 32)
-        .padding(.bottom, 16)
+        .nagareComposerContentPadding()
         .nagareComposerFrame(width: 620, height: 400)
     }
 
@@ -254,6 +241,7 @@ struct CreateView: View {
                         in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
                         displayedComponents: .date
                     )
+                    .nagareCompactDatePickerStyle()
                 }
             } footer: {
                 if itemType == .event && !isScheduleValid {
@@ -376,7 +364,7 @@ struct CreateView: View {
         restoreFocus(fieldToRestoreAfterDetails)
     }
 
-    private func restoreFocus(_ field: Field) {
+    private func restoreFocus(_ field: NagareEditorField) {
         Task { @MainActor in
             await Task.yield()
             guard !isShowingDetails else {

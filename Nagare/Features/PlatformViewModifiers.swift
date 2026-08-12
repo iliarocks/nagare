@@ -6,6 +6,11 @@ enum NagareListSectionSpacing {
     case custom(CGFloat)
 }
 
+enum NagareEditorField: Hashable {
+    case title
+    case notes
+}
+
 struct NagareEditableTitle: View {
     let placeholder: String
     @Binding var text: String
@@ -16,6 +21,55 @@ struct NagareEditableTitle: View {
 #else
         TextField(placeholder, text: $text, axis: .vertical)
 #endif
+    }
+}
+
+struct NagareDocumentEditor: View {
+    let placeholder: String
+    @Binding var text: String
+
+    private let accessibilityIdentifier: String
+    private let focus: FocusState<NagareEditorField?>.Binding?
+
+    init(
+        _ placeholder: String = "Notes",
+        text: Binding<String>,
+        accessibilityIdentifier: String,
+        focus: FocusState<NagareEditorField?>.Binding? = nil
+    ) {
+        self.placeholder = placeholder
+        _text = text
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.focus = focus
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            editor
+
+            if text.isEmpty {
+                Text(placeholder)
+                    .nagareDocumentPlaceholderStyle()
+            }
+        }
+        .padding(.horizontal, -5)
+    }
+
+    @ViewBuilder
+    private var editor: some View {
+        if let focus {
+            styledEditor
+                .focused(focus, equals: .notes)
+        } else {
+            styledEditor
+        }
+    }
+
+    private var styledEditor: some View {
+        TextEditor(text: $text)
+            .textEditorStyle(.plain)
+            .nagareDocumentEditorStyle()
+            .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 
@@ -98,12 +152,42 @@ extension View {
     }
 
     @ViewBuilder
+    func nagareMetadataFont() -> some View {
+#if os(macOS)
+        font(.system(size: 14))
+#else
+        font(.subheadline)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareCompactDatePickerStyle() -> some View {
+#if os(macOS)
+        datePickerStyle(.field)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
     func nagareDateSectionHeader(isFirst: Bool) -> some View {
 #if os(macOS)
         font(.system(size: 13))
             .padding(.top, isFirst ? 0 : 12)
 #else
         font(.caption)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareContentSectionHeader() -> some View {
+#if os(macOS)
+        font(.system(size: 13, weight: .medium))
+            .foregroundStyle(.secondary)
+            .textCase(nil)
+            .padding(.top, 12)
+#else
+        textCase(nil)
 #endif
     }
 
@@ -126,8 +210,12 @@ extension View {
     func nagareDocumentPlaceholderStyle() -> some View {
         nagareEditorBodyFont()
             .foregroundStyle(.tertiary)
+#if os(macOS)
+            .padding(.horizontal, 5)
+#else
             .padding(.horizontal, 5)
             .padding(.vertical, 8)
+#endif
             .allowsHitTesting(false)
     }
 
@@ -159,20 +247,9 @@ extension View {
 #if os(macOS)
         formStyle(.grouped)
             .scrollContentBackground(.hidden)
+            .controlSize(.large)
+            .font(.body)
             .padding(16)
-            .frame(width: width, height: height)
-#else
-        self
-#endif
-    }
-
-    @ViewBuilder
-    func nagareDetailsPanel(
-        width: CGFloat = 440,
-        height: CGFloat
-    ) -> some View {
-#if os(macOS)
-        padding(20)
             .frame(width: width, height: height)
 #else
         self
@@ -234,13 +311,18 @@ extension View {
                             .scale(scale: 0.97).combined(with: .opacity)
                         )
                 }
+                .onExitCommand {
+                    withAnimation(.snappy(duration: 0.18)) {
+                        isPresented.wrappedValue = false
+                    }
+                }
                 .zIndex(1)
             }
         }
 #else
         sheet(isPresented: isPresented) {
             composer()
-                .presentationDetents([.large])
+                .nagareSheetDetents([.large])
                 .presentationDragIndicator(.visible)
         }
 #endif
@@ -255,6 +337,49 @@ extension View {
         frame(width: width, height: height)
 #else
         self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareComposerContentPadding() -> some View {
+#if os(macOS)
+        padding(.horizontal, 24)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
+#else
+        padding(24)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareDocumentSheetFrame() -> some View {
+#if os(macOS)
+        frame(width: 620, height: 400)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareSheetDetents(
+        _ detents: Set<PresentationDetent>
+    ) -> some View {
+#if os(macOS)
+        self
+#else
+        presentationDetents(detents)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareSheetDetents(
+        _ detents: Set<PresentationDetent>,
+        selection: Binding<PresentationDetent>
+    ) -> some View {
+#if os(macOS)
+        self
+#else
+        presentationDetents(detents, selection: selection)
 #endif
     }
 
