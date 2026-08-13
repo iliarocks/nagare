@@ -18,12 +18,15 @@ struct RootView: View {
     @NagareDataStoreEnvironment private var dataStore
 #if os(macOS)
     @Environment(\.openSettings) private var openSystemSettings
+    @Environment(\.openWindow) private var openWindow
 #endif
 
     @State private var selectedSection = NavigationSection.today
     @State private var isCreatingItem = false
     @State private var isShowingSettings = false
+#if !os(macOS)
     @State private var isShowingCompleted = false
+#endif
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
     @State private var projectPath: [UUID] = []
@@ -63,19 +66,16 @@ struct RootView: View {
                     cloudSyncEnabledForCurrentLaunch
             )
         }
+        #if !os(macOS)
         .sheet(isPresented: $isShowingCompleted) {
-#if os(macOS)
-            CompletedView()
-                .frame(width: 620, height: 480)
-#else
             NavigationStack {
                 CompletedView()
                     .navigationTitle("Completed")
             }
             .nagareSheetDetents([.large])
             .presentationDragIndicator(.visible)
-#endif
         }
+        #endif
         .sheet(
             item: $notesDestination,
             onDismiss: resetNotesSheet
@@ -223,7 +223,12 @@ struct RootView: View {
             \.nagareCommandActions,
             NagareCommandActions(
                 createItem: { isCreatingItem = true },
-                showCompleted: { isShowingCompleted = true }
+                showCompleted: {
+                    openWindow(id: NagareWindowID.completed)
+                },
+                showToday: { navigate(to: .today) },
+                showUpcoming: { navigate(to: .upcoming) },
+                showProjects: { navigate(to: .projects) }
             )
         )
     }
@@ -277,6 +282,13 @@ struct RootView: View {
 #else
         isShowingSettings = true
 #endif
+    }
+
+    private func navigate(to section: NavigationSection) {
+        selectedSection = section
+        if section == .projects {
+            projectPath.removeAll()
+        }
     }
 
     private func open(_ destination: NagareAppDestination) {

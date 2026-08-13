@@ -674,6 +674,20 @@ nonisolated struct ProjectAssignmentPlan: Sendable {
     let projectOrderRepairs: [ProjectItemOrderingChange]
 }
 
+nonisolated struct ProjectAssignmentBatchEntry: Sendable {
+    let itemID: ItemID
+    let recurrenceTemplateID: UUID?
+    let projectOrder: String?
+}
+
+/// One complete, immutable project-membership transaction for a selection.
+/// Rebalancing and every resulting item order are resolved before I/O begins.
+nonisolated struct ProjectAssignmentBatchPlan: Sendable {
+    let projectID: UUID?
+    let entries: [ProjectAssignmentBatchEntry]
+    let projectOrderChanges: [ProjectItemOrderingChange]
+}
+
 nonisolated struct TodoReinstatementPlan: Sendable {
     let id: UUID
     let scheduledDate: Date

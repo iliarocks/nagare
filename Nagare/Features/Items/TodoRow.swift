@@ -3,6 +3,7 @@ import SwiftUI
 struct TodoRow: View {
     let todo: TodoRecordSnapshot
     let onOpen: () -> Void
+    let onToggleSelection: () -> Void
     let onComplete: () -> Void
     let onChangeDate: () -> Void
     let onMoveProject: () -> Void
@@ -11,7 +12,10 @@ struct TodoRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            NagarePrimaryRowAction(action: onOpen) {
+            NagarePrimaryRowAction(
+                action: onOpen,
+                commandAction: onToggleSelection
+            ) {
                 Text(todo.title)
                     .nagareItemTitleFont()
                     .fixedSize(horizontal: false, vertical: true)

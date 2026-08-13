@@ -3,6 +3,10 @@ import OSLog
 import SwiftData
 import SwiftUI
 
+enum NagareWindowID {
+    static let completed = "completed-history"
+}
+
 @main
 struct NagareApp: App {
     private enum StartupState {
@@ -144,6 +148,14 @@ struct NagareApp: App {
         Settings {
             settingsContent
         }
+        .windowToolbarStyle(.unified(showsTitle: true))
+
+        Window("Completed", id: NagareWindowID.completed) {
+            completedContent
+                .windowFullScreenBehavior(.disabled)
+        }
+        .defaultSize(width: 620, height: 480)
+        .windowToolbarStyle(.unified(showsTitle: true))
 #else
         WindowGroup {
             startupContent
@@ -184,6 +196,17 @@ struct NagareApp: App {
             NagareSettingsView(
                 cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled
             )
+                .nagareDataStore(dataStore)
+        case .failed:
+            StoreStartupFailureView()
+        }
+    }
+
+    @ViewBuilder
+    private var completedContent: some View {
+        switch startupState {
+        case .ready(_, _, let dataStore, cloudSyncEnabled: _):
+            CompletedView()
                 .nagareDataStore(dataStore)
         case .failed:
             StoreStartupFailureView()

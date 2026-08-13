@@ -66,12 +66,11 @@ struct NotesView: View {
         VStack(alignment: .leading, spacing: 16) {
             metadata(record)
 
-            HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
                 NagareEditableTitle(placeholder: "Title", text: $title)
                     .font(.title.weight(.semibold))
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(1)
                     .accessibilityIdentifier("Item Title")
 
                 if let projectID = record.projectID,
@@ -79,13 +78,10 @@ struct NotesView: View {
                     Button { onOpenProject(projectID) } label: {
                         Text(project.title)
                             .lineLimit(1)
-                            .frame(minWidth: 44, alignment: .trailing)
                     }
                     .nagareMetadataFont()
                     .foregroundStyle(.secondary)
                     .buttonStyle(.plain)
-                    .frame(maxWidth: 140, alignment: .trailing)
-                    .layoutPriority(2)
                     .accessibilityIdentifier("Notes Project")
                 }
             }

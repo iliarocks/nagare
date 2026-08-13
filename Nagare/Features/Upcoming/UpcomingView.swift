@@ -203,9 +203,9 @@ struct UpcomingView: View {
         }
     }
 
-    private func delete(_ item: ItemRecordSnapshot) {
+    private func delete(_ items: [ItemRecordSnapshot]) {
         do {
-            try dataStore.deleteItem(item.id)
+            try dataStore.deleteItems(items.map(\.id))
         } catch {
             presentSaveFailure(error)
         }

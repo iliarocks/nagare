@@ -1,4 +1,6 @@
+import CoreTransferable
 import Foundation
+import UniformTypeIdentifiers
 
 struct ICalendarExportFile {
     let data: Data
@@ -18,6 +20,21 @@ struct ICalendarExportFile {
         data = ICalendarSerializer.serialize(draft, generatedAt: generatedAt)
         filename = Self.filename(for: event.title)
         subject = event.title.isEmpty ? "Event" : event.title
+    }
+}
+
+/// A lazy, native share payload. The temporary file is created only after the
+/// user invokes Share, so list rendering remains a pure projection of data.
+struct ICalendarShareItem: Transferable {
+    let event: EventRecordSnapshot
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .calendarEvent) { item in
+            let file = try ICalendarExportStore.write(
+                ICalendarExportFile(event: item.event)
+            )
+            return SentTransferredFile(file.fileURL)
+        }
     }
 }
 

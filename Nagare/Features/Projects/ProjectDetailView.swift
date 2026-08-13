@@ -16,6 +16,8 @@ struct ProjectDetailView: View {
     @State private var eventBeingRescheduled: EventRecordSnapshot?
     @State private var recurrenceTemplateBeingEdited: RecurrenceTemplateRecordSnapshot?
     @State private var projectMoveTarget: ProjectMoveTarget?
+    @State private var itemSelectionBeingRescheduled: ItemSelectionAction?
+    @State private var selectedItemIDs: Set<ItemID> = []
     @State private var errorMessage: String?
 
     private var todos: [TodoRecordSnapshot] {
@@ -102,6 +104,11 @@ struct ProjectDetailView: View {
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $itemSelectionBeingRescheduled) { selection in
+            ItemDateEditor(items: selection.items)
+                .nagareSheetDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
                 .nagareSheetDetents([EventScheduleEditor.sheetDetent])
@@ -126,6 +133,11 @@ struct ProjectDetailView: View {
         .onChange(of: currentProject, initial: true) { _, project in
             load(project)
         }
+        .onChange(of: Set(actualItems.map(\.id))) { _, availableIDs in
+#if os(macOS)
+            selectedItemIDs.formIntersection(availableIDs)
+#endif
+        }
         .onDisappear {
             pendingSave?.cancel()
             saveProject()
@@ -140,70 +152,86 @@ struct ProjectDetailView: View {
     }
 
     private var itemList: some View {
-        List {
-            projectDetailsSection
-
-            if actualItems.isEmpty && repeatTemplates.isEmpty {
-                Section {
-                    ContentUnavailableView(
-                        "No Project Items",
-                        systemImage: "folder"
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
-            }
-
-            if !actualItems.isEmpty {
-                Section {
-                    ForEach(actualItems) { item in
-                        ItemRow(
-                            item: item,
-                            onOpen: open,
-                            onComplete: complete,
-                            onChangeSchedule: presentScheduleEditor,
-                            onMoveProject: {
-                                projectMoveTarget = ProjectMoveTarget($0)
-                            },
-                            onDelete: delete
-                        )
-                        .nagareReorderHitTarget()
-                    }
-                    .reorderable(collectionID: project.id)
-                    .nagareDesktopListRow()
-                } header: {
-                    Text("Items")
-                        .nagareContentSectionHeader()
-                }
-            }
-
-            if !repeatTemplates.isEmpty {
-                Section {
-                    ForEach(repeatTemplates) { template in
-                        ProjectRepeatRow(
-                            template: template,
-                            onOpen: { notesDestination = .template(template.id) },
-                            onChangeRepeat: {
-                                recurrenceTemplateBeingEdited = template
-                            },
-                            onMoveProject: {
-                                projectMoveTarget = .template(template)
-                            },
-                            onDelete: { deleteTemplate(template) }
-                        )
-                    }
-                    .nagareDesktopListRow()
-                } header: {
-                    Text("Repeating")
-                        .nagareContentSectionHeader()
-                }
-            }
-        }
+        selectableItemList
         .nagareListSectionSpacing(.custom(48))
         .reorderContainer(for: ItemRecordSnapshot.self, in: UUID.self) {
             apply($0)
+        }
+    }
+
+    @ViewBuilder
+    private var selectableItemList: some View {
+        List {
+            itemListRows
+        }
+    }
+
+    @ViewBuilder
+    private var itemListRows: some View {
+        projectDetailsSection
+
+        if actualItems.isEmpty && repeatTemplates.isEmpty {
+            Section {
+                ContentUnavailableView(
+                    "No Project Items",
+                    systemImage: "folder"
+                )
+                .frame(maxWidth: .infinity, minHeight: 200)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        }
+
+        if !actualItems.isEmpty {
+            Section {
+                ForEach(actualItems) { item in
+                    ItemRow(
+                        item: item,
+                        onOpen: open,
+                        onToggleSelection: {
+                            toggleSelection(of: item.id)
+                        },
+                        onComplete: complete,
+                        contextItems: contextItems(for: item),
+                        onChangeSchedule: presentScheduleEditor,
+                        onMoveProject: presentProjectMoveEditor,
+                        onDelete: delete
+                    )
+                    .nagareReorderHitTarget()
+                    .nagareCommandSelection(
+                        isSelected: selectedItemIDs.contains(item.id),
+                        toggle: { toggleSelection(of: item.id) }
+                    )
+                }
+                .reorderable(collectionID: project.id)
+                .nagareDesktopListRow()
+            } header: {
+                Text("Items")
+                    .nagareContentSectionHeader()
+            }
+        }
+
+        if !repeatTemplates.isEmpty {
+            Section {
+                ForEach(repeatTemplates) { template in
+                    ProjectRepeatRow(
+                        template: template,
+                        onOpen: { notesDestination = .template(template.id) },
+                        onChangeRepeat: {
+                            recurrenceTemplateBeingEdited = template
+                        },
+                        onMoveProject: {
+                            projectMoveTarget = .template(template)
+                        },
+                        onDelete: { deleteTemplate(template) }
+                    )
+                }
+                .nagareDesktopListRow()
+            } header: {
+                Text("Repeating")
+                    .nagareContentSectionHeader()
+            }
         }
     }
 
@@ -327,14 +355,9 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func delete(_ item: ItemRecordSnapshot) {
+    private func delete(_ items: [ItemRecordSnapshot]) {
         do {
-            switch item {
-            case .todo(let todo):
-                try dataStore.deleteItem(.todo(todo.id))
-            case .event(let event):
-                try dataStore.deleteItem(.event(event.id))
-            }
+            try dataStore.deleteItems(items.map(\.id))
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -348,13 +371,47 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func presentScheduleEditor(_ item: ItemRecordSnapshot) {
+    private func contextItems(
+        for item: ItemRecordSnapshot
+    ) -> [ItemRecordSnapshot] {
+#if os(macOS)
+        guard selectedItemIDs.count > 1,
+              selectedItemIDs.contains(item.id) else {
+            return [item]
+        }
+        return actualItems.filter { selectedItemIDs.contains($0.id) }
+#else
+        return [item]
+#endif
+    }
+
+    private func toggleSelection(of id: ItemID) {
+        if selectedItemIDs.contains(id) {
+            selectedItemIDs.remove(id)
+        } else {
+            selectedItemIDs.insert(id)
+        }
+    }
+
+    private func presentScheduleEditor(_ items: [ItemRecordSnapshot]) {
+        guard items.count == 1, let item = items.first else {
+            itemSelectionBeingRescheduled = ItemSelectionAction(items: items)
+            return
+        }
         switch item {
         case .todo(let todo):
             todoBeingRescheduled = todo
         case .event(let event):
             eventBeingRescheduled = event
         }
+    }
+
+    private func presentProjectMoveEditor(_ items: [ItemRecordSnapshot]) {
+        guard items.count == 1, let item = items.first else {
+            projectMoveTarget = .items(items)
+            return
+        }
+        projectMoveTarget = .item(item)
     }
 
     private func currentProjectOrder(

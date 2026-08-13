@@ -271,9 +271,16 @@ struct CreateView: View {
 
     private var detailsHeight: CGFloat {
         guard recurrence.isEnabled else {
-            return itemType == .event ? 360 : 300
+            return itemType == .event ? 300 : 250
         }
-        return 540
+        var height: CGFloat = itemType == .event ? 370 : 360
+        if recurrence.mode == .absolute && recurrence.unit == .week {
+            height += 70
+        }
+        if recurrence.mode == .absolute && recurrence.unit == .month {
+            height += 200
+        }
+        return height
     }
 
     private var detailsSummary: String {

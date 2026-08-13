@@ -3,12 +3,16 @@ import SwiftUI
 struct EventRow: View {
     let event: EventRecordSnapshot
     let onOpen: () -> Void
+    let onToggleSelection: () -> Void
     let onChangeSchedule: () -> Void
     let onMoveProject: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        NagarePrimaryRowAction(action: onOpen) {
+        NagarePrimaryRowAction(
+            action: onOpen,
+            commandAction: onToggleSelection
+        ) {
             HStack(spacing: 12) {
                 Text(event.title)
                     .nagareItemTitleFont()

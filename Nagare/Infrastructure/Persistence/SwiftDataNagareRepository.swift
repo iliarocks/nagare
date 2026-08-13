@@ -405,24 +405,33 @@ final class SwiftDataNagareRepository:
     }
 
     func deleteItem(_ id: ItemID, at date: Date) throws {
+        try deleteItems([id], at: date)
+    }
+
+    func deleteItems(_ ids: [ItemID], at date: Date) throws {
         let context = makeContext()
         do {
-            switch id {
-            case .todo(let id):
-                let todo: Todo = try requireOne(id, in: context)
-                try RecurrencePersistence.delete(
-                    todo,
-                    at: date,
-                    in: context
-                )
-            case .event(let id):
-                let event: Event = try requireOne(id, in: context)
-                try RecurrencePersistence.delete(
-                    event,
-                    at: date,
-                    in: context
+            guard Set(ids).count == ids.count else {
+                throw NagareDataPersistenceError.saveFailed(
+                    "The item selection contains duplicates."
                 )
             }
+            var todos: [Todo] = []
+            var events: [Event] = []
+            for id in ids {
+                switch id {
+                case .todo(let id):
+                    todos.append(try requireOne(id, in: context))
+                case .event(let id):
+                    events.append(try requireOne(id, in: context))
+                }
+            }
+            try RecurrencePersistence.delete(
+                todos: todos,
+                events: events,
+                at: date,
+                in: context
+            )
         } catch let error as NagareDataPersistenceError {
             throw error
         } catch {
@@ -474,6 +483,39 @@ final class SwiftDataNagareRepository:
         } catch let error as NagareDataPersistenceError {
             throw error
         } catch {
+            throw NagareDataPersistenceError.saveFailed(
+                error.localizedDescription
+            )
+        }
+    }
+
+    func assign(_ plan: ProjectAssignmentBatchPlan, at date: Date) throws {
+        let context = makeContext()
+        do {
+            try applyProjectItemOrdering(
+                plan.projectOrderChanges,
+                in: context
+            )
+            let project: Project? = try plan.projectID.map {
+                try requireOne($0, in: context)
+            }
+            for entry in plan.entries {
+                let item = try loadItem(for: entry.itemID, in: context)
+                item.applyProject(project)
+                item.applyProjectOrder(entry.projectOrder)
+                if let id = entry.recurrenceTemplateID {
+                    let template: RecurrenceTemplate = try requireOne(
+                        id,
+                        in: context
+                    )
+                    template.project = project
+                }
+            }
+            try SwiftDataTransaction.save(context, at: date)
+        } catch let error as NagareDataPersistenceError {
+            throw error
+        } catch {
+            context.rollback()
             throw NagareDataPersistenceError.saveFailed(
                 error.localizedDescription
             )

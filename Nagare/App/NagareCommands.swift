@@ -3,6 +3,9 @@ import SwiftUI
 struct NagareCommandActions {
     let createItem: () -> Void
     let showCompleted: () -> Void
+    let showToday: () -> Void
+    let showUpcoming: () -> Void
+    let showProjects: () -> Void
 }
 
 private struct NagareCommandActionsKey: FocusedValueKey {
@@ -34,6 +37,26 @@ struct NagareCommands: Commands {
                 actions?.showCompleted()
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
+            .disabled(actions == nil)
+        }
+
+        CommandMenu("Navigate") {
+            Button("Today") {
+                actions?.showToday()
+            }
+            .keyboardShortcut("1", modifiers: .command)
+            .disabled(actions == nil)
+
+            Button("Upcoming") {
+                actions?.showUpcoming()
+            }
+            .keyboardShortcut("2", modifiers: .command)
+            .disabled(actions == nil)
+
+            Button("Projects") {
+                actions?.showProjects()
+            }
+            .keyboardShortcut("3", modifiers: .command)
             .disabled(actions == nil)
         }
     }

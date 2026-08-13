@@ -38,10 +38,10 @@ struct TodoDateEditor: View {
         )
         .datePickerStyle(.graphical)
         .labelsHidden()
-        .controlSize(.large)
-        .scaleEffect(1.35)
-        .frame(width: 320, height: 280)
-        .frame(width: 400, height: 340)
+        .controlSize(.regular)
+        .focusEffectDisabled()
+        .fixedSize()
+        .padding(16)
 #else
         DatePicker(
             "Date",

@@ -58,12 +58,7 @@ struct RecurrenceFields: View {
                     }
                 }
 
-                Stepper(value: $state.interval, in: 1...999) {
-                    LabeledContent("Every") {
-                        Text(state.interval, format: .number)
-                            .monospacedDigit()
-                    }
-                }
+                intervalControl
 
                 Picker(
                     "Period",
@@ -91,6 +86,44 @@ struct RecurrenceFields: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var intervalControl: some View {
+#if os(macOS)
+        LabeledContent("Every") {
+            HStack(spacing: 10) {
+                Button {
+                    state.interval = max(1, state.interval - 1)
+                } label: {
+                    Label("Decrease Interval", systemImage: "minus")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(state.interval == 1)
+
+                Text(state.interval, format: .number)
+                    .monospacedDigit()
+                    .frame(minWidth: 24)
+                    .accessibilityLabel("Every \(state.interval)")
+
+                Button {
+                    state.interval = min(999, state.interval + 1)
+                } label: {
+                    Label("Increase Interval", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(state.interval == 999)
+            }
+            .buttonStyle(.borderless)
+        }
+#else
+        Stepper(value: $state.interval, in: 1...999) {
+            LabeledContent("Every") {
+                Text(state.interval, format: .number)
+                    .monospacedDigit()
+            }
+        }
+#endif
     }
 
     private var weeklyAnchors: some View {

@@ -196,6 +196,10 @@ final class NagareDataStore {
         snapshot = try orchestrator.deleteItem(id, at: date)
     }
 
+    func deleteItems(_ ids: [ItemID], at date: Date = .now) throws {
+        snapshot = try orchestrator.deleteItems(ids, at: date)
+    }
+
     func deleteRecurrenceTemplate(
         _ id: UUID,
         at date: Date = .now
@@ -242,6 +246,18 @@ final class NagareDataStore {
     ) throws {
         snapshot = try orchestrator.assign(
             target,
+            to: projectID,
+            at: date
+        )
+    }
+
+    func assign(
+        _ targets: [ProjectMoveRecordID],
+        to projectID: UUID?,
+        at date: Date = .now
+    ) throws {
+        snapshot = try orchestrator.assign(
+            targets,
             to: projectID,
             at: date
         )

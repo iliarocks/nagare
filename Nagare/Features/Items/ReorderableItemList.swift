@@ -24,7 +24,7 @@ struct ReorderableItemList: View {
     let onOpen: (ItemRecordSnapshot) -> Void
     let onOpenVirtual: (VirtualItem) -> Void
     let onComplete: (TodoRecordSnapshot) -> Void
-    let onDelete: (ItemRecordSnapshot) -> Void
+    let onDelete: ([ItemRecordSnapshot]) -> Void
     let onDeleteTemplate: (RecurrenceTemplateRecordSnapshot) -> Void
     let onMove: (Date, IndexSet, Int) -> Void
     let onMoveAcrossDates: ([ItemID], Date, ItemID?) -> Void
@@ -33,6 +33,8 @@ struct ReorderableItemList: View {
     @State private var recurrenceTemplateBeingEdited:
         RecurrenceTemplateRecordSnapshot?
     @State private var projectMoveTarget: ProjectMoveTarget?
+    @State private var selectedItemIDs: Set<ItemID> = []
+    @State private var itemSelectionBeingRescheduled: ItemSelectionAction?
 
     init(
         groups: [ReorderableItemGroup],
@@ -40,7 +42,7 @@ struct ReorderableItemList: View {
         onOpen: @escaping (ItemRecordSnapshot) -> Void,
         onOpenVirtual: @escaping (VirtualItem) -> Void = { _ in },
         onComplete: @escaping (TodoRecordSnapshot) -> Void,
-        onDelete: @escaping (ItemRecordSnapshot) -> Void,
+        onDelete: @escaping ([ItemRecordSnapshot]) -> Void,
         onDeleteTemplate: @escaping (
             RecurrenceTemplateRecordSnapshot
         ) -> Void = { _ in },
@@ -61,42 +63,22 @@ struct ReorderableItemList: View {
     }
 
     var body: some View {
-        List {
-            if showsDateHeaders {
-                ForEach(groups) { group in
-                    Section {
-                        rows(for: group)
-                    } header: {
-                        HStack {
-                            Text(
-                                group.date,
-                                format: .dateTime.weekday(.wide)
-                            )
-
-                            Spacer()
-
-                            Text(
-                                group.date,
-                                format: .dateTime
-                                    .month(.wide)
-                                    .day()
-                            )
-                        }
-                        .nagareDateSectionHeader(
-                            isFirst: group.id == groups.first?.id
-                        )
-                        .fontWeight(.regular)
-                    }
-                }
-            } else if let group = groups.first {
-                rows(for: group)
-            }
-        }
+        itemList
         .nagareListSectionSpacing(
             showsDateHeaders ? .custom(48) : .standard
         )
         .reorderContainer(for: ItemRecordSnapshot.self, in: Date.self) { difference in
             apply(difference)
+        }
+        .onChange(of: availableItemIDs) {
+#if os(macOS)
+            selectedItemIDs.formIntersection(availableItemIDs)
+#endif
+        }
+        .sheet(item: $itemSelectionBeingRescheduled) { selection in
+            ItemDateEditor(items: selection.items)
+                .nagareSheetDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
         .sheet(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
@@ -121,19 +103,63 @@ struct ReorderableItemList: View {
     }
 
     @ViewBuilder
+    private var itemList: some View {
+        List {
+            listRows
+        }
+    }
+
+    @ViewBuilder
+    private var listRows: some View {
+        if showsDateHeaders {
+            ForEach(groups) { group in
+                Section {
+                    rows(for: group)
+                } header: {
+                    HStack {
+                        Text(
+                            group.date,
+                            format: .dateTime.weekday(.wide)
+                        )
+
+                        Spacer()
+
+                        Text(
+                            group.date,
+                            format: .dateTime
+                                .month(.wide)
+                                .day()
+                        )
+                    }
+                    .nagareDateSectionHeader(
+                        isFirst: group.id == groups.first?.id
+                    )
+                    .fontWeight(.regular)
+                }
+            }
+        } else if let group = groups.first {
+            rows(for: group)
+        }
+    }
+
+    @ViewBuilder
     private func rows(for group: ReorderableItemGroup) -> some View {
         ForEach(group.items) { item in
             ItemRow(
                 item: item,
                 onOpen: onOpen,
+                onToggleSelection: { toggleSelection(of: item.id) },
                 onComplete: onComplete,
+                contextItems: contextItems(for: item),
                 onChangeSchedule: presentScheduleEditor,
-                onMoveProject: {
-                    projectMoveTarget = ProjectMoveTarget($0)
-                },
+                onMoveProject: presentProjectMoveEditor,
                 onDelete: onDelete
             )
             .nagareReorderHitTarget()
+            .nagareCommandSelection(
+                isSelected: selectedItemIDs.contains(item.id),
+                toggle: { toggleSelection(of: item.id) }
+            )
         }
         .reorderable(collectionID: group.date)
         .nagareDesktopListRow()
@@ -156,13 +182,51 @@ struct ReorderableItemList: View {
         .nagareDesktopListRow()
     }
 
-    private func presentScheduleEditor(_ item: ItemRecordSnapshot) {
-        switch item {
-        case .todo(let todo):
-            todoBeingRescheduled = todo
-        case .event(let event):
-            eventBeingRescheduled = event
+    private var availableItemIDs: Set<ItemID> {
+        Set(groups.flatMap(\.items).map(\.id))
+    }
+
+    private func toggleSelection(of id: ItemID) {
+        if selectedItemIDs.contains(id) {
+            selectedItemIDs.remove(id)
+        } else {
+            selectedItemIDs.insert(id)
         }
+    }
+
+    private func contextItems(
+        for item: ItemRecordSnapshot
+    ) -> [ItemRecordSnapshot] {
+#if os(macOS)
+        guard selectedItemIDs.count > 1,
+              selectedItemIDs.contains(item.id) else {
+            return [item]
+        }
+        return groups.flatMap(\.items).filter {
+            selectedItemIDs.contains($0.id)
+        }
+#else
+        return [item]
+#endif
+    }
+
+    private func presentScheduleEditor(_ items: [ItemRecordSnapshot]) {
+        guard items.count == 1, let item = items.first else {
+            itemSelectionBeingRescheduled = ItemSelectionAction(items: items)
+            return
+        }
+        switch item {
+        case .todo(let todo): todoBeingRescheduled = todo
+        case .event(let event): eventBeingRescheduled = event
+        }
+    }
+
+    private func presentProjectMoveEditor(_ items: [ItemRecordSnapshot]) {
+        guard items.count == 1, let item = items.first else {
+            projectMoveTarget = .items(items)
+            return
+        }
+        projectMoveTarget = .item(item)
     }
 
     private func apply(

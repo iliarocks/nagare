@@ -2,12 +2,15 @@ import SwiftUI
 
 enum ProjectMoveTarget: Identifiable {
     case item(ItemRecordSnapshot)
+    case items([ItemRecordSnapshot])
     case template(RecurrenceTemplateRecordSnapshot)
 
     var id: String {
         switch self {
         case .item(let item):
             item.id.description
+        case .items(let items):
+            "items-" + items.map(\.id.description).sorted().joined(separator: ",")
         case .template(let template):
             "template-\(template.id)"
         }
@@ -16,9 +19,15 @@ enum ProjectMoveTarget: Identifiable {
     var projectID: UUID? {
         switch self {
         case .item(let item):
-            item.projectID
+            return item.projectID
+        case .items(let items):
+            guard let first = items.first?.projectID,
+                  items.allSatisfy({ $0.projectID == first }) else {
+                return nil
+            }
+            return first
         case .template(let template):
-            template.projectID
+            return template.projectID
         }
     }
 
@@ -28,6 +37,7 @@ enum ProjectMoveTarget: Identifiable {
 }
 
 struct ProjectMoveEditor: View {
+    @Environment(\.dismiss) private var dismiss
     @NagareDataStoreEnvironment private var dataStore
 
     let target: ProjectMoveTarget
@@ -72,12 +82,18 @@ struct ProjectMoveEditor: View {
             switch target {
             case .item(let item):
                 try dataStore.assign(.item(item.id), to: project?.id)
+            case .items(let items):
+                try dataStore.assign(
+                    items.map { .item($0.id) },
+                    to: project?.id
+                )
             case .template(let template):
                 try dataStore.assign(
                     .recurrenceTemplate(template.id),
                     to: project?.id
                 )
             }
+            dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }

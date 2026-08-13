@@ -249,6 +249,105 @@ nonisolated enum NagareCommandPlanner {
         )
     }
 
+    static func assign(
+        _ targets: [ProjectMoveRecordID],
+        to projectID: UUID?,
+        in snapshot: NagareDataSnapshot
+    ) throws -> ProjectAssignmentBatchPlan {
+        if let projectID,
+           snapshot.projectsByID[projectID] == nil {
+            throw PlanningError.missingProject
+        }
+
+        let resolved = try targets.map { target -> (
+            item: ItemRecordSnapshot,
+            recurrenceTemplateID: UUID?
+        ) in
+            switch target {
+            case .item(let id):
+                guard let item = item(id, in: snapshot) else {
+                    throw PlanningError.missingItem
+                }
+                let templateID: UUID?
+                switch item {
+                case .todo(let todo):
+                    templateID = todo.recurrenceTemplateID
+                case .event(let event):
+                    templateID = event.recurrenceTemplateID
+                }
+                return (item, templateID)
+            case .recurrenceTemplate(let id):
+                guard let template = snapshot.templatesByID[id],
+                      let item = snapshot.currentItem(for: template) else {
+                    throw PlanningError.missingItem
+                }
+                return (item, id)
+            }
+        }
+        let selectedIDs = resolved.map(\.item.id)
+        guard !selectedIDs.isEmpty,
+              Set(selectedIDs).count == selectedIDs.count else {
+            throw PlanningError.invalidResult
+        }
+
+        guard let projectID else {
+            return ProjectAssignmentBatchPlan(
+                projectID: nil,
+                entries: resolved.map {
+                    ProjectAssignmentBatchEntry(
+                        itemID: $0.item.id,
+                        recurrenceTemplateID: $0.recurrenceTemplateID,
+                        projectOrder: nil
+                    )
+                },
+                projectOrderChanges: []
+            )
+        }
+
+        let selectedIDSet = Set(selectedIDs)
+        let destination = orderedInProject(allItems(in: snapshot).filter {
+            $0.projectID == projectID
+                && !$0.isCompleted
+                && !selectedIDSet.contains($0.id)
+        })
+        let orderedItems = destination + resolved.map(\.item)
+        let orderPlan = try OrderingPlanner.displayedOrder(
+            orderedItems.map(\.id),
+            contains: orderedItems.map {
+                OrderingPlanner.Entry(
+                    id: $0.id,
+                    order: $0.projectOrder ?? ""
+                )
+            }
+        )
+        let ordersByID = Dictionary(
+            uniqueKeysWithValues: orderPlan.assignments.map {
+                ($0.id, $0.order)
+            }
+        )
+        let entries = try resolved.map { value in
+            guard let order = ordersByID[value.item.id] else {
+                throw PlanningError.invalidResult
+            }
+            return ProjectAssignmentBatchEntry(
+                itemID: value.item.id,
+                recurrenceTemplateID: value.recurrenceTemplateID,
+                projectOrder: order
+            )
+        }
+
+        return ProjectAssignmentBatchPlan(
+            projectID: projectID,
+            entries: entries,
+            projectOrderChanges: orderPlan.assignments.map {
+                ProjectItemOrderingChange(
+                    id: $0.id,
+                    projectOrder: $0.order
+                )
+            }
+        )
+    }
+
     static func reinstateTodo(
         _ id: UUID,
         on date: Date,

@@ -307,6 +307,14 @@ final class NagareDataOrchestrator {
         return try reader.load()
     }
 
+    func deleteItems(
+        _ ids: [ItemID],
+        at date: Date
+    ) throws -> NagareDataSnapshot {
+        try writer.deleteItems(ids, at: date)
+        return try reader.load()
+    }
+
     func deleteRecurrenceTemplate(
         _ id: UUID,
         at date: Date
@@ -433,6 +441,21 @@ final class NagareDataOrchestrator {
         let current = try reader.load()
         let plan = try NagareCommandPlanner.assign(
             target,
+            to: projectID,
+            in: current
+        )
+        try writer.assign(plan, at: date)
+        return try reader.load()
+    }
+
+    func assign(
+        _ targets: [ProjectMoveRecordID],
+        to projectID: UUID?,
+        at date: Date
+    ) throws -> NagareDataSnapshot {
+        let current = try reader.load()
+        let plan = try NagareCommandPlanner.assign(
+            targets,
             to: projectID,
             in: current
         )

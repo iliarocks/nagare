@@ -3,9 +3,8 @@ import SwiftUI
 struct NagareSettingsView: View {
     @AppStorage(NagareCloudPreferences.syncEnabledKey)
     private var syncEnabled = false
-
 #if os(macOS)
-    @State private var isShowingCompleted = false
+    @Environment(\.openWindow) private var openWindow
 #endif
 
     let cloudSyncEnabledForCurrentLaunch: Bool
@@ -15,31 +14,22 @@ struct NagareSettingsView: View {
     }
 
     var body: some View {
-#if os(macOS)
-        Group {
-            if isShowingCompleted {
-                completedContent
-            } else {
-                settingsForm
-            }
-        }
-        .frame(width: 480)
-        .frame(minHeight: 430)
-#else
         NavigationStack {
             settingsForm
         }
+#if os(macOS)
+        .frame(width: 480)
+        .frame(minHeight: 430)
+        .navigationTitle("Settings")
 #endif
     }
 
     private var settingsForm: some View {
         Form {
-            Section("History") {
+            Section {
 #if os(macOS)
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        isShowingCompleted = true
-                    }
+                    openWindow(id: NagareWindowID.completed)
                 } label: {
                     HStack(spacing: 12) {
                         Label(
@@ -49,8 +39,7 @@ struct NagareSettingsView: View {
 
                         Spacer()
 
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                        Image(systemName: "arrow.up.forward.app")
                             .foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
@@ -67,6 +56,10 @@ struct NagareSettingsView: View {
                     )
                 }
 #endif
+            } header: {
+                Text("History")
+            } footer: {
+                Text("Review, restore, or permanently delete completed todos")
             }
 
             Section {
@@ -78,7 +71,7 @@ struct NagareSettingsView: View {
                     Text(syncExplanation)
 
                     if restartRequired {
-                        Text("Relaunch Nagare to apply this change.")
+                        Text("Relaunch Nagare to apply this change")
                     }
                 }
             }
@@ -90,55 +83,22 @@ struct NagareSettingsView: View {
 
             Section("About") {
                 comingSoonRow("Privacy Policy", systemImage: "hand.raised")
+                comingSoonRow("Support", systemImage: "lifepreserver")
             }
         }
         .formStyle(.grouped)
     }
 
-#if os(macOS)
-    private var completedContent: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        isShowingCompleted = false
-                    }
-                } label: {
-                    Label(
-                        "Back to Settings",
-                        systemImage: "chevron.left"
-                    )
-                    .labelStyle(.iconOnly)
-                }
-                .nagareToolbarButton()
-                .accessibilityIdentifier("Back to Settings")
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-
-            CompletedView()
-        }
-        .onExitCommand {
-            withAnimation(.snappy(duration: 0.2)) {
-                isShowingCompleted = false
-            }
-        }
-    }
-#endif
-
     private var syncExplanation: String {
         if syncEnabled {
-            "Nagare syncs with your devices signed in to the same iCloud account."
+            "Nagare syncs with devices signed in to the same iCloud account"
         } else if cloudSyncEnabledForCurrentLaunch {
             "Sync continues until you relaunch Nagare. After that, new changes "
                 + "stay only on this device and can be lost if it is damaged, "
-                + "lost, or erased."
+                + "lost, or erased"
         } else {
             "Data is stored only on this device and can be lost if it is "
-                + "damaged, lost, or erased."
+                + "damaged, lost, or erased"
         }
     }
 

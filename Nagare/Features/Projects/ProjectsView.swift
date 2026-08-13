@@ -126,20 +126,26 @@ struct ProjectsView: View {
 
     private var projectList: some View {
         List {
-            Section {
-                ForEach(priorityProjects) { project in
-                    projectRow(project)
-                        .nagareReorderHitTarget()
+            if !priorityProjects.isEmpty {
+                Section {
+                    ForEach(priorityProjects) { project in
+                        projectRow(project)
+                            .nagareReorderHitTarget()
+                    }
+                    .reorderable(collectionID: ProjectTier.priority)
+                    .nagareDesktopListRow()
                 }
-                .reorderable(collectionID: ProjectTier.priority)
-                .nagareDesktopListRow()
+            }
 
-                ForEach(backgroundProjects) { project in
-                    projectRow(project)
-                        .nagareReorderHitTarget()
+            if !backgroundProjects.isEmpty {
+                Section {
+                    ForEach(backgroundProjects) { project in
+                        projectRow(project)
+                            .nagareReorderHitTarget()
+                    }
+                    .reorderable(collectionID: ProjectTier.background)
+                    .nagareDesktopListRow()
                 }
-                .reorderable(collectionID: ProjectTier.background)
-                .nagareDesktopListRow()
             }
         }
         .reorderContainer(

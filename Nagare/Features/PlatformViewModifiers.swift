@@ -1,5 +1,8 @@
 import AppIntents
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum NagareListSectionSpacing {
     case standard
@@ -75,13 +78,16 @@ struct NagareDocumentEditor: View {
 
 struct NagarePrimaryRowAction<Label: View>: View {
     let action: () -> Void
+    let commandAction: (() -> Void)?
     private let label: Label
 
     init(
         action: @escaping () -> Void,
+        commandAction: (() -> Void)? = nil,
         @ViewBuilder label: () -> Label
     ) {
         self.action = action
+        self.commandAction = commandAction
         self.label = label()
     }
 
@@ -89,7 +95,14 @@ struct NagarePrimaryRowAction<Label: View>: View {
 #if os(macOS)
         label
             .contentShape(Rectangle())
-            .onTapGesture(perform: action)
+            .onTapGesture {
+                if NSEvent.modifierFlags.contains(.command),
+                   let commandAction {
+                    commandAction()
+                    return
+                }
+                action()
+            }
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(.default, action)
 #else
@@ -100,6 +113,22 @@ struct NagarePrimaryRowAction<Label: View>: View {
 #endif
     }
 }
+
+#if os(macOS)
+private struct NagareToolbarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 16))
+            .frame(width: 36, height: 36)
+            .contentShape(Circle())
+            .glassEffect(
+                .regular.interactive(),
+                in: Circle()
+            )
+            .opacity(configuration.isPressed ? 0.72 : 1)
+    }
+}
+#endif
 
 extension ToolbarItemPlacement {
     static var nagareLeading: ToolbarItemPlacement {
@@ -123,11 +152,7 @@ extension View {
     @ViewBuilder
     func nagareToolbarButton() -> some View {
 #if os(macOS)
-        buttonStyle(.plain)
-            .font(.system(size: 16))
-            .frame(width: 36, height: 36)
-            .contentShape(Circle())
-            .glassEffect(.regular.interactive(), in: Circle())
+        buttonStyle(NagareToolbarButtonStyle())
 #else
         self
 #endif
@@ -164,6 +189,8 @@ extension View {
     func nagareCompactDatePickerStyle() -> some View {
 #if os(macOS)
         datePickerStyle(.field)
+            .controlSize(.regular)
+            .padding(.vertical, 3)
 #else
         self
 #endif
@@ -240,6 +267,25 @@ extension View {
     }
 
     @ViewBuilder
+    func nagareCommandSelection(
+        isSelected: Bool,
+        toggle: @escaping () -> Void
+    ) -> some View {
+#if os(macOS)
+        background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.18))
+            }
+        }
+        .accessibilityValue(isSelected ? "Selected" : "")
+        .accessibilityAction(named: "Toggle Selection", toggle)
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
     func nagareDetailsForm(
         width: CGFloat = 440,
         height: CGFloat
@@ -247,7 +293,7 @@ extension View {
 #if os(macOS)
         formStyle(.grouped)
             .scrollContentBackground(.hidden)
-            .controlSize(.large)
+            .controlSize(.regular)
             .font(.body)
             .padding(16)
             .frame(width: width, height: height)
@@ -278,12 +324,6 @@ extension View {
                 ZStack {
                     Color.black.opacity(0.2)
                         .ignoresSafeArea()
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.snappy(duration: 0.18)) {
-                                isPresented.wrappedValue = false
-                            }
-                        }
 
                     composer()
                         .background(

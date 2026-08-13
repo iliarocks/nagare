@@ -3,13 +3,12 @@ import SwiftUI
 struct ItemRow: View {
     let item: ItemRecordSnapshot
     let onOpen: (ItemRecordSnapshot) -> Void
+    let onToggleSelection: () -> Void
     let onComplete: (TodoRecordSnapshot) -> Void
-    let onChangeSchedule: (ItemRecordSnapshot) -> Void
-    let onMoveProject: (ItemRecordSnapshot) -> Void
-    let onDelete: (ItemRecordSnapshot) -> Void
-
-    @State private var sharedCalendarFile: SharedCalendarFile?
-    @State private var sharingErrorMessage: String?
+    let contextItems: [ItemRecordSnapshot]
+    let onChangeSchedule: ([ItemRecordSnapshot]) -> Void
+    let onMoveProject: ([ItemRecordSnapshot]) -> Void
+    let onDelete: ([ItemRecordSnapshot]) -> Void
 
     var body: some View {
         ZStack {
@@ -18,24 +17,26 @@ struct ItemRow: View {
                 TodoRow(
                     todo: todo,
                     onOpen: { onOpen(item) },
+                    onToggleSelection: onToggleSelection,
                     onComplete: { onComplete(todo) },
-                    onChangeDate: { onChangeSchedule(item) },
-                    onMoveProject: { onMoveProject(item) },
-                    onDelete: { onDelete(item) }
+                    onChangeDate: { onChangeSchedule([item]) },
+                    onMoveProject: { onMoveProject([item]) },
+                    onDelete: { onDelete([item]) }
                 )
             case .event(let event):
                 EventRow(
                     event: event,
                     onOpen: { onOpen(item) },
-                    onChangeSchedule: { onChangeSchedule(item) },
-                    onMoveProject: { onMoveProject(item) },
-                    onDelete: { onDelete(item) }
+                    onToggleSelection: onToggleSelection,
+                    onChangeSchedule: { onChangeSchedule([item]) },
+                    onMoveProject: { onMoveProject([item]) },
+                    onDelete: { onDelete([item]) }
                 )
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
-                onDelete(item)
+                onDelete([item])
             } label: {
                 Image(systemName: "trash")
             }
@@ -43,7 +44,7 @@ struct ItemRow: View {
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
-                onChangeSchedule(item)
+                onChangeSchedule([item])
             } label: {
                 Image(systemName: scheduleActionIcon)
             }
@@ -51,7 +52,7 @@ struct ItemRow: View {
             .accessibilityLabel(scheduleActionTitle)
 
             Button {
-                onMoveProject(item)
+                onMoveProject([item])
             } label: {
                 Image(systemName: "folder")
             }
@@ -59,9 +60,10 @@ struct ItemRow: View {
             .accessibilityLabel("Move Project")
 
             if case .event(let event) = item {
-                Button {
-                    share(event)
-                } label: {
+                ShareLink(
+                    item: ICalendarShareItem(event: event),
+                    preview: sharePreview(for: event)
+                ) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .tint(.green)
@@ -69,32 +71,24 @@ struct ItemRow: View {
             }
         }
         .nagareDesktopContextMenu {
-            if case .todo(let todo) = item {
-                Button {
-                    onComplete(todo)
-                } label: {
-                    Label("Complete", systemImage: "checkmark.circle")
-                }
-
-                Divider()
+            Button {
+                onChangeSchedule(contextItems)
+            } label: {
+                Label(contextScheduleActionTitle, systemImage: scheduleActionIcon)
             }
 
             Button {
-                onChangeSchedule(item)
+                onMoveProject(contextItems)
             } label: {
-                Label(scheduleActionTitle, systemImage: scheduleActionIcon)
+                Label(contextMoveActionTitle, systemImage: "folder")
             }
 
-            Button {
-                onMoveProject(item)
-            } label: {
-                Label("Move Project", systemImage: "folder")
-            }
-
-            if case .event(let event) = item {
-                Button {
-                    share(event)
-                } label: {
+            if contextItems.count == 1,
+               case .event(let event) = item {
+                ShareLink(
+                    item: ICalendarShareItem(event: event),
+                    preview: sharePreview(for: event)
+                ) {
                     Label("Share Event", systemImage: "square.and.arrow.up")
                 }
             }
@@ -102,24 +96,10 @@ struct ItemRow: View {
             Divider()
 
             Button(role: .destructive) {
-                onDelete(item)
+                onDelete(contextItems)
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label(contextDeleteActionTitle, systemImage: "trash")
             }
-        }
-        .sheet(item: $sharedCalendarFile) { file in
-            CalendarActivityView(file: file)
-                .ignoresSafeArea()
-        }
-        .alert(
-            "Event Couldn't Be Shared",
-            isPresented: isShowingSharingError
-        ) {
-            Button("OK", role: .cancel) {
-                sharingErrorMessage = nil
-            }
-        } message: {
-            Text(sharingErrorMessage ?? "An unknown error occurred.")
         }
     }
 
@@ -137,20 +117,27 @@ struct ItemRow: View {
         }
     }
 
-    private var isShowingSharingError: Binding<Bool> {
-        Binding(
-            get: { sharingErrorMessage != nil },
-            set: { if !$0 { sharingErrorMessage = nil } }
-        )
+    private var contextScheduleActionTitle: String {
+        guard contextItems.count > 1 else { return scheduleActionTitle }
+        return "Change Date for \(contextItems.count) Items"
     }
 
-    private func share(_ event: EventRecordSnapshot) {
-        do {
-            sharedCalendarFile = try ICalendarExportStore.write(
-                ICalendarExportFile(event: event)
-            )
-        } catch {
-            sharingErrorMessage = error.localizedDescription
-        }
+    private var contextMoveActionTitle: String {
+        contextItems.count > 1
+            ? "Move \(contextItems.count) Items to Project"
+            : "Move Project"
     }
+
+    private var contextDeleteActionTitle: String {
+        contextItems.count > 1
+            ? "Delete \(contextItems.count) Items"
+            : "Delete"
+    }
+
+    private func sharePreview(
+        for event: EventRecordSnapshot
+    ) -> SharePreview<Never, Never> {
+        SharePreview(event.title.isEmpty ? "Event" : event.title)
+    }
+
 }

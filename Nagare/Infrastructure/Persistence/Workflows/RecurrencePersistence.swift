@@ -252,28 +252,49 @@ enum RecurrencePersistence {
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Event? {
         try perform(in: context, at: transitionDate) {
-            guard let template = event.recurrenceTemplate else {
-                context.delete(event)
-                return nil
-            }
-
-            try validateCurrent(event, for: template)
-            let next = try makeNextEvent(
-                after: event,
-                from: template,
-                createdAt: transitionDate,
+            try prepareDeletion(
+                event,
+                at: transitionDate,
+                in: context,
                 calendar: calendar
             )
+        }
+    }
 
-            context.insert(next)
-            next.recurrenceTemplate = template
-            guard let nextSequence = next.recurrenceSequence else {
-                throw RecurrencePersistenceError.sequenceMismatch
+    /// Deletes a heterogeneous item selection as one transaction. Every
+    /// recurrence transition is prepared before the single context save.
+    static func delete(
+        todos: [Todo],
+        events: [Event],
+        at transitionDate: Date = .now,
+        in context: ModelContext,
+        calendar: Calendar = .autoupdatingCurrent
+    ) throws {
+        try perform(in: context, at: transitionDate) {
+            guard Set(todos.map(\.id)).count == todos.count,
+                  Set(events.map(\.id)).count == events.count else {
+                throw RecurrencePersistenceError.duplicateItems
             }
-            template.currentItemID = next.id
-            template.currentSequence = nextSequence
-            context.delete(event)
-            return next
+            for todo in todos {
+                if todo.completedAt != nil {
+                    try prepareCompletedDeletion(todo, in: context)
+                } else {
+                    _ = try prepareDeletion(
+                        todo,
+                        at: transitionDate,
+                        in: context,
+                        calendar: calendar
+                    )
+                }
+            }
+            for event in events {
+                _ = try prepareDeletion(
+                    event,
+                    at: transitionDate,
+                    in: context,
+                    calendar: calendar
+                )
+            }
         }
     }
 
@@ -440,6 +461,35 @@ enum RecurrencePersistence {
         template.currentItemID = next.id
         template.currentSequence = nextSequence
         context.delete(todo)
+        return next
+    }
+
+    private static func prepareDeletion(
+        _ event: Event,
+        at transitionDate: Date,
+        in context: ModelContext,
+        calendar: Calendar
+    ) throws -> Event? {
+        guard let template = event.recurrenceTemplate else {
+            context.delete(event)
+            return nil
+        }
+
+        try validateCurrent(event, for: template)
+        let next = try makeNextEvent(
+            after: event,
+            from: template,
+            createdAt: transitionDate,
+            calendar: calendar
+        )
+        context.insert(next)
+        next.recurrenceTemplate = template
+        guard let nextSequence = next.recurrenceSequence else {
+            throw RecurrencePersistenceError.sequenceMismatch
+        }
+        template.currentItemID = next.id
+        template.currentSequence = nextSequence
+        context.delete(event)
         return next
     }
 

@@ -198,6 +198,54 @@ struct NagareCommandPlannerTests {
         )
     }
 
+    @Test func batchAssignmentPlansOneCoherentProjectOrder() throws {
+        let projectID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000010"
+        )!
+        let destinationID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000001"
+        )!
+        let firstID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000002"
+        )!
+        let secondID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000003"
+        )!
+        let graph = snapshot(
+            projects: [project(id: projectID)],
+            todos: [
+                todo(
+                    id: destinationID,
+                    order: "a",
+                    projectOrder: "invalid!",
+                    projectID: projectID
+                ),
+                todo(id: firstID, order: "b"),
+                todo(id: secondID, order: "c")
+            ]
+        )
+
+        let plan = try NagareCommandPlanner.assign(
+            [.item(.todo(firstID)), .item(.todo(secondID))],
+            to: projectID,
+            in: graph
+        )
+
+        #expect(plan.projectID == projectID)
+        #expect(plan.entries.map(\.itemID) == [
+            .todo(firstID),
+            .todo(secondID)
+        ])
+        #expect(plan.projectOrderChanges.count == 3)
+        let orders = plan.projectOrderChanges.map(\.projectOrder)
+        #expect(Set(orders).count == 3)
+        #expect(orders.allSatisfy(FractionalIndex.isValid))
+        #expect(
+            plan.entries.compactMap(\.projectOrder)
+                == Array(orders.suffix(2))
+        )
+    }
+
     @Test func reinstatementPlansScheduleAndBothOrderDomains() throws {
         let projectID = UUID(
             uuidString: "00000000-0000-0000-0000-000000000010"

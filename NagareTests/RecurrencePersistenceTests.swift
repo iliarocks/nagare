@@ -578,6 +578,62 @@ struct RecurrencePersistenceTests {
         #expect(!events.contains { $0.id == eventID })
     }
 
+    @Test func deletingMixedSelectionAdvancesEveryRecurrenceInOneTransaction() throws {
+        let context = try makeContext()
+        let todo = insertTodo(
+            "Daily practice",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let todoID = todo.id
+        let todoTemplate = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: try .relative(every: 1, unit: .day),
+            in: context
+        )
+        let event = Event(
+            title: "Weekly call",
+            scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
+            endDate: date(2026, 7, 1, hour: 10, minute: 15),
+            order: "j"
+        )
+        context.insert(event)
+        let eventID = event.id
+        let eventTemplate = try RecurrencePersistence.createTemplate(
+            for: event,
+            rule: try .absolute(
+                every: 1,
+                unit: .week,
+                anchors: [2],
+                reference: event.scheduledDate,
+                calendar: calendar
+            ),
+            in: context,
+            calendar: calendar
+        )
+
+        try RecurrencePersistence.delete(
+            todos: [todo],
+            events: [event],
+            at: date(2026, 7, 1, hour: 12),
+            in: context,
+            calendar: calendar
+        )
+
+        let todos = try context.fetch(FetchDescriptor<Todo>())
+        let events = try context.fetch(FetchDescriptor<Event>())
+        let nextTodo = try #require(todos.first)
+        let nextEvent = try #require(events.first)
+        #expect(!todos.contains { $0.id == todoID })
+        #expect(!events.contains { $0.id == eventID })
+        #expect(nextTodo.scheduledDate == date(2026, 7, 2))
+        #expect(nextEvent.scheduledDate == date(2026, 7, 8, hour: 9, minute: 30))
+        #expect(todoTemplate.currentItemID == nextTodo.id)
+        #expect(eventTemplate.currentItemID == nextEvent.id)
+        #expect(todoTemplate.currentSequence == 1)
+        #expect(eventTemplate.currentSequence == 1)
+    }
+
     @Test func advancingPastRecurringEventCatchesUpInOneTransition() throws {
         let context = try makeContext()
         let event = Event(

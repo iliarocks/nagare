@@ -66,7 +66,7 @@ struct CompletedView: View {
                     }
                 }
                 .nagareListSectionSpacing(.custom(48))
-                .contentMargins(.top, 24, for: .scrollContent)
+                .contentMargins(.top, 12, for: .scrollContent)
             }
         }
         .sheet(

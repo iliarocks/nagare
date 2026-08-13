@@ -49,8 +49,10 @@ nonisolated protocol NagareDataWriting: AnyObject {
         at transactionDate: Date
     ) throws
     func deleteItem(_ id: ItemID, at date: Date) throws
+    func deleteItems(_ ids: [ItemID], at date: Date) throws
     func deleteRecurrenceTemplate(_ id: UUID, at date: Date) throws
     func assign(_ plan: ProjectAssignmentPlan, at date: Date) throws
+    func assign(_ plan: ProjectAssignmentBatchPlan, at date: Date) throws
     func updateRecurrenceTemplate(
         _ id: UUID,
         rule: RecurrenceRule,
