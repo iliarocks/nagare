@@ -32,6 +32,99 @@ struct SnapshotStoreIntegrationTests {
         )
     }
 
+    @Test func onDiskMutationsResolveConcreteSwiftDataModels() throws {
+        let storeURL = temporaryStoreURL()
+        defer { removeStoreFiles(at: storeURL) }
+
+        let container = try makeContainer(at: storeURL)
+        let context = ModelContext(container)
+        let transactionDate = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let project = Project(title: "Project", order: "a")
+        let todo = Todo(
+            title: "Todo",
+            scheduledDate: transactionDate,
+            order: "a"
+        )
+        let event = Event(
+            title: "Event",
+            scheduledDate: transactionDate,
+            order: "b"
+        )
+        let template = RecurrenceTemplate(
+            itemType: .todo,
+            title: "Template",
+            notes: nil,
+            rule: try .relative(every: 1, unit: .day),
+            currentItemID: todo.id
+        )
+        context.insert(project)
+        context.insert(todo)
+        context.insert(event)
+        context.insert(template)
+        try context.save()
+
+        let repository = SwiftDataNagareRepository(modelContainer: container)
+        try repository.updateNote(
+            .todo(todo.id),
+            title: "Edited Todo",
+            notes: "Todo notes",
+            at: transactionDate
+        )
+        try repository.updateNote(
+            .event(event.id),
+            title: "Edited Event",
+            notes: "Event notes",
+            at: transactionDate
+        )
+        try repository.updateNote(
+            .recurrenceTemplate(template.id),
+            title: "Edited Template",
+            notes: "Template notes",
+            at: transactionDate
+        )
+        try repository.updateProject(
+            project.id,
+            title: "Edited Project",
+            notes: "Project notes",
+            at: transactionDate
+        )
+        try repository.saveItemOrdering(
+            [
+                ItemOrderingChange(id: .todo(todo.id), order: "c"),
+                ItemOrderingChange(id: .event(event.id), order: "d")
+            ],
+            at: transactionDate
+        )
+        try repository.saveProjectOrdering(
+            [
+                ProjectOrderingChange(
+                    id: project.id,
+                    order: "e",
+                    isPriority: true
+                )
+            ],
+            at: transactionDate
+        )
+
+        let snapshot = try repository.load()
+        #expect(snapshot.todosByID[todo.id]?.title == "Edited Todo")
+        #expect(snapshot.todosByID[todo.id]?.notes == "Todo notes")
+        #expect(snapshot.todosByID[todo.id]?.order == "c")
+        #expect(snapshot.eventsByID[event.id]?.title == "Edited Event")
+        #expect(snapshot.eventsByID[event.id]?.notes == "Event notes")
+        #expect(snapshot.eventsByID[event.id]?.order == "d")
+        #expect(
+            snapshot.templatesByID[template.id]?.title == "Edited Template"
+        )
+        #expect(
+            snapshot.templatesByID[template.id]?.notes == "Template notes"
+        )
+        #expect(snapshot.projectsByID[project.id]?.title == "Edited Project")
+        #expect(snapshot.projectsByID[project.id]?.notes == "Project notes")
+        #expect(snapshot.projectsByID[project.id]?.order == "e")
+        #expect(snapshot.projectsByID[project.id]?.isPriority == true)
+    }
+
     @Test func historyEventRebuildsPublishedSnapshot() async throws {
         let storeURL = temporaryStoreURL()
         defer { removeStoreFiles(at: storeURL) }

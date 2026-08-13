@@ -83,7 +83,7 @@ final class SwiftDataNagareRepository:
         do {
             try applyProjectOrdering(plan.orderRepairs, in: context)
             if let existingID = plan.existingID {
-                let project: Project = try requireOne(existingID, in: context)
+                let project = try requireProject(existingID, in: context)
                 project.title = plan.draft.title
                 project.notes = plan.draft.notes
                 try SwiftDataTransaction.save(context, at: date)
@@ -203,11 +203,11 @@ final class SwiftDataNagareRepository:
             let note: any Note
             switch id {
             case .todo(let id):
-                note = try requireOne(id, in: context) as Todo
+                note = try requireTodo(id, in: context)
             case .event(let id):
-                note = try requireOne(id, in: context) as Event
+                note = try requireEvent(id, in: context)
             case .recurrenceTemplate(let id):
-                note = try requireOne(id, in: context) as RecurrenceTemplate
+                note = try requireRecurrenceTemplate(id, in: context)
             }
             note.title = title
             note.notes = notes
@@ -229,7 +229,7 @@ final class SwiftDataNagareRepository:
     ) throws {
         let context = makeContext()
         do {
-            let project: Project = try requireOne(id, in: context)
+            let project = try requireProject(id, in: context)
             project.title = title
             project.notes = notes
             try SwiftDataTransaction.save(context, at: date)
@@ -296,7 +296,7 @@ final class SwiftDataNagareRepository:
     func deleteProject(_ id: UUID, at date: Date) throws {
         let context = makeContext()
         do {
-            let project: Project = try requireOne(id, in: context)
+            let project = try requireProject(id, in: context)
             try ProjectPersistence.delete(project, at: date, in: context)
         } catch let error as NagareDataPersistenceError {
             throw error
@@ -310,7 +310,7 @@ final class SwiftDataNagareRepository:
     func completeTodo(_ id: UUID, at date: Date) throws {
         let context = makeContext()
         do {
-            let todo: Todo = try requireOne(id, in: context)
+            let todo = try requireTodo(id, in: context)
             _ = try RecurrencePersistence.complete(
                 todo,
                 at: date,
@@ -336,7 +336,7 @@ final class SwiftDataNagareRepository:
                 plan.projectOrderRepairs,
                 in: context
             )
-            let todo: Todo = try requireOne(plan.id, in: context)
+            let todo = try requireTodo(plan.id, in: context)
             guard todo.completedAt != nil else {
                 throw NagareDataPersistenceError.invalidState(
                     "The Todo is no longer completed."
@@ -361,7 +361,7 @@ final class SwiftDataNagareRepository:
     func deleteCompletedTodo(_ id: UUID, at date: Date) throws {
         let context = makeContext()
         do {
-            let todo: Todo = try requireOne(id, in: context)
+            let todo = try requireTodo(id, in: context)
             try RecurrencePersistence.deleteCompleted(
                 todo,
                 at: date,
@@ -421,9 +421,9 @@ final class SwiftDataNagareRepository:
             for id in ids {
                 switch id {
                 case .todo(let id):
-                    todos.append(try requireOne(id, in: context))
+                    todos.append(try requireTodo(id, in: context))
                 case .event(let id):
-                    events.append(try requireOne(id, in: context))
+                    events.append(try requireEvent(id, in: context))
                 }
             }
             try RecurrencePersistence.delete(
@@ -444,7 +444,7 @@ final class SwiftDataNagareRepository:
     func deleteRecurrenceTemplate(_ id: UUID, at date: Date) throws {
         let context = makeContext()
         do {
-            let template: RecurrenceTemplate = try requireOne(id, in: context)
+            let template = try requireRecurrenceTemplate(id, in: context)
             try RecurrencePersistence.deleteTemplate(
                 template,
                 at: date,
@@ -467,13 +467,13 @@ final class SwiftDataNagareRepository:
                 in: context
             )
             let project: Project? = try plan.projectID.map {
-                try requireOne($0, in: context)
+                try requireProject($0, in: context)
             }
             let item = try loadItem(for: plan.itemID, in: context)
             item.applyProject(project)
             item.applyProjectOrder(plan.projectOrder)
             if let id = plan.recurrenceTemplateID {
-                let template: RecurrenceTemplate = try requireOne(
+                let template = try requireRecurrenceTemplate(
                     id,
                     in: context
                 )
@@ -497,14 +497,14 @@ final class SwiftDataNagareRepository:
                 in: context
             )
             let project: Project? = try plan.projectID.map {
-                try requireOne($0, in: context)
+                try requireProject($0, in: context)
             }
             for entry in plan.entries {
                 let item = try loadItem(for: entry.itemID, in: context)
                 item.applyProject(project)
                 item.applyProjectOrder(entry.projectOrder)
                 if let id = entry.recurrenceTemplateID {
-                    let template: RecurrenceTemplate = try requireOne(
+                    let template = try requireRecurrenceTemplate(
                         id,
                         in: context
                     )
@@ -531,7 +531,7 @@ final class SwiftDataNagareRepository:
     ) throws {
         let context = makeContext()
         do {
-            let template: RecurrenceTemplate = try requireOne(id, in: context)
+            let template = try requireRecurrenceTemplate(id, in: context)
             try RecurrencePersistence.updateTemplate(
                 template,
                 rule: rule,
@@ -608,13 +608,13 @@ final class SwiftDataNagareRepository:
         for change in changes {
             switch change.id {
             case .todo(let id):
-                let todo: Todo = try requireOne(id, in: context)
+                let todo = try requireTodo(id, in: context)
                 if let order = change.order { todo.order = order }
                 if let scheduledDate = change.scheduledDate {
                     todo.scheduledDate = scheduledDate
                 }
             case .event(let id):
-                let event: Event = try requireOne(id, in: context)
+                let event = try requireEvent(id, in: context)
                 if let order = change.order { event.order = order }
                 if let scheduledDate = change.scheduledDate {
                     event.scheduledDate = scheduledDate
@@ -629,7 +629,7 @@ final class SwiftDataNagareRepository:
         in context: ModelContext
     ) throws {
         for change in changes {
-            let project: Project = try requireOne(change.id, in: context)
+            let project = try requireProject(change.id, in: context)
             if let order = change.order { project.order = order }
             if let isPriority = change.isPriority {
                 project.isPriority = isPriority
@@ -644,10 +644,10 @@ final class SwiftDataNagareRepository:
         for change in changes {
             switch change.id {
             case .todo(let id):
-                let todo: Todo = try requireOne(id, in: context)
+                let todo = try requireTodo(id, in: context)
                 todo.projectOrder = change.projectOrder
             case .event(let id):
-                let event: Event = try requireOne(id, in: context)
+                let event = try requireEvent(id, in: context)
                 event.projectOrder = change.projectOrder
             }
         }
@@ -659,9 +659,9 @@ final class SwiftDataNagareRepository:
     ) throws -> SwiftDataItem {
         switch id {
         case .todo(let id):
-            .todo(try requireOne(id, in: context) as Todo)
+            .todo(try requireTodo(id, in: context))
         case .event(let id):
-            .event(try requireOne(id, in: context) as Event)
+            .event(try requireEvent(id, in: context))
         }
     }
 
@@ -778,7 +778,7 @@ final class SwiftDataNagareRepository:
         in context: ModelContext
     ) throws {
         let project: Project? = try projectID.map {
-            try requireOne($0, in: context)
+            try requireProject($0, in: context)
         }
         item.applyProject(project)
         item.applyProjectOrder(projectOrder)
@@ -875,15 +875,58 @@ final class SwiftDataNagareRepository:
         }
     }
 
-    private func requireOne<Record>(
+    private func requireTodo(
         _ id: UUID,
         in context: ModelContext
-    ) throws -> Record where Record: PersistentModel & SyncRecord {
+    ) throws -> Todo {
         let records = try context.fetch(
-            FetchDescriptor<Record>(
-                predicate: #Predicate { $0.id == id }
+            FetchDescriptor<Todo>(
+                predicate: #Predicate<Todo> { $0.id == id }
             )
         )
+        return try requireExactlyOne(records, id: id)
+    }
+
+    private func requireEvent(
+        _ id: UUID,
+        in context: ModelContext
+    ) throws -> Event {
+        let records = try context.fetch(
+            FetchDescriptor<Event>(
+                predicate: #Predicate<Event> { $0.id == id }
+            )
+        )
+        return try requireExactlyOne(records, id: id)
+    }
+
+    private func requireProject(
+        _ id: UUID,
+        in context: ModelContext
+    ) throws -> Project {
+        let records = try context.fetch(
+            FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.id == id }
+            )
+        )
+        return try requireExactlyOne(records, id: id)
+    }
+
+    private func requireRecurrenceTemplate(
+        _ id: UUID,
+        in context: ModelContext
+    ) throws -> RecurrenceTemplate {
+        let records = try context.fetch(
+            FetchDescriptor<RecurrenceTemplate>(
+                predicate: #Predicate<RecurrenceTemplate> { $0.id == id }
+            )
+        )
+        return try requireExactlyOne(records, id: id)
+    }
+
+    private func requireExactlyOne<Record>(
+        _ records: [Record],
+        id: UUID
+    ) throws -> Record {
         guard records.count == 1, let record = records.first else {
             throw NagareDataPersistenceError.invalidIdentity(
                 id,
