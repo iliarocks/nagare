@@ -69,7 +69,7 @@ struct CompletedView: View {
                 .contentMargins(.top, 12, for: .scrollContent)
             }
         }
-        .sheet(
+        .nagareModal(
             item: $notesDestination,
             onDismiss: resetNotesSheet
         ) { destination in

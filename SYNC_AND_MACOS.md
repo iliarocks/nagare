@@ -27,11 +27,13 @@ standard menus, keyboard shortcuts, a Settings scene, and AppKit sharing.
 
 iCloud sync is off by default. The Settings screen is the single home for
 Completed history, the sync preference, and future privacy/import/export
-features. Enabling or disabling sync changes the configuration used on the
-next launch; Nagare never opens simultaneous local-only and CloudKit stacks on
-the same store. Disabling sync preserves the local database and stops future
-replication on that device, but does not claim to delete the user's existing
-private CloudKit copy.
+features. Enabling or disabling sync rebuilds the app's data session around
+the same local store, so the change takes effect immediately without a manual
+relaunch. During that handoff the outgoing container remains alive until the
+replacement opens successfully; a failed handoff leaves the active session
+and preference unchanged. Disabling sync preserves the local database and
+stops future replication on that device, but does not claim to delete the
+user's existing private CloudKit copy.
 
 ## Schema evolution
 
@@ -107,6 +109,11 @@ The two databases are isolated even though the container identifier is the
 same. Debug and release builds also use separate bundle identifiers and app
 groups.
 
+Debug also uses a dedicated `NagareDev.store` and a Debug-only sync preference.
+Release keeps SwiftData's existing production store and preference. A fresh
+Nagare Dev build therefore opens deterministic sample data without attaching
+to CloudKit unless development sync is explicitly enabled.
+
 The app remains usable offline or while account status cannot be determined.
 Settings explains whether data is local-only or expected to replicate to the
 user's other devices; low-level iCloud account state is intentionally not
@@ -160,8 +167,9 @@ Do not ship solely because both targets compile. Complete this sequence:
 1. Archive a copy of an existing production iOS store, install an upgrade
    build over it, and verify item values, ordering, projects, completion
    history, and recurrences.
-2. Enable iCloud in Nagare Settings and relaunch both test devices. Sign into
-   the same test iCloud account on an iPhone and a Mac. Exercise
+2. Enable iCloud in Nagare Settings on both test devices and verify that each
+   active session reconnects without a relaunch. Sign into the same test
+   iCloud account on an iPhone and a Mac. Exercise
    create, edit, move, reorder, complete, delete, and recurrence advancement
    in both directions, including offline edits followed by reconnection.
 3. Run a development build once with `--initialize-cloudkit-schema`. In

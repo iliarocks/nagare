@@ -14,6 +14,59 @@ enum NagareEditorField: Hashable {
     case notes
 }
 
+enum NagareSelectionPosition: Equatable {
+    case none
+    case single
+    case first
+    case middle
+    case last
+
+    static func resolve<ID: Hashable>(
+        id: ID,
+        orderedIDs: [ID],
+        selectedIDs: Set<ID>
+    ) -> Self {
+        guard selectedIDs.contains(id),
+              let index = orderedIDs.firstIndex(of: id) else {
+            return .none
+        }
+        let hasSelectedBefore = index > orderedIDs.startIndex
+            && selectedIDs.contains(orderedIDs[index - 1])
+        let hasSelectedAfter = index < orderedIDs.index(before: orderedIDs.endIndex)
+            && selectedIDs.contains(orderedIDs[index + 1])
+
+        switch (hasSelectedBefore, hasSelectedAfter) {
+        case (false, false): return .single
+        case (false, true): return .first
+        case (true, true): return .middle
+        case (true, false): return .last
+        }
+    }
+}
+
+struct NagareModalDismissAction {
+    private let action: () -> Void
+
+    init(_ action: @escaping () -> Void = {}) {
+        self.action = action
+    }
+
+    func callAsFunction() {
+        action()
+    }
+}
+
+private struct NagareModalDismissKey: EnvironmentKey {
+    static let defaultValue = NagareModalDismissAction()
+}
+
+extension EnvironmentValues {
+    var nagareDismissModal: NagareModalDismissAction {
+        get { self[NagareModalDismissKey.self] }
+        set { self[NagareModalDismissKey.self] = newValue }
+    }
+}
+
 struct NagareEditableTitle: View {
     let placeholder: String
     @Binding var text: String
@@ -108,11 +161,192 @@ struct NagarePrimaryRowAction<Label: View>: View {
 #else
         Button(action: action) {
             label
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
 #endif
     }
 }
+
+#if os(macOS)
+private struct NagareEscapeKeyMonitor: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.start()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.action = action
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stop()
+    }
+
+    final class Coordinator {
+        var action: () -> Void
+        private var monitor: Any?
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        func start() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
+                [weak self] event in
+                guard event.keyCode == 53 else { return event }
+                self?.action()
+                return nil
+            }
+        }
+
+        func stop() {
+            guard let monitor else { return }
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+
+        deinit {
+            stop()
+        }
+    }
+}
+
+private struct NagareInitialFocusReset: NSViewRepresentable {
+    func makeNSView(context: Context) -> ResetView {
+        ResetView()
+    }
+
+    func updateNSView(_ nsView: ResetView, context: Context) {}
+
+    final class ResetView: NSView {
+        private var hasResetFocus = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil, !hasResetFocus else { return }
+            hasResetFocus = true
+            DispatchQueue.main.async { [weak self] in
+                self?.window?.makeFirstResponder(nil)
+            }
+        }
+    }
+}
+
+private struct NagareModalSurface<Presented: View>: View {
+    let dismiss: () -> Void
+    @ViewBuilder let presented: () -> Presented
+
+    var body: some View {
+        ZStack {
+            Button(action: dismiss) {
+                Color.black.opacity(0.24)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHidden(true)
+
+            presented()
+                .environment(
+                    \.nagareDismissModal,
+                    NagareModalDismissAction(dismiss)
+                )
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(
+                        cornerRadius: 18,
+                        style: .continuous
+                    )
+                )
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: 18,
+                        style: .continuous
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: 18,
+                        style: .continuous
+                    )
+                    .stroke(.separator.opacity(0.65), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+                .transition(
+                    .scale(scale: 0.97).combined(with: .opacity)
+                )
+        }
+        .onExitCommand(perform: dismiss)
+        .background(NagareEscapeKeyMonitor(action: dismiss))
+        .zIndex(1)
+    }
+}
+
+private struct NagareItemModalModifier<
+    Item: Identifiable,
+    Presented: View
+>: ViewModifier {
+    @Binding var item: Item?
+    let onDismiss: () -> Void
+    @ViewBuilder let presented: (Item) -> Presented
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if let item {
+                    NagareModalSurface(dismiss: dismiss) {
+                        presented(item)
+                    }
+                }
+            }
+            .animation(.snappy(duration: 0.18), value: item?.id)
+            .onChange(of: item?.id) { oldValue, newValue in
+                if oldValue != nil && newValue == nil {
+                    onDismiss()
+                }
+            }
+    }
+
+    private func dismiss() {
+        item = nil
+    }
+}
+
+private struct NagarePresentedModalModifier<Presented: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let onDismiss: () -> Void
+    @ViewBuilder let presented: () -> Presented
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if isPresented {
+                    NagareModalSurface(dismiss: dismiss) {
+                        presented()
+                    }
+                }
+            }
+            .animation(.snappy(duration: 0.18), value: isPresented)
+            .onChange(of: isPresented) { oldValue, newValue in
+                if oldValue && !newValue {
+                    onDismiss()
+                }
+            }
+    }
+
+    private func dismiss() {
+        isPresented = false
+    }
+}
+#endif
 
 #if os(macOS)
 private struct NagareToolbarButtonStyle: ButtonStyle {
@@ -154,7 +388,7 @@ extension View {
 #if os(macOS)
         buttonStyle(NagareToolbarButtonStyle())
 #else
-        self
+        foregroundStyle(.primary)
 #endif
     }
 
@@ -251,16 +485,25 @@ extension View {
 #if os(macOS)
         listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
+            .listRowInsets(
+                EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
+            )
 #else
         self
 #endif
     }
 
+    /// The single outer contract for every item-like list row. Keeping the
+    /// hit target, visual inset, and minimum height together prevents row
+    /// families from drifting apart as their inner content evolves.
     @ViewBuilder
-    func nagareReorderHitTarget() -> some View {
+    func nagareItemListRow() -> some View {
 #if os(macOS)
         frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .frame(minHeight: 40)
 #else
         self
 #endif
@@ -268,18 +511,36 @@ extension View {
 
     @ViewBuilder
     func nagareCommandSelection(
-        isSelected: Bool,
+        position: NagareSelectionPosition,
         toggle: @escaping () -> Void
     ) -> some View {
 #if os(macOS)
         background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.18))
+                if position != .none {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: position == .single
+                            || position == .first ? 8 : 0,
+                        bottomLeadingRadius: position == .single
+                            || position == .last ? 8 : 0,
+                        bottomTrailingRadius: position == .single
+                            || position == .last ? 8 : 0,
+                        topTrailingRadius: position == .single
+                            || position == .first ? 8 : 0,
+                        style: .continuous
+                    )
+                    .fill(Color.primary.opacity(0.1))
+                    .padding(
+                        .top,
+                        position == .middle || position == .last ? -7 : 0
+                    )
+                    .padding(
+                        .bottom,
+                        position == .first || position == .middle ? -7 : 0
+                    )
+                }
             }
-        }
-        .accessibilityValue(isSelected ? "Selected" : "")
-        .accessibilityAction(named: "Toggle Selection", toggle)
+            .accessibilityValue(position == .none ? "" : "Selected")
+            .accessibilityAction(named: "Toggle Selection", toggle)
 #else
         self
 #endif
@@ -321,42 +582,13 @@ extension View {
 #if os(macOS)
         overlay {
             if isPresented.wrappedValue {
-                ZStack {
-                    Color.black.opacity(0.2)
-                        .ignoresSafeArea()
-
-                    composer()
-                        .background(
-                            .regularMaterial,
-                            in: RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
-                        )
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
-                        )
-                        .overlay {
-                            RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
-                            .stroke(.separator.opacity(0.65), lineWidth: 1)
-                        }
-                        .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
-                        .transition(
-                            .scale(scale: 0.97).combined(with: .opacity)
-                        )
-                }
-                .onExitCommand {
+                NagareModalSurface(dismiss: {
                     withAnimation(.snappy(duration: 0.18)) {
                         isPresented.wrappedValue = false
                     }
+                }) {
+                    composer()
                 }
-                .zIndex(1)
             }
         }
 #else
@@ -397,6 +629,86 @@ extension View {
         frame(width: 620, height: 400)
 #else
         self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareAvoidsInitialFocus() -> some View {
+#if os(macOS)
+        background(NagareInitialFocusReset())
+#else
+        self
+#endif
+    }
+
+    func nagareDocumentBottomFade() -> some View {
+        overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.regularMaterial)
+                .mask {
+                    LinearGradient(
+                        colors: [.clear, .black],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .frame(height: 64)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    func nagareModal<Item: Identifiable, Presented: View>(
+        item: Binding<Item?>,
+        onDismiss: @escaping () -> Void = {},
+        @ViewBuilder content: @escaping (Item) -> Presented
+    ) -> some View {
+#if os(macOS)
+        modifier(
+            NagareItemModalModifier(
+                item: item,
+                onDismiss: onDismiss,
+                presented: content
+            )
+        )
+#else
+        sheet(item: item, onDismiss: onDismiss) { value in
+            content(value)
+                .environment(
+                    \.nagareDismissModal,
+                    NagareModalDismissAction {
+                        item.wrappedValue = nil
+                    }
+                )
+        }
+#endif
+    }
+
+    @ViewBuilder
+    func nagareModal<Presented: View>(
+        isPresented: Binding<Bool>,
+        onDismiss: @escaping () -> Void = {},
+        @ViewBuilder content: @escaping () -> Presented
+    ) -> some View {
+#if os(macOS)
+        modifier(
+            NagarePresentedModalModifier(
+                isPresented: isPresented,
+                onDismiss: onDismiss,
+                presented: content
+            )
+        )
+#else
+        sheet(isPresented: isPresented, onDismiss: onDismiss) {
+            content()
+                .environment(
+                    \.nagareDismissModal,
+                    NagareModalDismissAction {
+                        isPresented.wrappedValue = false
+                    }
+                )
+        }
 #endif
     }
 

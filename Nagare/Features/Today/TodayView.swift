@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct TodayView: View {
-    @Environment(\.scenePhase) private var scenePhase
     @NagareDataStoreEnvironment private var dataStore
 
     @State private var errorMessage: String?
@@ -86,14 +85,6 @@ struct TodayView: View {
                         move(from: sourceOffsets, to: destinationOffset)
                     }
                 )
-            }
-        }
-        .task {
-            performMaintenance()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                performMaintenance()
             }
         }
         .onChange(of: persistedTodayItemIDs, initial: true) { _, itemIDs in
@@ -181,14 +172,6 @@ struct TodayView: View {
             })
         } catch {
             displayedItemIDs = persistedTodayItemIDs
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func performMaintenance() {
-        do {
-            try dataStore.performMaintenance()
-        } catch {
             errorMessage = error.localizedDescription
         }
     }

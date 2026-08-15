@@ -11,15 +11,9 @@ final class NagareDataStore {
 
     @ObservationIgnored
     private let orchestrator: NagareDataOrchestrator
-    @ObservationIgnored
-    private let calendarImportOrchestrator: CalendarImportOrchestrator
 
-    init(
-        orchestrator: NagareDataOrchestrator,
-        calendarImportOrchestrator: CalendarImportOrchestrator
-    ) throws {
+    init(orchestrator: NagareDataOrchestrator) throws {
         self.orchestrator = orchestrator
-        self.calendarImportOrchestrator = calendarImportOrchestrator
         snapshot = try orchestrator.load()
     }
 
@@ -64,14 +58,6 @@ final class NagareDataStore {
 
     func reload() throws {
         snapshot = try orchestrator.load()
-    }
-
-    func importPendingCalendarEvents(
-        at date: Date = .now
-    ) throws -> [EventRecordSnapshot] {
-        let result = try calendarImportOrchestrator.importPending(at: date)
-        snapshot = result.snapshot
-        return result.events
     }
 
     func updateNote(

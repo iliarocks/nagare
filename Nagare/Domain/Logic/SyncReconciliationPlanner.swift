@@ -29,12 +29,8 @@ nonisolated enum SyncReconciliationPlanner {
             metadata: \.metadata
         )
         mergeMutations += eventsByIdentity.mutations
-        let events = deduplicatingCalendarImports(
-            eventsByIdentity.survivors
-        )
-        mergeMutations += events.mutations
+        let events = eventsByIdentity.survivors
         report.duplicateEventsRemoved = eventsByIdentity.mutations.count
-            + events.mutations.count
 
         var recurrenceMutations: [SyncReconciliationMutation] = []
         var pending: [SyncPendingTemplate] = []
@@ -52,7 +48,7 @@ nonisolated enum SyncReconciliationPlanner {
             case "event":
                 reconcileEventTemplate(
                     template,
-                    events: events.survivors,
+                    events: events,
                     mutations: &recurrenceMutations,
                     pending: &pending,
                     report: &report
@@ -478,55 +474,6 @@ nonisolated enum SyncReconciliationPlanner {
 
         return (
             records.filter { !removed.contains($0[keyPath: metadata].reference) },
-            mutations
-        )
-    }
-
-    /// Calendar UIDs are a second semantic identity for imported, nonrepeating
-    /// events. Two offline devices can import the same invite before either
-    /// CloudKit record arrives; keeping both would make retries non-idempotent.
-    /// Recurring events are excluded because their template pointer names the
-    /// event UUID and requires a richer series merge than simple deletion.
-    private static func deduplicatingCalendarImports(
-        _ events: [SyncEventSnapshot]
-    ) -> (
-        survivors: [SyncEventSnapshot],
-        mutations: [SyncReconciliationMutation]
-    ) {
-        var groups: [String: [SyncEventSnapshot]] = [:]
-        for event in events where event.recurrenceTemplateID == nil {
-            guard let identifier = event.calendarIdentifier else { continue }
-            groups[identifier, default: []].append(event)
-        }
-        var removed: Set<SyncRecordReference> = []
-        var mutations: [SyncReconciliationMutation] = []
-
-        for identifier in groups.keys.sorted() {
-            guard let group = groups[identifier], group.count > 1 else {
-                continue
-            }
-            let survivor = SyncRecordOrdering.canonical(
-                group,
-                metadata: \.metadata
-            )
-            let survivorReference = survivor.metadata.reference
-            for duplicate in group
-                .filter({ $0.metadata.reference != survivorReference })
-                .sorted(by: {
-                    metadataReferenceOrder($0.metadata, $1.metadata)
-                }) {
-                removed.insert(duplicate.metadata.reference)
-                mutations.append(
-                    .mergeDuplicate(
-                        duplicate: duplicate.metadata.reference,
-                        canonical: survivorReference
-                    )
-                )
-            }
-        }
-
-        return (
-            events.filter { !removed.contains($0.metadata.reference) },
             mutations
         )
     }

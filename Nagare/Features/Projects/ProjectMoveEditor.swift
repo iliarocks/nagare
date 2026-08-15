@@ -37,7 +37,7 @@ enum ProjectMoveTarget: Identifiable {
 }
 
 struct ProjectMoveEditor: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.nagareDismissModal) private var dismiss
     @NagareDataStoreEnvironment private var dataStore
 
     let target: ProjectMoveTarget

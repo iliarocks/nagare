@@ -12,6 +12,7 @@ struct ItemSelectionAction: Identifiable {
 /// event's wall-clock time and duration. The data orchestrator commits the
 /// whole selection in one ordering transaction.
 struct ItemDateEditor: View {
+    @Environment(\.nagareDismissModal) private var dismiss
     @NagareDataStoreEnvironment private var dataStore
 
     let items: [ItemRecordSnapshot]
@@ -42,7 +43,9 @@ struct ItemDateEditor: View {
         .padding(16)
 #endif
         .onChange(of: scheduledDate) {
-            save()
+            if save() {
+                dismiss()
+            }
         }
         .alert("Details Couldn't Be Changed", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -60,14 +63,15 @@ struct ItemDateEditor: View {
         )
     }
 
-    private func save() {
-        guard !items.isEmpty else { return }
+    @discardableResult
+    private func save() -> Bool {
+        guard !items.isEmpty else { return false }
         let calendar = Calendar.autoupdatingCurrent
         let day = calendar.startOfDay(for: scheduledDate)
         guard items.contains(where: {
             !calendar.isDate($0.scheduledDate, inSameDayAs: day)
         }) else {
-            return
+            return false
         }
 
         do {
@@ -77,9 +81,11 @@ struct ItemDateEditor: View {
                 before: nil,
                 calendar: calendar
             )
+            return true
         } catch {
             scheduledDate = items.first?.scheduledDate ?? .now
             errorMessage = error.localizedDescription
+            return false
         }
     }
 }

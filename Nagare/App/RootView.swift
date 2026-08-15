@@ -2,7 +2,7 @@ import AppIntents
 import SwiftUI
 
 struct RootView: View {
-    private struct CalendarImportAlert: Identifiable {
+    private struct MaintenanceAlert: Identifiable {
         let id = UUID()
         let title: String
         let message: String
@@ -30,11 +30,13 @@ struct RootView: View {
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
     @State private var projectPath: [UUID] = []
-    @State private var calendarImportAlert: CalendarImportAlert?
+    @State private var maintenanceAlert: MaintenanceAlert?
 
     let intentStore: NagareIntentStore?
     let syncMonitor: SyncIntegrityMonitor?
     let cloudSyncEnabledForCurrentLaunch: Bool
+    let onSetCloudSyncEnabled: (Bool) async throws -> Void
+    let onSyncNow: () -> Void
 
     private var projects: [ProjectRecordSnapshot] {
         dataStore.projects
@@ -43,12 +45,16 @@ struct RootView: View {
     init(
         intentStore: NagareIntentStore? = nil,
         syncMonitor: SyncIntegrityMonitor? = nil,
-        cloudSyncEnabledForCurrentLaunch: Bool = false
+        cloudSyncEnabledForCurrentLaunch: Bool = false,
+        onSetCloudSyncEnabled: @escaping (Bool) async throws -> Void = { _ in },
+        onSyncNow: @escaping () -> Void = {}
     ) {
         self.intentStore = intentStore
         self.syncMonitor = syncMonitor
         self.cloudSyncEnabledForCurrentLaunch =
             cloudSyncEnabledForCurrentLaunch
+        self.onSetCloudSyncEnabled = onSetCloudSyncEnabled
+        self.onSyncNow = onSyncNow
     }
 
     var body: some View {
@@ -63,7 +69,9 @@ struct RootView: View {
         .sheet(isPresented: $isShowingSettings) {
             NagareSettingsView(
                 cloudSyncEnabledForCurrentLaunch:
-                    cloudSyncEnabledForCurrentLaunch
+                    cloudSyncEnabledForCurrentLaunch,
+                onSetCloudSyncEnabled: onSetCloudSyncEnabled,
+                onSyncNow: onSyncNow
             )
         }
         #if !os(macOS)
@@ -76,7 +84,7 @@ struct RootView: View {
             .presentationDragIndicator(.visible)
         }
         #endif
-        .sheet(
+        .nagareModal(
             item: $notesDestination,
             onDismiss: resetNotesSheet
         ) { destination in
@@ -100,16 +108,13 @@ struct RootView: View {
             }
             open(destination)
         }
-        .task {
-            importPendingCalendarEvents()
-        }
+        .task { refreshForActiveScene() }
         .onChange(of: scenePhase) {
             if scenePhase == .active {
-                importPendingCalendarEvents()
-                syncMonitor?.repair()
+                refreshForActiveScene()
             }
         }
-        .alert(item: $calendarImportAlert) { alert in
+        .alert(item: $maintenanceAlert) { alert in
             Alert(
                 title: Text(alert.title),
                 message: Text(alert.message),
@@ -120,11 +125,13 @@ struct RootView: View {
 
     @ViewBuilder
     private var rootContent: some View {
+        Group {
 #if os(macOS)
-        macContent
+            macContent
 #else
-        mobileContent
+            mobileContent
 #endif
+        }
     }
 
     private var mobileContent: some View {
@@ -222,7 +229,7 @@ struct RootView: View {
         .focusedSceneValue(
             \.nagareCommandActions,
             NagareCommandActions(
-                createItem: { isCreatingItem = true },
+                createItem: beginManualCreate,
                 showCompleted: {
                     openWindow(id: NagareWindowID.completed)
                 },
@@ -266,9 +273,7 @@ struct RootView: View {
 #endif
 
         ToolbarItem(placement: .nagareTrailing) {
-            Button {
-                isCreatingItem = true
-            } label: {
+            Button(action: beginManualCreate) {
                 Label("New Item", systemImage: "plus")
                     .labelStyle(.iconOnly)
             }
@@ -297,7 +302,7 @@ struct RootView: View {
             selectedSection = .today
         case .quickAdd:
             selectedSection = .today
-            isCreatingItem = true
+            beginManualCreate()
         }
     }
 
@@ -316,35 +321,20 @@ struct RootView: View {
         projectPath = [projectID]
     }
 
-    private func importPendingCalendarEvents() {
+    private func beginManualCreate() {
+        isCreatingItem = true
+    }
+
+    private func refreshForActiveScene() {
         do {
-            let events = try dataStore.importPendingCalendarEvents()
-            guard !events.isEmpty else { return }
-
-            let calendar = Calendar.autoupdatingCurrent
-            if events.allSatisfy({
-                !calendar.isDate($0.scheduledDate, inSameDayAs: .now)
-            }) {
-                selectedSection = .upcoming
-            } else {
-                selectedSection = .today
-            }
-
-            let message = events.count == 1
-                ? "Added \(events[0].title.isEmpty ? "an untitled event" : events[0].title)."
-                : "Added \(events.count) calendar events."
-            calendarImportAlert = CalendarImportAlert(
-                title: events.count == 1
-                    ? "Calendar Invite Added"
-                    : "Calendar Invites Added",
-                message: message
-            )
+            try dataStore.performMaintenance()
         } catch {
-            calendarImportAlert = CalendarImportAlert(
-                title: "Calendar Invite Couldn't Be Added",
+            maintenanceAlert = MaintenanceAlert(
+                title: "Nagare Couldn't Update Today",
                 message: error.localizedDescription
             )
         }
+        syncMonitor?.repair()
     }
 }
 

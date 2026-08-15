@@ -56,7 +56,6 @@ nonisolated struct SyncTodoSnapshot: Equatable, Sendable {
 
 nonisolated struct SyncEventSnapshot: Equatable, Sendable {
     let metadata: SyncRecordMetadata
-    let calendarIdentifier: String?
     let recurrenceSequence: Int?
     let recurrenceTemplateID: UUID?
     let projectID: UUID?

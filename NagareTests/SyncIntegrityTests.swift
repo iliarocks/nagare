@@ -33,6 +33,49 @@ struct SyncIntegrityTests {
         )
     }
 
+#if DEBUG
+    @Test func developmentSyncPreferenceDoesNotReuseReleasePreference() {
+        #expect(NagareCloudPreferences.syncEnabledKey.contains("debug"))
+        #expect(
+            NagareCloudPreferences.syncEnabledKey
+                != "nagare.iCloudSyncEnabled.v1"
+        )
+    }
+#endif
+
+    @Test func cloudPreferenceReopensTheSameLocalStore() {
+        let localConfiguration = NagareCloud.configuration(
+            schema: NagareSchema.current,
+            cloudEnabled: false
+        )
+        let cloudConfiguration = NagareCloud.configuration(
+            schema: NagareSchema.current,
+            cloudEnabled: true
+        )
+
+        #expect(localConfiguration.url == cloudConfiguration.url)
+    }
+
+#if DEBUG
+    @Test func developmentStoreIsNamedAndSeparateFromSwiftDataDefault() {
+        #expect(NagareCloud.developmentStoreURL.lastPathComponent == "NagareDev.store")
+
+        let localConfiguration = NagareCloud.configuration(
+            schema: NagareSchema.current,
+            cloudEnabled: false,
+            storeURL: NagareCloud.developmentStoreURL
+        )
+        let cloudConfiguration = NagareCloud.configuration(
+            schema: NagareSchema.current,
+            cloudEnabled: true,
+            storeURL: NagareCloud.developmentStoreURL
+        )
+
+        #expect(localConfiguration.url == NagareCloud.developmentStoreURL)
+        #expect(cloudConfiguration.url == NagareCloud.developmentStoreURL)
+    }
+#endif
+
     @Test func cloudSchemaSatisfiesEveryStructuralRequirement() throws {
         let managedModel = try #require(
             NSManagedObjectModel.makeManagedObjectModel(

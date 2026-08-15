@@ -16,13 +16,16 @@ nonisolated enum NagareCommandPlanner {
         calendar: Calendar
     ) throws -> ItemUpsertPlan {
         let items = allItems(in: snapshot)
+        let resolvedExistingID: ItemID?
         let existing: ItemRecordSnapshot?
         if let existingID {
             guard let item = item(existingID, in: snapshot) else {
                 throw PlanningError.missingItem
             }
+            resolvedExistingID = existingID
             existing = item
         } else {
+            resolvedExistingID = nil
             existing = nil
         }
 
@@ -35,7 +38,9 @@ nonisolated enum NagareCommandPlanner {
             orderPlan = nil
         } else {
             orderPlan = try OrderingPlanner.nextOrder(
-                after: ordered(items.filter { $0.id != existingID }).map {
+                after: ordered(items.filter {
+                    $0.id != resolvedExistingID
+                }).map {
                     OrderingPlanner.Entry(id: $0.id, order: $0.order)
                 }
             )
@@ -52,7 +57,7 @@ nonisolated enum NagareCommandPlanner {
                 projectOrderPlan = nil
             } else {
                 let projectItems = orderedInProject(items.filter {
-                    $0.id != existingID
+                    $0.id != resolvedExistingID
                         && $0.projectID == projectID
                         && !$0.isCompleted
                 })
@@ -85,7 +90,7 @@ nonisolated enum NagareCommandPlanner {
 
         return ItemUpsertPlan(
             draft: draft,
-            existingID: existingID,
+            existingID: resolvedExistingID,
             order: order,
             orderRepairs: orderPlan?.repairs.map {
                 ItemOrderingChange(id: $0.id, order: $0.order)
@@ -134,35 +139,6 @@ nonisolated enum NagareCommandPlanner {
             order: orderPlan.order,
             orderRepairs: orderPlan.repairs.map {
                 ProjectOrderingChange(id: $0.id, order: $0.order)
-            }
-        )
-    }
-
-    static func upsertCalendarEvent(
-        _ draft: ICalendarEventDraft,
-        in snapshot: NagareDataSnapshot
-    ) throws -> CalendarEventUpsertPlan {
-        if let existing = snapshot.canonicalEvents.first(where: {
-            $0.calendarIdentifier == draft.sourceIdentifier
-        }) {
-            return CalendarEventUpsertPlan(
-                draft: draft,
-                order: existing.order,
-                orderRepairs: []
-            )
-        }
-
-        let items = ordered(allItems(in: snapshot))
-        let orderPlan = try OrderingPlanner.nextOrder(
-            after: items.map {
-                OrderingPlanner.Entry(id: $0.id, order: $0.order)
-            }
-        )
-        return CalendarEventUpsertPlan(
-            draft: draft,
-            order: orderPlan.order,
-            orderRepairs: orderPlan.repairs.map {
-                ItemOrderingChange(id: $0.id, order: $0.order)
             }
         )
     }

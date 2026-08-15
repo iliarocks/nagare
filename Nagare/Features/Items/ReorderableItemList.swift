@@ -75,27 +75,27 @@ struct ReorderableItemList: View {
             selectedItemIDs.formIntersection(availableItemIDs)
 #endif
         }
-        .sheet(item: $itemSelectionBeingRescheduled) { selection in
+        .nagareModal(item: $itemSelectionBeingRescheduled) { selection in
             ItemDateEditor(items: selection.items)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $todoBeingRescheduled) { todo in
+        .nagareModal(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $eventBeingRescheduled) { event in
+        .nagareModal(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
                 .nagareSheetDetents([EventScheduleEditor.sheetDetent])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $recurrenceTemplateBeingEdited) { template in
+        .nagareModal(item: $recurrenceTemplateBeingEdited) { template in
             RecurrenceEditor(template: template)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $projectMoveTarget) { target in
+        .nagareModal(item: $projectMoveTarget) { target in
             ProjectMoveEditor(target: target)
                 .nagareSheetDetents([.fraction(0.25)])
                 .presentationDragIndicator(.visible)
@@ -155,9 +155,12 @@ struct ReorderableItemList: View {
                 onMoveProject: presentProjectMoveEditor,
                 onDelete: onDelete
             )
-            .nagareReorderHitTarget()
+            .nagareItemListRow()
             .nagareCommandSelection(
-                isSelected: selectedItemIDs.contains(item.id),
+                position: selectionPosition(
+                    for: item.id,
+                    in: group.items
+                ),
                 toggle: { toggleSelection(of: item.id) }
             )
         }
@@ -178,12 +181,24 @@ struct ReorderableItemList: View {
                     onDeleteTemplate(item.template)
                 }
             )
+            .nagareItemListRow()
         }
         .nagareDesktopListRow()
     }
 
     private var availableItemIDs: Set<ItemID> {
         Set(groups.flatMap(\.items).map(\.id))
+    }
+
+    private func selectionPosition(
+        for id: ItemID,
+        in items: [ItemRecordSnapshot]
+    ) -> NagareSelectionPosition {
+        NagareSelectionPosition.resolve(
+            id: id,
+            orderedIDs: items.map(\.id),
+            selectedIDs: selectedItemIDs
+        )
     }
 
     private func toggleSelection(of id: ItemID) {

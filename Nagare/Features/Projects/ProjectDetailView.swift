@@ -87,11 +87,11 @@ struct ProjectDetailView: View {
         .nagareDraftComposer(
             isPresented: $isCreatingItem
         ) {
-            CreateView(project: currentProject) {
+            CreateView(project: currentProject, onDismiss: {
                 isCreatingItem = false
-            }
+            })
         }
-        .sheet(item: $notesDestination, onDismiss: resetNotesSheet) {
+        .nagareModal(item: $notesDestination, onDismiss: resetNotesSheet) {
             NotesSheet(
                 destination: $0,
                 detent: $notesDetent,
@@ -99,27 +99,27 @@ struct ProjectDetailView: View {
             )
                 .id($0.id)
         }
-        .sheet(item: $todoBeingRescheduled) { todo in
+        .nagareModal(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $itemSelectionBeingRescheduled) { selection in
+        .nagareModal(item: $itemSelectionBeingRescheduled) { selection in
             ItemDateEditor(items: selection.items)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $eventBeingRescheduled) { event in
+        .nagareModal(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
                 .nagareSheetDetents([EventScheduleEditor.sheetDetent])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $recurrenceTemplateBeingEdited) { template in
+        .nagareModal(item: $recurrenceTemplateBeingEdited) { template in
             RecurrenceEditor(template: template)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $projectMoveTarget) { target in
+        .nagareModal(item: $projectMoveTarget) { target in
             ProjectMoveEditor(target: target)
                 .nagareSheetDetents([.fraction(0.25)])
                 .presentationDragIndicator(.visible)
@@ -198,9 +198,9 @@ struct ProjectDetailView: View {
                         onMoveProject: presentProjectMoveEditor,
                         onDelete: delete
                     )
-                    .nagareReorderHitTarget()
+                    .nagareItemListRow()
                     .nagareCommandSelection(
-                        isSelected: selectedItemIDs.contains(item.id),
+                        position: selectionPosition(for: item.id),
                         toggle: { toggleSelection(of: item.id) }
                     )
                 }
@@ -226,6 +226,7 @@ struct ProjectDetailView: View {
                         },
                         onDelete: { deleteTemplate(template) }
                     )
+                    .nagareItemListRow()
                 }
                 .nagareDesktopListRow()
             } header: {
@@ -256,6 +257,16 @@ struct ProjectDetailView: View {
             .padding(.vertical, 4)
             .nagareDesktopListRow()
         }
+    }
+
+    private func selectionPosition(
+        for id: ItemID
+    ) -> NagareSelectionPosition {
+        NagareSelectionPosition.resolve(
+            id: id,
+            orderedIDs: actualItems.map(\.id),
+            selectedIDs: selectedItemIDs
+        )
     }
 
     private func scheduleProjectSave() {

@@ -28,7 +28,6 @@ nonisolated struct EventRecordSnapshot: Hashable, Sendable, Identifiable {
     let notes: String?
     let scheduledDate: Date
     let endDate: Date?
-    let calendarIdentifier: String?
     let order: String
     let projectOrder: String?
     let recurrenceSequence: Int?
@@ -413,7 +412,6 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
             SyncStableValue.encode(event.notes),
             SyncStableValue.encode(event.scheduledDate),
             SyncStableValue.encode(event.endDate),
-            SyncStableValue.encode(event.calendarIdentifier),
             SyncStableValue.encode(event.order),
             SyncStableValue.encode(event.projectOrder),
             SyncStableValue.encode(event.recurrenceSequence),
@@ -635,6 +633,28 @@ nonisolated struct ItemDraft: Sendable {
     let recurrenceRule: RecurrenceRule?
     let eventStartTimeSeconds: Int?
     let eventEndTimeSeconds: Int?
+
+    init(
+        kind: ItemDraftKind,
+        title: String,
+        notes: String?,
+        scheduledDate: Date,
+        endDate: Date?,
+        projectID: UUID?,
+        recurrenceRule: RecurrenceRule?,
+        eventStartTimeSeconds: Int?,
+        eventEndTimeSeconds: Int?
+    ) {
+        self.kind = kind
+        self.title = title
+        self.notes = notes
+        self.scheduledDate = scheduledDate
+        self.endDate = endDate
+        self.projectID = projectID
+        self.recurrenceRule = recurrenceRule
+        self.eventStartTimeSeconds = eventStartTimeSeconds
+        self.eventEndTimeSeconds = eventEndTimeSeconds
+    }
 }
 
 nonisolated struct ProjectDraft: Hashable, Sendable {
@@ -658,12 +678,6 @@ nonisolated struct ProjectUpsertPlan: Sendable {
     let existingID: UUID?
     let order: String
     let orderRepairs: [ProjectOrderingChange]
-}
-
-nonisolated struct CalendarEventUpsertPlan: Sendable {
-    let draft: ICalendarEventDraft
-    let order: String
-    let orderRepairs: [ItemOrderingChange]
 }
 
 nonisolated struct ProjectAssignmentPlan: Sendable {

@@ -20,10 +20,10 @@ final class SyncIntegrityMonitor {
     private var pendingRetryIndex = 0
 
     private static let pendingRetryDelays: [Duration] = [
-        .milliseconds(750),
-        .seconds(2),
-        .seconds(5),
-        .seconds(15)
+        .milliseconds(350),
+        .seconds(1),
+        .seconds(3),
+        .seconds(8)
     ]
 
     init(
@@ -42,7 +42,7 @@ final class SyncIntegrityMonitor {
             guard let self else { return }
             _ = self.historyObserver.eventCounter
             self.pendingRetryIndex = 0
-            self.scheduleRepair(after: .milliseconds(750))
+            self.scheduleRepair(after: .milliseconds(250))
         }
         repair()
     }

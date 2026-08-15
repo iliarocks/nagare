@@ -59,16 +59,6 @@ struct ItemRow: View {
             .tint(.indigo)
             .accessibilityLabel("Move Project")
 
-            if case .event(let event) = item {
-                ShareLink(
-                    item: ICalendarShareItem(event: event),
-                    preview: sharePreview(for: event)
-                ) {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .tint(.green)
-                .accessibilityLabel("Share Event")
-            }
         }
         .nagareDesktopContextMenu {
             Button {
@@ -81,16 +71,6 @@ struct ItemRow: View {
                 onMoveProject(contextItems)
             } label: {
                 Label(contextMoveActionTitle, systemImage: "folder")
-            }
-
-            if contextItems.count == 1,
-               case .event(let event) = item {
-                ShareLink(
-                    item: ICalendarShareItem(event: event),
-                    preview: sharePreview(for: event)
-                ) {
-                    Label("Share Event", systemImage: "square.and.arrow.up")
-                }
             }
 
             Divider()
@@ -132,12 +112,6 @@ struct ItemRow: View {
         contextItems.count > 1
             ? "Delete \(contextItems.count) Items"
             : "Delete"
-    }
-
-    private func sharePreview(
-        for event: EventRecordSnapshot
-    ) -> SharePreview<Never, Never> {
-        SharePreview(event.title.isEmpty ? "Event" : event.title)
     }
 
 }

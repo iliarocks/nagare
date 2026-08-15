@@ -60,18 +60,4 @@ nonisolated protocol NagareDataWriting: AnyObject {
         eventEndTimeSeconds: Int?,
         at date: Date
     ) throws
-    func upsertCalendarEvent(
-        _ plan: CalendarEventUpsertPlan,
-        at date: Date
-    ) throws -> UUID
-}
-
-nonisolated struct PendingCalendarEvent: Sendable {
-    let token: String
-    let draft: ICalendarEventDraft
-}
-
-nonisolated protocol CalendarImportInbox: AnyObject {
-    func load() throws -> [PendingCalendarEvent]
-    func remove(token: String) throws
 }

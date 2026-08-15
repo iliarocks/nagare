@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		000000000000000170000003 /* NagareWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000123 /* NagareWidgets.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		000000000000000170000004 /* NagareShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000124 /* NagareShareExtension.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -26,13 +25,6 @@
 			remoteGlobalIDString = 000000000000000100000003;
 			remoteInfo = NagareWidgets;
 		};
-		000000000000000150000004 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 000000000000000000000000 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 000000000000000100000004;
-			remoteInfo = NagareShareExtension;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -42,7 +34,6 @@
 			dstSubfolder = PlugIns;
 			files = (
 				000000000000000170000003 /* NagareWidgets.appex in Embed App Extensions */,
-				000000000000000170000004 /* NagareShareExtension.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 		};
@@ -53,7 +44,6 @@
 		000000000000000000000121 /* NagareTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NagareTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000122 /* NagareUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NagareUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000123 /* NagareWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NagareWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		000000000000000000000124 /* NagareShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NagareShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -70,13 +60,6 @@
 				Info.plist,
 			);
 			target = 000000000000000100000003 /* NagareWidgets */;
-		};
-		000000000000000190000004 /* Exceptions for "NagareShareExtension" folder in "NagareShareExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 000000000000000100000004 /* NagareShareExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -112,14 +95,6 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		000000000000000000000015 /* NagareShareExtension */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				000000000000000190000004 /* Exceptions for "NagareShareExtension" folder in "NagareShareExtension" target */,
-			);
-			path = NagareShareExtension;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,11 +118,6 @@
 			files = (
 			);
 		};
-		000000000000000130000004 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			files = (
-			);
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -159,7 +129,6 @@
 				000000000000000000000012 /* NagareUITests */,
 				000000000000000000000013 /* NagareWidgets */,
 				000000000000000000000014 /* Shared */,
-				000000000000000000000015 /* NagareShareExtension */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -171,7 +140,6 @@
 				000000000000000000000121 /* NagareTests.xctest */,
 				000000000000000000000122 /* NagareUITests.xctest */,
 				000000000000000000000123 /* NagareWidgets.appex */,
-				000000000000000000000124 /* NagareShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -193,7 +161,6 @@
 			);
 			dependencies = (
 				000000000000000160000003 /* PBXTargetDependency */,
-				000000000000000160000004 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Nagare */,
@@ -265,27 +232,6 @@
 			productReference = 000000000000000000000123 /* NagareWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		000000000000000100000004 /* NagareShareExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 000000000000000110000004 /* Build configuration list for PBXNativeTarget "NagareShareExtension" */;
-			buildPhases = (
-				000000000000000120000004 /* Sources */,
-				000000000000000130000004 /* Frameworks */,
-				000000000000000140000004 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				000000000000000000000015 /* NagareShareExtension */,
-				000000000000000000000014 /* Shared */,
-			);
-			name = NagareShareExtension;
-			productName = NagareShareExtension;
-			productReference = 000000000000000000000124 /* NagareShareExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -329,14 +275,6 @@
 							};
 						};
 					};
-					000000000000000100000004 = {
-						CreatedOnToolsVersion = 27.0;
-						SystemCapabilities = {
-							com.apple.ApplicationGroups.iOS = {
-								enabled = 1;
-							};
-						};
-					};
 				};
 			};
 			buildConfigurationList = 000000000000000010000000 /* Build configuration list for PBXProject "Nagare" */;
@@ -357,7 +295,6 @@
 				000000000000000100000001 /* NagareTests */,
 				000000000000000100000002 /* NagareUITests */,
 				000000000000000100000003 /* NagareWidgets */,
-				000000000000000100000004 /* NagareShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -379,11 +316,6 @@
 			);
 		};
 		000000000000000140000003 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			files = (
-			);
-		};
-		000000000000000140000004 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -432,11 +364,6 @@
 			files = (
 			);
 		};
-		000000000000000120000004 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			files = (
-			);
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -455,12 +382,6 @@
 			platformFilter = ios;
 			target = 000000000000000100000003 /* NagareWidgets */;
 			targetProxy = 000000000000000150000003 /* PBXContainerItemProxy */;
-		};
-		000000000000000160000004 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			platformFilter = ios;
-			target = 000000000000000100000004 /* NagareShareExtension */;
-			targetProxy = 000000000000000150000004 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -604,7 +525,7 @@
 				CODE_SIGN_ENTITLEMENTS = Nagare/Nagare.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nagare/NagareMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 978R47NCN9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -614,6 +535,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Nagare/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Nagare Dev";
+				INFOPLIST_KEY_CFBundleName = "Nagare Dev";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -633,7 +555,9 @@
 				NAGARE_APS_ENVIRONMENT = development;
 				NAGARE_URL_SCHEME = "nagare-dev";
 				PRODUCT_BUNDLE_IDENTIFIER = ilia.page.nagare.dev;
+				PRODUCT_MODULE_NAME = Nagare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				"PRODUCT_NAME[sdk=macosx*]" = "Nagare Dev";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -668,6 +592,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nagare.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nagare";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/Nagare Dev.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nagare Dev";
 			};
 			name = Debug;
 		};
@@ -696,7 +621,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = NagareWidgets/NagareWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 978R47NCN9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NagareWidgets/Info.plist;
@@ -722,38 +647,6 @@
 			};
 			name = Debug;
 		};
-		000000000000000111000004 /* Debug configuration for PBXNativeTarget "NagareShareExtension" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = NagareShareExtension/NagareShareExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
-				DEVELOPMENT_TEAM = 978R47NCN9;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = NagareShareExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				NAGARE_APP_GROUP_IDENTIFIER = group.ilia.page.nagare.dev;
-				PRODUCT_BUNDLE_IDENTIFIER = ilia.page.nagare.dev.share;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "Nagare" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -761,7 +654,7 @@
 				CODE_SIGN_ENTITLEMENTS = Nagare/Nagare.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nagare/NagareMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 978R47NCN9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -852,7 +745,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = NagareWidgets/NagareWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 978R47NCN9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NagareWidgets/Info.plist;
@@ -865,38 +758,6 @@
 				MARKETING_VERSION = 1.0;
 				NAGARE_APP_GROUP_IDENTIFIER = group.ilia.page.nagare;
 				PRODUCT_BUNDLE_IDENTIFIER = ilia.page.nagare.widgets;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
-		000000000000000112000004 /* Release configuration for PBXNativeTarget "NagareShareExtension" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = NagareShareExtension/NagareShareExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
-				DEVELOPMENT_TEAM = 978R47NCN9;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = NagareShareExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				NAGARE_APP_GROUP_IDENTIFIER = group.ilia.page.nagare;
-				PRODUCT_BUNDLE_IDENTIFIER = ilia.page.nagare.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -950,14 +811,6 @@
 			buildConfigurations = (
 				000000000000000111000003 /* Debug configuration for PBXNativeTarget "NagareWidgets" */,
 				000000000000000112000003 /* Release configuration for PBXNativeTarget "NagareWidgets" */,
-			);
-			defaultConfigurationName = Release;
-		};
-		000000000000000110000004 /* Build configuration list for PBXNativeTarget "NagareShareExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				000000000000000111000004 /* Debug configuration for PBXNativeTarget "NagareShareExtension" */,
-				000000000000000112000004 /* Release configuration for PBXNativeTarget "NagareShareExtension" */,
 			);
 			defaultConfigurationName = Release;
 		};

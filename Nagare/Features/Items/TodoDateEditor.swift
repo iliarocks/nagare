@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TodoDateEditor: View {
+    @Environment(\.nagareDismissModal) private var dismiss
     @NagareDataStoreEnvironment private var dataStore
 
     let todo: TodoRecordSnapshot
@@ -16,7 +17,9 @@ struct TodoDateEditor: View {
     var body: some View {
         editor
             .onChange(of: scheduledDate) {
-                save()
+                if save() {
+                    dismiss()
+                }
             }
             .alert("Details Couldn't Be Changed", isPresented: isShowingError) {
                 Button("OK", role: .cancel) {
@@ -65,11 +68,12 @@ struct TodoDateEditor: View {
         )
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         let calendar = Calendar.autoupdatingCurrent
         let newDate = calendar.startOfDay(for: scheduledDate)
         guard !calendar.isDate(todo.scheduledDate, inSameDayAs: newDate) else {
-            return
+            return false
         }
 
         do {
@@ -79,9 +83,11 @@ struct TodoDateEditor: View {
                 before: nil,
                 calendar: calendar
             )
+            return true
         } catch {
             scheduledDate = todo.scheduledDate
             errorMessage = error.localizedDescription
+            return false
         }
     }
 }

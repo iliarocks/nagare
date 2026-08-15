@@ -91,32 +91,6 @@ struct NagareCommandPlannerTests {
         })
     }
 
-    @Test func repeatedCalendarUIDPreservesItsExistingPosition() throws {
-        let event = event(
-            id: UUID(
-                uuidString: "00000000-0000-0000-0000-000000000003"
-            )!,
-            order: "q",
-            calendarIdentifier: "lunch@example.com"
-        )
-        let draft = ICalendarEventDraft(
-            sourceIdentifier: "lunch@example.com",
-            title: "Changed lunch",
-            notes: nil,
-            scheduledDate: day,
-            endDate: nil,
-            isAllDay: true
-        )
-
-        let plan = try NagareCommandPlanner.upsertCalendarEvent(
-            draft,
-            in: snapshot(events: [event])
-        )
-
-        #expect(plan.order == "q")
-        #expect(plan.orderRepairs.isEmpty)
-    }
-
     @Test func planningDoesNotDependOnFetchOrder() throws {
         let first = todo(
             id: UUID(
@@ -373,29 +347,6 @@ struct NagareCommandPlannerTests {
             recurrenceSequence: nil,
             recurrenceTemplateID: nil,
             projectID: projectID
-        )
-    }
-
-    private func event(
-        id: UUID,
-        order: String,
-        calendarIdentifier: String?
-    ) -> EventRecordSnapshot {
-        EventRecordSnapshot(
-            id: id,
-            syncRecordID: id,
-            createdAt: day,
-            modifiedAt: nil,
-            title: "Event",
-            notes: nil,
-            scheduledDate: day,
-            endDate: nil,
-            calendarIdentifier: calendarIdentifier,
-            order: order,
-            projectOrder: nil,
-            recurrenceSequence: nil,
-            recurrenceTemplateID: nil,
-            projectID: nil
         )
     }
 

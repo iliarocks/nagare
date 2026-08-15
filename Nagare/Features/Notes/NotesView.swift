@@ -45,12 +45,12 @@ struct NotesView: View {
             pendingSave?.cancel()
             save()
         }
-        .sheet(item: $todoBeingRescheduled) { todo in
+        .nagareModal(item: $todoBeingRescheduled) { todo in
             TodoDateEditor(todo: todo)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $eventBeingRescheduled) { event in
+        .nagareModal(item: $eventBeingRescheduled) { event in
             EventScheduleEditor(event: event)
                 .nagareSheetDetents([EventScheduleEditor.sheetDetent])
                 .presentationDragIndicator(.visible)
@@ -64,9 +64,9 @@ struct NotesView: View {
 
     private func editor(_ record: NoteRecordSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            metadata(record)
-
             VStack(alignment: .leading, spacing: 6) {
+                metadata(record)
+
                 NagareEditableTitle(placeholder: "Title", text: $title)
                     .font(.title.weight(.semibold))
                     .textFieldStyle(.plain)
@@ -85,15 +85,18 @@ struct NotesView: View {
                     .accessibilityIdentifier("Notes Project")
                 }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 32)
 
             NagareDocumentEditor(
                 text: $notes,
                 accessibilityIdentifier: "Item Notes"
             )
+            .padding(.horizontal, 24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(24)
-        .padding(.top, 8)
+        .nagareDocumentBottomFade()
+        .nagareAvoidsInitialFocus()
         .onChange(of: title) { scheduleSave() }
         .onChange(of: notes) { scheduleSave() }
     }

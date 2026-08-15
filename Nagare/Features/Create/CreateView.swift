@@ -94,7 +94,7 @@ struct CreateView: View {
         composer
             .nagareSheetDetents([.large])
             .presentationDragIndicator(.visible)
-            .sheet(
+            .nagareModal(
                 isPresented: $isShowingDetails,
                 onDismiss: restoreFocusAfterDetails
             ) {

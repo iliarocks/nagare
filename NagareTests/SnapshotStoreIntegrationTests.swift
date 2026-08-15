@@ -394,11 +394,6 @@ struct SnapshotStoreIntegrationTests {
             orchestrator: NagareDataOrchestrator(
                 reader: repository,
                 writer: repository
-            ),
-            calendarImportOrchestrator: CalendarImportOrchestrator(
-                reader: repository,
-                writer: repository,
-                inbox: PendingCalendarImportAdapter()
             )
         )
     }

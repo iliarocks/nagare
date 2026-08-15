@@ -35,7 +35,6 @@ enum SwiftDataSyncSnapshotMapper {
     static func event(_ record: Event) -> SyncEventSnapshot {
         SyncEventSnapshot(
             metadata: eventMetadata(record),
-            calendarIdentifier: record.calendarIdentifier,
             recurrenceSequence: record.recurrenceSequence,
             recurrenceTemplateID: record.recurrenceTemplate?.id,
             projectID: record.project?.id

@@ -410,26 +410,6 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testEventSwipeExposesCalendarShareAction() throws {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "--use-reorder-ui-test-store",
-            "--reset-and-seed-reorder-ui-test"
-        ]
-        app.launch()
-
-        let event = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
-        ).firstMatch
-        XCTAssertTrue(event.waitForExistence(timeout: 5))
-        event.swipeRight()
-
-        XCTAssertTrue(
-            app.buttons["Share Event"].waitForExistence(timeout: 2)
-        )
-    }
-
-    @MainActor
     func testTodoProjectMoveAutosavesAndPersists() throws {
         let app = XCUIApplication()
         app.launchArguments = [

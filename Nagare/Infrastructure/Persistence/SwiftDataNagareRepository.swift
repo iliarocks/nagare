@@ -152,7 +152,6 @@ final class SwiftDataNagareRepository:
                         notes: $0.notes,
                         scheduledDate: $0.scheduledDate,
                         endDate: $0.endDate,
-                        calendarIdentifier: $0.calendarIdentifier,
                         order: $0.order,
                         projectOrder: $0.projectOrder,
                         recurrenceSequence: $0.recurrenceSequence,
@@ -543,51 +542,6 @@ final class SwiftDataNagareRepository:
         } catch let error as NagareDataPersistenceError {
             throw error
         } catch {
-            throw NagareDataPersistenceError.saveFailed(
-                error.localizedDescription
-            )
-        }
-    }
-
-    func upsertCalendarEvent(
-        _ plan: CalendarEventUpsertPlan,
-        at date: Date
-    ) throws -> UUID {
-        let context = makeContext()
-        do {
-            try applyItemOrdering(plan.orderRepairs, in: context)
-            let draft = plan.draft
-            let sourceIdentifier = draft.sourceIdentifier
-            let descriptor = FetchDescriptor<Event>(
-                predicate: #Predicate { event in
-                    event.calendarIdentifier == sourceIdentifier
-                }
-            )
-            if let existing = try context.fetch(descriptor).first {
-                existing.title = draft.title
-                existing.notes = draft.notes
-                existing.scheduledDate = draft.scheduledDate
-                existing.endDate = draft.isAllDay ? nil : draft.endDate
-                try SwiftDataTransaction.save(context, at: date)
-                return existing.id
-            }
-
-            let event = Event(
-                title: draft.title,
-                notes: draft.notes,
-                scheduledDate: draft.scheduledDate,
-                endDate: draft.isAllDay ? nil : draft.endDate,
-                calendarIdentifier: sourceIdentifier,
-                createdAt: date,
-                order: plan.order
-            )
-            context.insert(event)
-            try SwiftDataTransaction.save(context, at: date)
-            return event.id
-        } catch let error as NagareDataPersistenceError {
-            throw error
-        } catch {
-            context.rollback()
             throw NagareDataPersistenceError.saveFailed(
                 error.localizedDescription
             )
