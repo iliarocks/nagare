@@ -41,6 +41,17 @@ enum SwiftDataTransaction {
         }
     }
 
+    /// Persists a storage-shape migration without making replicated records
+    /// appear to have been edited by the user at migration time.
+    static func savePreservingMetadata(_ context: ModelContext) throws {
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
     private static func stampPendingChanges(
         in context: ModelContext,
         at modificationDate: Date

@@ -14,26 +14,13 @@ nonisolated enum RecurrenceProjectionLogic {
         var issues: [RecurrenceProjectionIssue] = []
 
         for template in canonicalTemplates(input.templates) {
-            guard let itemType = RecurrenceItemType(
-                rawValue: template.itemTypeRawValue
-            ) else {
-                issues.append(
-                    issue(
-                        for: template,
-                        kind: .unknownItemType(template.itemTypeRawValue)
-                    )
-                )
-                continue
-            }
-
             let currentCandidates = input.occurrences.filter {
-                $0.itemType == itemType
-                    && $0.metadata.semanticID == template.currentItemID
+                $0.metadata.semanticID == template.currentItemID
                     && $0.recurrenceSequence == template.currentSequence
                     && ($0.recurrenceTemplateID == nil
                         || $0.recurrenceTemplateID
                             == template.metadata.semanticID)
-                    && (itemType != .todo || $0.completedAt == nil)
+                    && $0.completedAt == nil
             }
             guard !currentCandidates.isEmpty else {
                 issues.append(
@@ -87,59 +74,29 @@ nonisolated enum RecurrenceProjectionLogic {
             for projectedDate in dates {
                 let day = calendar.startOfDay(for: projectedDate)
                 guard day >= firstVisibleDay else { continue }
-
-                switch itemType {
-                case .todo:
+                do {
+                    let start = try template.startTimeSeconds.map {
+                        try applying(seconds: $0, to: day, calendar: calendar)
+                    }
+                    let end = try template.endTimeSeconds.map {
+                        try applying(seconds: $0, to: day, calendar: calendar)
+                    }
                     items.append(
                         ProjectedRecurrenceItem(
                             templateReference: template.metadata.reference,
                             templateID: template.metadata.semanticID,
                             date: day,
-                            startDate: nil,
-                            endDate: nil,
-                            itemType: .todo,
+                            startDate: start,
+                            endDate: end,
                             order: current.order
                         )
                     )
-
-                case .event:
-                    guard let startSeconds = template.startTimeSeconds else {
-                        issues.append(
-                            issue(for: template, kind: .missingEventStartTime)
-                        )
-                        continue
-                    }
-                    do {
-                        let start = try applying(
-                            seconds: startSeconds,
-                            to: day,
-                            calendar: calendar
-                        )
-                        let end = try template.endTimeSeconds.map {
-                            try applying(
-                                seconds: $0,
-                                to: day,
-                                calendar: calendar
-                            )
-                        }
-                        items.append(
-                            ProjectedRecurrenceItem(
-                                templateReference: template.metadata.reference,
-                                templateID: template.metadata.semanticID,
-                                date: day,
-                                startDate: start,
-                                endDate: end,
-                                itemType: .event,
-                                order: current.order
-                            )
-                        )
-                    } catch let failure as ProjectionFailure {
-                        issues.append(issue(for: template, kind: failure.kind))
-                    } catch {
-                        issues.append(
-                            issue(for: template, kind: .dateCalculationFailed)
-                        )
-                    }
+                } catch let failure as ProjectionFailure {
+                    issues.append(issue(for: template, kind: failure.kind))
+                } catch {
+                    issues.append(
+                        issue(for: template, kind: .dateCalculationFailed)
+                    )
                 }
             }
         }
@@ -170,9 +127,7 @@ nonisolated enum RecurrenceProjectionLogic {
         return groups.keys
             .sorted { $0.uuidString < $1.uuidString }
             .compactMap { semanticID in
-                guard let group = groups[semanticID] else {
-                    return nil
-                }
+                guard let group = groups[semanticID] else { return nil }
                 return SyncRecordOrdering.canonical(
                     group,
                     metadata: \.metadata
@@ -217,7 +172,7 @@ nonisolated enum RecurrenceProjectionLogic {
         calendar: Calendar
     ) throws -> Date {
         guard (0..<86_400).contains(seconds) else {
-            throw ProjectionFailure(kind: .invalidEventTime(seconds))
+            throw ProjectionFailure(kind: .invalidTime(seconds))
         }
         let hour = seconds / 3_600
         let minute = seconds % 3_600 / 60

@@ -2,8 +2,9 @@
 import Foundation
 import SwiftData
 
-/// Development-only fixture adapter. It adds one deterministic sample dataset
-/// to the real development store without deleting or rewriting existing data.
+/// Development-only fixture adapter. Fixtures are opt-in and, once seeded,
+/// persist across ordinary launches. They can be removed explicitly by their
+/// deterministic IDs without touching unrelated records.
 @MainActor
 enum DevelopmentSampleData {
     private static let markerProjectID = UUID(
@@ -16,10 +17,28 @@ enum DevelopmentSampleData {
         now: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
     ) throws {
-        guard !arguments.contains("--use-reorder-ui-test-store"),
-              try !containsSampleData(in: context) else {
+        guard !arguments.contains("--use-reorder-ui-test-store") else {
             return
         }
+
+        if arguments.contains("--remove-development-sample-data") {
+            try removeLegacySampleData(in: context)
+            return
+        }
+
+        let replacesExistingData = arguments.contains(
+            "--replace-with-development-sample-data"
+        )
+        guard replacesExistingData
+                || arguments.contains("--seed-development-sample-data") else {
+            return
+        }
+
+        if replacesExistingData {
+            try removeAllData(in: context)
+        }
+
+        guard try !containsSampleData(in: context) else { return }
 
         let today = calendar.startOfDay(for: now)
         let tomorrow = try day(1, after: today, calendar: calendar)
@@ -35,7 +54,7 @@ enum DevelopmentSampleData {
         let kyotoProject = Project(
             id: id("102"),
             title: "Weekend in Kyoto",
-            notes: "A small background project with tasks and timed events across several days.",
+            notes: "A small background project with Todos across several days.",
             order: "i",
             createdAt: try day(-6, after: now, calendar: calendar)
         )
@@ -90,7 +109,7 @@ enum DevelopmentSampleData {
         )
 
         insert(
-            Event(
+            Todo(
                 id: id("301"),
                 title: "Design critique",
                 notes: "Check spacing, hierarchy, empty states, and destructive-action affordances.",
@@ -100,6 +119,7 @@ enum DevelopmentSampleData {
                     minute: 30,
                     calendar: calendar
                 ),
+                includesTime: true,
                 endDate: try time(
                     on: today,
                     hour: 11,
@@ -114,16 +134,17 @@ enum DevelopmentSampleData {
             context: context
         )
         insert(
-            Event(
+            Todo(
                 id: id("302"),
                 title: "Lunch with Maya",
-                notes: "Try rescheduling this event and editing its end time.",
+                notes: "Try rescheduling this timed Todo and editing its end time.",
                 scheduledDate: try time(
                     on: today,
                     hour: 12,
                     minute: 30,
                     calendar: calendar
                 ),
+                includesTime: true,
                 endDate: try time(
                     on: today,
                     hour: 13,
@@ -149,16 +170,17 @@ enum DevelopmentSampleData {
             context: context
         )
         insert(
-            Event(
+            Todo(
                 id: id("303"),
                 title: "Train to Kyoto",
-                notes: "Car 8, window seat. This is a multi-hour event.",
+                notes: "Car 8, window seat. This is a multi-hour Todo.",
                 scheduledDate: try time(
                     on: tomorrow,
                     hour: 9,
                     minute: 15,
                     calendar: calendar
                 ),
+                includesTime: true,
                 endDate: try time(
                     on: tomorrow,
                     hour: 11,
@@ -185,7 +207,7 @@ enum DevelopmentSampleData {
             context: context
         )
         insert(
-            Event(
+            Todo(
                 id: id("304"),
                 title: "Dinner reservation at Gion Karyo",
                 notes: "Reservation for two. Test the long-title layout and delete confirmation behavior.",
@@ -195,6 +217,7 @@ enum DevelopmentSampleData {
                     minute: 0,
                     calendar: calendar
                 ),
+                includesTime: true,
                 endDate: try time(
                     on: try day(4, after: today, calendar: calendar),
                     hour: 21,
@@ -232,7 +255,6 @@ enum DevelopmentSampleData {
         let dailyRule = try RecurrenceRule.relative(every: 1, unit: .day)
         let dailyTemplate = RecurrenceTemplate(
             id: id("401"),
-            itemType: .todo,
             title: dailyTodo.title,
             notes: dailyTodo.notes,
             rule: dailyRule,
@@ -245,7 +267,7 @@ enum DevelopmentSampleData {
         dailyTodo.recurrenceTemplate = dailyTemplate
 
         let planningDay = try day(3, after: today, calendar: calendar)
-        let weeklyEvent = Event(
+        let weeklyTimedTodo = Todo(
             id: id("305"),
             title: "Weekly planning session",
             notes: "Delete one occurrence, then try deleting the entire repeating series.",
@@ -255,6 +277,7 @@ enum DevelopmentSampleData {
                 minute: 0,
                 calendar: calendar
             ),
+            includesTime: true,
             endDate: try time(
                 on: planningDay,
                 hour: 9,
@@ -264,7 +287,7 @@ enum DevelopmentSampleData {
             order: "i",
             projectOrder: "z"
         )
-        insert(weeklyEvent, in: nagareProject, context: context)
+        insert(weeklyTimedTodo, in: nagareProject, context: context)
         let weeklyRule = try RecurrenceRule.absolute(
             every: 7,
             unit: .day,
@@ -273,19 +296,18 @@ enum DevelopmentSampleData {
         )
         let weeklyTemplate = RecurrenceTemplate(
             id: id("402"),
-            itemType: .event,
-            title: weeklyEvent.title,
-            notes: weeklyEvent.notes,
+            title: weeklyTimedTodo.title,
+            notes: weeklyTimedTodo.notes,
             rule: weeklyRule,
             startTimeSeconds: 9 * 3_600,
             endTimeSeconds: 9 * 3_600 + 45 * 60,
-            currentItemID: weeklyEvent.id,
+            currentItemID: weeklyTimedTodo.id,
             createdAt: now
         )
         context.insert(weeklyTemplate)
         weeklyTemplate.project = nagareProject
-        weeklyEvent.recurrenceSequence = 0
-        weeklyEvent.recurrenceTemplate = weeklyTemplate
+        weeklyTimedTodo.recurrenceSequence = 0
+        weeklyTimedTodo.recurrenceTemplate = weeklyTemplate
 
         insert(
             Todo(
@@ -323,6 +345,59 @@ enum DevelopmentSampleData {
         try SwiftDataTransaction.save(context)
     }
 
+    private static func removeLegacySampleData(
+        in context: ModelContext
+    ) throws {
+        let projectIDs = Set([markerProjectID, id("102"), id("103")])
+        let todoIDs = Set(
+            (201...209).map { id(String($0)) }
+                + (301...305).map { id(String($0)) }
+        )
+        let legacyEventIDs = Set((301...305).map { id(String($0)) })
+        let templateIDs = Set((401...402).map { id(String($0)) })
+
+        let projects = try context.fetch(FetchDescriptor<Project>()).filter {
+            projectIDs.contains($0.id)
+        }
+        let todos = try context.fetch(FetchDescriptor<Todo>()).filter {
+            todoIDs.contains($0.id)
+        }
+        let events = try context.fetch(FetchDescriptor<Event>()).filter {
+            legacyEventIDs.contains($0.id)
+        }
+        let templates = try context.fetch(
+            FetchDescriptor<RecurrenceTemplate>()
+        ).filter {
+            templateIDs.contains($0.id)
+        }
+
+        guard !projects.isEmpty || !todos.isEmpty || !events.isEmpty
+                || !templates.isEmpty else {
+            return
+        }
+
+        templates.forEach(context.delete)
+        todos.forEach(context.delete)
+        events.forEach(context.delete)
+        projects.forEach(context.delete)
+        try SwiftDataTransaction.save(context)
+    }
+
+    private static func removeAllData(in context: ModelContext) throws {
+        let templates = try context.fetch(
+            FetchDescriptor<RecurrenceTemplate>()
+        )
+        let todos = try context.fetch(FetchDescriptor<Todo>())
+        let events = try context.fetch(FetchDescriptor<Event>())
+        let projects = try context.fetch(FetchDescriptor<Project>())
+
+        templates.forEach(context.delete)
+        todos.forEach(context.delete)
+        events.forEach(context.delete)
+        projects.forEach(context.delete)
+        try SwiftDataTransaction.save(context)
+    }
+
     private static func containsSampleData(
         in context: ModelContext
     ) throws -> Bool {
@@ -343,15 +418,6 @@ enum DevelopmentSampleData {
     ) {
         context.insert(todo)
         todo.project = project
-    }
-
-    private static func insert(
-        _ event: Event,
-        in project: Project? = nil,
-        context: ModelContext
-    ) {
-        context.insert(event)
-        event.project = project
     }
 
     private static func id(_ suffix: String) -> UUID {

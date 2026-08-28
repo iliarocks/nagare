@@ -15,13 +15,18 @@ struct UpcomingView: View {
     @State private var virtualItems: [VirtualItem] = []
 
     let onOpenNotes: (NotesDestination) -> Void
+    @Binding var scrollTargetDate: Date?
+
+    init(
+        onOpenNotes: @escaping (NotesDestination) -> Void,
+        scrollTargetDate: Binding<Date?> = .constant(nil)
+    ) {
+        self.onOpenNotes = onOpenNotes
+        _scrollTargetDate = scrollTargetDate
+    }
 
     private var todos: [TodoRecordSnapshot] {
         dataStore.todos
-    }
-
-    private var events: [EventRecordSnapshot] {
-        dataStore.events
     }
 
     private var recurrenceTemplates: [RecurrenceTemplateRecordSnapshot] {
@@ -47,20 +52,12 @@ struct UpcomingView: View {
             todo.completedAt == nil && todo.scheduledDate >= tomorrow
         }
 
-        let upcomingEvents = events.filter { event in
-            event.scheduledDate >= tomorrow
-        }
-
         let populatedDates = Set(
             upcomingTodos.map { calendar.startOfDay(for: $0.scheduledDate) }
-                + upcomingEvents.map { calendar.startOfDay(for: $0.scheduledDate) }
                 + virtualItems.map { calendar.startOfDay(for: $0.date) }
         )
         return populatedDates.map { date in
             let todosForDate = upcomingTodos.filter {
-                calendar.isDate($0.scheduledDate, inSameDayAs: date)
-            }
-            let eventsForDate = upcomingEvents.filter {
                 calendar.isDate($0.scheduledDate, inSameDayAs: date)
             }
             let virtualItemsForDate = virtualItems.filter {
@@ -76,10 +73,7 @@ struct UpcomingView: View {
 
             return ReorderableItemGroup(
                 date: date,
-                items: ItemRecordSnapshot.ordered(
-                    todos: todosForDate,
-                    events: eventsForDate
-                ),
+                items: TodoRecordSnapshot.ordered(todosForDate),
                 virtualItems: virtualItemsForDate
             )
         }
@@ -136,6 +130,7 @@ struct UpcomingView: View {
                 ReorderableItemList(
                     groups: itemGroups,
                     showsDateHeaders: true,
+                    scrollTargetDate: $scrollTargetDate,
                     onOpen: { onOpenNotes(NotesDestination($0)) },
                     onOpenVirtual: {
                         onOpenNotes(.template($0.template.id))
@@ -155,6 +150,9 @@ struct UpcomingView: View {
             of: recurrenceProjectionInput,
             initial: true
         ) {
+            refreshVirtualItems()
+        }
+        .onChange(of: scrollTargetDate) {
             refreshVirtualItems()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -229,7 +227,7 @@ struct UpcomingView: View {
             value: 1,
             to: today
         ),
-        let horizon = calendar.date(
+        let defaultHorizon = calendar.date(
             byAdding: .month,
             value: 2,
             to: today
@@ -241,6 +239,10 @@ struct UpcomingView: View {
             )
             return
         }
+        let requestedHorizon = scrollTargetDate.map {
+            calendar.startOfDay(for: $0)
+        }
+        let horizon = max(defaultHorizon, requestedHorizon ?? defaultHorizon)
 
         let result = VirtualItemProjection.generate(
             from: recurrenceProjectionInput,

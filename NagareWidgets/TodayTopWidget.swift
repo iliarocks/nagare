@@ -114,7 +114,7 @@ private struct TodayTopWidgetView: View {
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if item.kind == .event {
+                if item.kind == .timedTodo {
                     itemDetail(item)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -132,7 +132,7 @@ private struct TodayTopWidgetView: View {
         switch item.kind {
         case .todo:
             Label("Next", systemImage: "circle")
-        case .event:
+        case .timedTodo:
             if let endDate = item.endDate {
                 Text(
                     "\(item.scheduledDate.formatted(date: .omitted, time: .shortened))"

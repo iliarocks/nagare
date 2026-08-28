@@ -6,7 +6,7 @@ import Foundation
 protocol SyncReconciliationPersistence: AnyObject {
     func loadSyncGraph() throws -> SyncGraphSnapshot
     func apply(_ mutations: [SyncReconciliationMutation]) throws
-    func save(at transactionDate: Date) throws
+    func savePreservingMetadata() throws
     func rollback()
 }
 

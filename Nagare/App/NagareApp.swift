@@ -12,13 +12,22 @@ enum NagareWindowID {
 
 @main
 struct NagareApp: App {
+    private struct RuntimeState {
+        let syncMonitor: SyncIntegrityMonitor
+        let cloudSyncMonitor: NagareCloudSyncMonitor
+        let dataStore: NagareDataStore
+        let intentOrchestrator: NagareDataOrchestrator
+        let cloudSyncEnabled: Bool
+
+        func stop() {
+            syncMonitor.stop()
+            cloudSyncMonitor.stop()
+        }
+    }
+
     private enum StartupState {
-        case ready(
-            NagareIntentStore,
-            SyncIntegrityMonitor?,
-            NagareDataStore,
-            cloudSyncEnabled: Bool
-        )
+        case ready(RuntimeState)
+        case switching
         case failed
     }
 
@@ -28,6 +37,7 @@ struct NagareApp: App {
     )
 
     @State private var startupState: StartupState
+    private let intentStore: NagareIntentStore
     private let arguments: [String]
     private let isRunningUnitTests: Bool
 
@@ -40,8 +50,11 @@ struct NagareApp: App {
         let isRunningUnitTests = !arguments.contains(
             "--use-reorder-ui-test-store"
         ) && Self.isRunningUnitTests(environment: processInfo.environment)
+        let intentStore = NagareIntentStore()
+        self.intentStore = intentStore
         self.arguments = arguments
         self.isRunningUnitTests = isRunningUnitTests
+        AppDependencyManager.shared.add(dependency: intentStore)
 
         do {
 #if DEBUG
@@ -60,76 +73,15 @@ struct NagareApp: App {
                 && NagareCloudPreferences.shouldEnableSync(
                     arguments: arguments
                 )
-            let modelContainer = try Self.makeModelContainer(
+            let runtime = try Self.makeRuntimeState(
                 arguments: arguments,
                 cloudSyncEnabled: cloudSyncEnabled,
-                isRunningUnitTests: isRunningUnitTests
+                isRunningUnitTests: isRunningUnitTests,
+                prepareDevelopmentData: true
             )
-            modelContainer.mainContext.autosaveEnabled = false
-            modelContainer.mainContext.author = NagareCloud.localHistoryAuthor
-            try Self.prepareReorderRegressionTestDataIfRequested(
-                in: modelContainer.mainContext,
-                arguments: arguments
-            )
-#if DEBUG
-            do {
-                try DevelopmentSampleData.seedIfNeeded(
-                    in: modelContainer.mainContext,
-                    arguments: arguments
-                )
-            } catch {
-                Self.logger.error(
-                    "Unable to add development sample data: \(error.localizedDescription, privacy: .public)"
-                )
-            }
-#endif
-            _ = try SyncIntegrityRepair.repair(
-                in: modelContainer.mainContext
-            )
-            let repository = SwiftDataNagareRepository(
-                modelContainer: modelContainer
-            )
-            let dataOrchestrator = NagareDataOrchestrator(
-                reader: repository,
-                writer: repository
-            )
-            let intentStore = NagareIntentStore(
-                orchestrator: dataOrchestrator
-            )
-            let dataStore = try NagareDataStore(
-                orchestrator: dataOrchestrator
-            )
-            let syncMonitor: SyncIntegrityMonitor?
-            do {
-                // History drives publication for local App Intent/import
-                // contexts as well as CloudKit, so observation is required
-                // even when iCloud is disabled.
-                syncMonitor = try SyncIntegrityMonitor(
-                    modelContainer: modelContainer,
-                    onReconciled: { [dataStore] in
-                        do {
-                            try dataStore.reload()
-                        } catch {
-                            Self.logger.error(
-                                "Unable to publish persisted data: \(error.localizedDescription, privacy: .public)"
-                            )
-                        }
-                    }
-                )
-            } catch {
-                Self.logger.error(
-                    "Unable to monitor persistent history: \(error.localizedDescription, privacy: .public)"
-                )
-                syncMonitor = nil
-            }
-            AppDependencyManager.shared.add(dependency: intentStore)
+            intentStore.connect(to: runtime.intentOrchestrator)
             _startupState = State(
-                initialValue: .ready(
-                    intentStore,
-                    syncMonitor,
-                    dataStore,
-                    cloudSyncEnabled: cloudSyncEnabled
-                )
+                initialValue: .ready(runtime)
             )
         } catch {
             Self.logger.fault(
@@ -145,53 +97,94 @@ struct NagareApp: App {
     private static func makeRuntimeState(
         arguments: [String],
         cloudSyncEnabled: Bool,
-        isRunningUnitTests: Bool
-    ) throws -> StartupState {
-        let modelContainer = try makeModelContainer(
-            arguments: arguments,
-            cloudSyncEnabled: cloudSyncEnabled,
-            isRunningUnitTests: isRunningUnitTests
+        isRunningUnitTests: Bool,
+        prepareDevelopmentData: Bool
+    ) throws -> RuntimeState {
+        let cloudSyncMonitor = NagareCloudSyncMonitor(
+            isEnabled: cloudSyncEnabled
         )
+        let modelContainer: ModelContainer
+        do {
+            modelContainer = try makeModelContainer(
+                arguments: arguments,
+                cloudSyncEnabled: cloudSyncEnabled,
+                isRunningUnitTests: isRunningUnitTests
+            )
+        } catch {
+            cloudSyncMonitor.stop()
+            throw error
+        }
         modelContainer.mainContext.autosaveEnabled = false
         modelContainer.mainContext.author = NagareCloud.localHistoryAuthor
+        if prepareDevelopmentData {
+            try prepareReorderRegressionTestDataIfRequested(
+                in: modelContainer.mainContext,
+                arguments: arguments
+            )
+#if DEBUG
+            do {
+                try DevelopmentSampleData.seedIfNeeded(
+                    in: modelContainer.mainContext,
+                    arguments: arguments
+                )
+            } catch {
+                logger.error(
+                    "Unable to add development sample data: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+#endif
+        }
         _ = try SyncIntegrityRepair.repair(in: modelContainer.mainContext)
 
-        let repository = SwiftDataNagareRepository(
+        let applicationRepository = SwiftDataNagareRepository(
             modelContainer: modelContainer
         )
         let dataOrchestrator = NagareDataOrchestrator(
-            reader: repository,
-            writer: repository
+            reader: applicationRepository,
+            writer: applicationRepository
         )
-        let intentStore = NagareIntentStore(orchestrator: dataOrchestrator)
         let dataStore = try NagareDataStore(
             orchestrator: dataOrchestrator
         )
-        let syncMonitor: SyncIntegrityMonitor?
-        do {
-            syncMonitor = try SyncIntegrityMonitor(
-                modelContainer: modelContainer,
-                onReconciled: { [dataStore] in
-                    do {
-                        try dataStore.reload()
-                    } catch {
-                        logger.error(
-                            "Unable to publish persisted data: \(error.localizedDescription, privacy: .public)"
-                        )
-                    }
+        let intentRepository = SwiftDataNagareRepository(
+            modelContainer: modelContainer,
+            historyAuthor: NagareCloud.intentHistoryAuthor
+        )
+        let intentOrchestrator = NagareDataOrchestrator(
+            reader: intentRepository,
+            writer: intentRepository
+        )
+        let syncMonitor = SyncIntegrityMonitor(
+            modelContainer: modelContainer,
+            requiresReconciliation: cloudSyncEnabled,
+            onPersistedChange: { [dataStore] in
+                do {
+                    try dataStore.reload()
+                } catch {
+                    logger.error(
+                        "Unable to publish persisted data: \(error.localizedDescription, privacy: .public)"
+                    )
                 }
-            )
-        } catch {
-            logger.error(
-                "Unable to monitor persistent history: \(error.localizedDescription, privacy: .public)"
-            )
-            syncMonitor = nil
+            },
+            onObservationHealthChanged: { [cloudSyncMonitor] isHealthy, error in
+                cloudSyncMonitor.recordHistoryObservation(
+                    isHealthy: isHealthy,
+                    errorDescription: error
+                )
+            }
+        )
+        cloudSyncMonitor.setOnSuccessfulImport { [weak syncMonitor] in
+            syncMonitor?.cloudImportDidFinish()
         }
-        AppDependencyManager.shared.add(dependency: intentStore)
-        return .ready(
-            intentStore,
-            syncMonitor,
-            dataStore,
+        // Covers an import that may have completed between opening SwiftData's
+        // CloudKit stack and attaching the event callback. The debounce also
+        // coalesces with any real completion event still in flight.
+        syncMonitor.cloudImportDidFinish()
+        return RuntimeState(
+            syncMonitor: syncMonitor,
+            cloudSyncMonitor: cloudSyncMonitor,
+            dataStore: dataStore,
+            intentOrchestrator: intentOrchestrator,
             cloudSyncEnabled: cloudSyncEnabled
         )
     }
@@ -201,26 +194,57 @@ struct NagareApp: App {
               !arguments.contains("--use-reorder-ui-test-store") else {
             return
         }
-        if case .ready(
-            _,
-            _,
-            _,
-            cloudSyncEnabled: let currentValue
-        ) = startupState,
-           currentValue == isEnabled {
+        var retiringRuntime: RuntimeState?
+        switch startupState {
+        case .ready(let runtime):
+            retiringRuntime = runtime
+        case .switching, .failed:
             return
         }
+        let previousValue = retiringRuntime?.cloudSyncEnabled ?? false
+        guard previousValue != isEnabled else { return }
 
-        let newState = try Self.makeRuntimeState(
-            arguments: arguments,
-            cloudSyncEnabled: isEnabled,
-            isRunningUnitTests: isRunningUnitTests
-        )
-        UserDefaults.standard.set(
-            isEnabled,
-            forKey: NagareCloudPreferences.syncEnabledKey
-        )
-        startupState = newState
+        // A single CloudKit coordinator owns the SQLite store at a time. Drop
+        // every reference held by the UI and App Intents, yield so SwiftUI can
+        // release its environment, then open the replacement configuration.
+        retiringRuntime?.stop()
+        intentStore.disconnect()
+        startupState = .switching
+        retiringRuntime = nil
+        await Task.yield()
+        await Task.yield()
+
+        do {
+            let newRuntime = try Self.makeRuntimeState(
+                arguments: arguments,
+                cloudSyncEnabled: isEnabled,
+                isRunningUnitTests: isRunningUnitTests,
+                prepareDevelopmentData: false
+            )
+            intentStore.connect(to: newRuntime.intentOrchestrator)
+            UserDefaults.standard.set(
+                isEnabled,
+                forKey: NagareCloudPreferences.syncEnabledKey
+            )
+            startupState = .ready(newRuntime)
+        } catch {
+            do {
+                let restoredRuntime = try Self.makeRuntimeState(
+                    arguments: arguments,
+                    cloudSyncEnabled: previousValue,
+                    isRunningUnitTests: isRunningUnitTests,
+                    prepareDevelopmentData: false
+                )
+                intentStore.connect(to: restoredRuntime.intentOrchestrator)
+                startupState = .ready(restoredRuntime)
+            } catch {
+                Self.logger.fault(
+                    "Unable to restore Nagare's previous data session: \(error.localizedDescription, privacy: .public)"
+                )
+                startupState = .failed
+            }
+            throw error
+        }
     }
 
     var body: some Scene {
@@ -229,7 +253,7 @@ struct NagareApp: App {
             startupContent
                 .windowFullScreenBehavior(.disabled)
         }
-        .defaultSize(width: 1_100, height: 720)
+        .defaultSize(width: 800, height: 480)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .sidebar) {}
@@ -257,20 +281,16 @@ struct NagareApp: App {
     @ViewBuilder
     private var startupContent: some View {
         switch startupState {
-        case .ready(
-            let intentStore,
-            let syncMonitor,
-            let dataStore,
-            cloudSyncEnabled: let cloudSyncEnabled
-        ):
+        case .ready(let runtime):
             RootView(
                 intentStore: intentStore,
-                syncMonitor: syncMonitor,
-                cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled,
-                onSetCloudSyncEnabled: setCloudSyncEnabled,
-                onSyncNow: { syncMonitor?.repair() }
+                syncMonitor: runtime.syncMonitor,
+                cloudSyncEnabledForCurrentLaunch: runtime.cloudSyncEnabled,
+                onSetCloudSyncEnabled: setCloudSyncEnabled
             )
-                .nagareDataStore(dataStore)
+                .nagareDataStore(runtime.dataStore)
+        case .switching:
+            ProgressView("Updating iCloud…")
         case .failed:
             StoreStartupFailureView()
         }
@@ -280,18 +300,14 @@ struct NagareApp: App {
     @ViewBuilder
     private var settingsContent: some View {
         switch startupState {
-        case .ready(
-            _,
-            let syncMonitor,
-            let dataStore,
-            cloudSyncEnabled: let cloudSyncEnabled
-        ):
+        case .ready(let runtime):
             NagareSettingsView(
-                cloudSyncEnabledForCurrentLaunch: cloudSyncEnabled,
-                onSetCloudSyncEnabled: setCloudSyncEnabled,
-                onSyncNow: { syncMonitor?.repair() }
+                cloudSyncEnabledForCurrentLaunch: runtime.cloudSyncEnabled,
+                onSetCloudSyncEnabled: setCloudSyncEnabled
             )
-                .nagareDataStore(dataStore)
+                .nagareDataStore(runtime.dataStore)
+        case .switching:
+            ProgressView("Updating iCloud…")
         case .failed:
             StoreStartupFailureView()
         }
@@ -300,9 +316,11 @@ struct NagareApp: App {
     @ViewBuilder
     private var completedContent: some View {
         switch startupState {
-        case .ready(_, _, let dataStore, cloudSyncEnabled: _):
+        case .ready(let runtime):
             CompletedView()
-                .nagareDataStore(dataStore)
+                .nagareDataStore(runtime.dataStore)
+        case .switching:
+            ProgressView("Updating iCloud…")
         case .failed:
             StoreStartupFailureView()
         }
@@ -325,7 +343,6 @@ struct NagareApp: App {
             )
             return try ModelContainer(
                 for: NagareSchema.current,
-                migrationPlan: NagareMigrationPlan.self,
                 configurations: configuration
             )
         }
@@ -350,7 +367,6 @@ struct NagareApp: App {
             )
             return try ModelContainer(
                 for: NagareSchema.current,
-                migrationPlan: NagareMigrationPlan.self,
                 configurations: configuration
             )
         }
@@ -370,7 +386,6 @@ struct NagareApp: App {
 #endif
         return try ModelContainer(
             for: NagareSchema.current,
-            migrationPlan: NagareMigrationPlan.self,
             configurations: configuration
         )
     }
@@ -474,13 +489,14 @@ struct NagareApp: App {
             )
         )
         context.insert(
-            Event(
-                title: "Schedule UI Event With A Deliberately Long Title That Wraps Onto Multiple Lines",
+            Todo(
+                title: "Schedule UI Todo With A Deliberately Long Title That Wraps Onto Multiple Lines",
                 scheduledDate: Calendar.autoupdatingCurrent.date(
                     byAdding: .hour,
                     value: 10,
                     to: today
                 ) ?? today,
+                includesTime: true,
                 order: "w"
             )
         )

@@ -91,34 +91,17 @@ enum ProjectMembership {
         for item: SwiftDataItem,
         with project: Project?
     ) {
-        switch item {
-        case .todo(let todo):
-            todo.recurrenceTemplate?.project = project
-        case .event(let event):
-            event.recurrenceTemplate?.project = project
-        }
+        item.recurrenceTemplate?.project = project
     }
 
     private static func currentItem(
         for template: RecurrenceTemplate
     ) throws -> SwiftDataItem {
-        switch template.itemType {
-        case .todo:
-            guard let todo = template.todoOccurrences.first(where: {
-                $0.id == template.currentItemID && $0.completedAt == nil
-            }) else {
-                throw MembershipError.missingCurrentOccurrence
-            }
-            return .todo(todo)
-        case .event:
-            guard let event = template.eventOccurrences.first(where: {
-                $0.id == template.currentItemID
-            }) else {
-                throw MembershipError.missingCurrentOccurrence
-            }
-            return .event(event)
-        case nil:
+        guard let todo = template.todoOccurrences.first(where: {
+            $0.id == template.currentItemID && $0.completedAt == nil
+        }) else {
             throw MembershipError.missingCurrentOccurrence
         }
+        return todo
     }
 }

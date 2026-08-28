@@ -16,11 +16,15 @@ enum NagareCloud {
 
     /// Local transactions carry an author so history consumers can distinguish
     /// Nagare writes from framework-generated/imported transactions if needed.
-    static let localHistoryAuthor = "Nagare"
+    nonisolated static let localHistoryAuthor = "Nagare"
+
+    /// App Intent writes originate outside the live UI facade. A distinct
+    /// author keeps those transactions identifiable in history diagnostics.
+    nonisolated static let intentHistoryAuthor = "Nagare.Intent"
 
     /// Semantic repairs use a separate context and author so they cannot roll
     /// back an in-progress edit in the UI's context.
-    static let reconciliationHistoryAuthor = "Nagare.Reconciliation"
+    nonisolated static let reconciliationHistoryAuthor = "Nagare.Reconciliation"
 
     static func configuration(
         schema: Schema,

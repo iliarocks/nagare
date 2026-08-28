@@ -9,7 +9,7 @@ struct ItemSelectionAction: Identifiable {
 }
 
 /// Changes the calendar day of a persisted selection while preserving each
-/// event's wall-clock time and duration. The data orchestrator commits the
+/// timed Todo's wall-clock time and duration. The data orchestrator commits the
 /// whole selection in one ordering transaction.
 struct ItemDateEditor: View {
     @Environment(\.nagareDismissModal) private var dismiss

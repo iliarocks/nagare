@@ -24,43 +24,17 @@ nonisolated enum SyncReconciliationPlanner {
         mergeMutations += todos.mutations
         report.duplicateTodosRemoved = todos.mutations.count
 
-        let eventsByIdentity = deduplicating(
-            snapshot.events,
-            metadata: \.metadata
-        )
-        mergeMutations += eventsByIdentity.mutations
-        let events = eventsByIdentity.survivors
-        report.duplicateEventsRemoved = eventsByIdentity.mutations.count
-
         var recurrenceMutations: [SyncReconciliationMutation] = []
         var pending: [SyncPendingTemplate] = []
 
         for template in templates.survivors.sorted(by: semanticIDOrder) {
-            switch template.itemTypeRawValue {
-            case "todo":
-                reconcileTodoTemplate(
-                    template,
-                    todos: todos.survivors,
-                    mutations: &recurrenceMutations,
-                    pending: &pending,
-                    report: &report
-                )
-            case "event":
-                reconcileEventTemplate(
-                    template,
-                    events: events,
-                    mutations: &recurrenceMutations,
-                    pending: &pending,
-                    report: &report
-                )
-            default:
-                pending.append(
-                    SyncPendingTemplate(
-                        templateID: template.metadata.semanticID,
-                        reason: .unknownItemType(template.itemTypeRawValue)
-                    )
-                )
-            }
+            reconcileTodoTemplate(
+                template,
+                todos: todos.survivors,
+                mutations: &recurrenceMutations,
+                pending: &pending,
+                report: &report
+            )
         }
 
         let removedReferences = Set(
@@ -89,7 +63,6 @@ nonisolated enum SyncReconciliationPlanner {
         let reportSnapshot = SyncReconciliationReport(
             duplicateProjectsRemoved: report.duplicateProjectsRemoved,
             duplicateTodosRemoved: report.duplicateTodosRemoved,
-            duplicateEventsRemoved: report.duplicateEventsRemoved,
             duplicateTemplatesRemoved: report.duplicateTemplatesRemoved,
             recurrenceConflictsRepaired: report.recurrenceConflictsRepaired,
             recurrenceLinksRepaired: report.recurrenceLinksRepaired,
@@ -103,9 +76,6 @@ nonisolated enum SyncReconciliationPlanner {
             pendingTemplates: pending.sorted {
                 $0.templateID.uuidString < $1.templateID.uuidString
             },
-            transactionDate: snapshot.allMetadata
-                .map(\.revisionDate)
-                .max() ?? Date(timeIntervalSince1970: 0),
             report: reportSnapshot
         )
     }
@@ -283,126 +253,6 @@ nonisolated enum SyncReconciliationPlanner {
         }
     }
 
-    private static func reconcileEventTemplate(
-        _ template: SyncRecurrenceTemplateSnapshot,
-        events: [SyncEventSnapshot],
-        mutations: inout [SyncReconciliationMutation],
-        pending: inout [SyncPendingTemplate],
-        report: inout ReportAccumulator
-    ) {
-        let templateID = template.metadata.semanticID
-        let matchingCurrent = events.filter {
-            $0.metadata.semanticID == template.currentItemID
-                && $0.recurrenceSequence == template.currentSequence
-        }
-        if matchingCurrent.contains(where: {
-            $0.recurrenceTemplateID != nil
-                && $0.recurrenceTemplateID != templateID
-        }) {
-            pending.append(
-                SyncPendingTemplate(
-                    templateID: templateID,
-                    reason: .currentOccurrenceLinkedElsewhere(
-                        id: template.currentItemID
-                    )
-                )
-            )
-            return
-        }
-
-        let associated = events.filter {
-            $0.recurrenceTemplateID == templateID
-                || ($0.metadata.semanticID == template.currentItemID
-                    && $0.recurrenceSequence == template.currentSequence
-                    && $0.recurrenceTemplateID == nil)
-        }
-        let sequenced = associated.compactMap { event in
-            event.recurrenceSequence.map { (sequence: $0, record: event) }
-        }
-        guard let highestSequence = sequenced.map(\.sequence).max() else {
-            pending.append(
-                SyncPendingTemplate(
-                    templateID: templateID,
-                    reason: .noSequencedOccurrences
-                )
-            )
-            return
-        }
-        guard template.currentSequence <= highestSequence else {
-            pending.append(
-                SyncPendingTemplate(
-                    templateID: templateID,
-                    reason: .waitingForCurrentSequence(
-                        expected: template.currentSequence,
-                        highestAvailable: highestSequence
-                    )
-                )
-            )
-            return
-        }
-
-        let current: SyncEventSnapshot
-        if template.currentSequence == highestSequence {
-            let candidates = sequenced
-                .filter {
-                    $0.sequence == highestSequence
-                        && $0.record.metadata.semanticID
-                            == template.currentItemID
-                }
-                .map(\.record)
-            guard !candidates.isEmpty else {
-                pending.append(
-                    SyncPendingTemplate(
-                        templateID: templateID,
-                        reason: .missingCurrentOccurrence(
-                            id: template.currentItemID,
-                            sequence: template.currentSequence
-                        )
-                    )
-                )
-                return
-            }
-            current = SyncRecordOrdering.canonical(
-                candidates,
-                metadata: \.metadata
-            )
-        } else {
-            current = SyncRecordOrdering.canonical(
-                sequenced
-                    .filter { $0.sequence == highestSequence }
-                    .map(\.record),
-                metadata: \.metadata
-            )
-        }
-
-        attachEventIfNeeded(
-            current,
-            to: template,
-            mutations: &mutations,
-            report: &report
-        )
-
-        for occurrence in sequenced.map(\.record).sorted(by: {
-            metadataReferenceOrder($0.metadata, $1.metadata)
-        })
-        where occurrence.metadata.reference != current.metadata.reference {
-            mutations.append(.delete(record: occurrence.metadata.reference))
-            report.recurrenceConflictsRepaired += 1
-        }
-
-        if template.currentSequence != highestSequence
-            || template.currentItemID != current.metadata.semanticID {
-            mutations.append(
-                .updateTemplate(
-                    record: template.metadata.reference,
-                    currentItemID: current.metadata.semanticID,
-                    currentSequence: highestSequence
-                )
-            )
-            report.recurrenceConflictsRepaired += 1
-        }
-    }
-
     private static func attachTodoIfNeeded(
         _ todo: SyncTodoSnapshot,
         to template: SyncRecurrenceTemplateSnapshot,
@@ -413,22 +263,6 @@ nonisolated enum SyncReconciliationPlanner {
         mutations.append(
             .attachTodo(
                 todo: todo.metadata.reference,
-                template: template.metadata.reference
-            )
-        )
-        report.recurrenceLinksRepaired += 1
-    }
-
-    private static func attachEventIfNeeded(
-        _ event: SyncEventSnapshot,
-        to template: SyncRecurrenceTemplateSnapshot,
-        mutations: inout [SyncReconciliationMutation],
-        report: inout ReportAccumulator
-    ) {
-        guard event.recurrenceTemplateID == nil else { return }
-        mutations.append(
-            .attachEvent(
-                event: event.metadata.reference,
                 template: template.metadata.reference
             )
         )
@@ -502,7 +336,6 @@ nonisolated enum SyncReconciliationPlanner {
     private struct ReportAccumulator {
         var duplicateProjectsRemoved = 0
         var duplicateTodosRemoved = 0
-        var duplicateEventsRemoved = 0
         var duplicateTemplatesRemoved = 0
         var recurrenceConflictsRepaired = 0
         var recurrenceLinksRepaired = 0

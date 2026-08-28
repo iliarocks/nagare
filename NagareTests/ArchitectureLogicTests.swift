@@ -37,7 +37,7 @@ struct ArchitectureLogicTests {
         #expect(plan.repairs[1].order < plan.order)
     }
 
-    @Test func eventMovementPreservesWallTimeAndDuration() throws {
+    @Test func timedTodoMovementPreservesWallTimeAndDuration() throws {
         let calendar = fixedCalendar
         let start = try #require(calendar.date(
             from: DateComponents(
@@ -52,9 +52,9 @@ struct ArchitectureLogicTests {
             from: DateComponents(year: 2026, month: 8, day: 5)
         ))
         let snapshot = ItemSnapshot(
-            id: .event(UUID()),
-            kind: .event,
+            id: UUID(),
             scheduledDate: start,
+            includesTime: true,
             endDate: start.addingTimeInterval(5_400),
             completedAt: nil,
             createdAt: start,
@@ -113,13 +113,23 @@ struct ArchitectureLogicTests {
         let today = try #require(calendar.date(
             from: DateComponents(year: 2026, month: 8, day: 2)
         ))
-        let overdueID = ItemID.todo(UUID())
+        let overdueID = UUID()
+        let overdueTimedID = UUID()
+        let overdueTimedStart = try #require(calendar.date(
+            from: DateComponents(
+                year: 2026,
+                month: 8,
+                day: 1,
+                hour: 9,
+                minute: 30
+            )
+        ))
         let plan = try TodoMaintenanceLogic.rollForward(
             [
                 ItemSnapshot(
                     id: overdueID,
-                    kind: .todo,
                     scheduledDate: yesterday,
+                    includesTime: false,
                     endDate: nil,
                     completedAt: nil,
                     createdAt: yesterday,
@@ -128,9 +138,20 @@ struct ArchitectureLogicTests {
                     projectOrder: nil
                 ),
                 ItemSnapshot(
-                    id: .event(UUID()),
-                    kind: .event,
+                    id: overdueTimedID,
+                    scheduledDate: overdueTimedStart,
+                    includesTime: true,
+                    endDate: overdueTimedStart.addingTimeInterval(5_400),
+                    completedAt: nil,
+                    createdAt: yesterday,
+                    order: "f",
+                    projectID: nil,
+                    projectOrder: nil
+                ),
+                ItemSnapshot(
+                    id: UUID(),
                     scheduledDate: today,
+                    includesTime: true,
                     endDate: nil,
                     completedAt: nil,
                     createdAt: today,
@@ -148,6 +169,16 @@ struct ArchitectureLogicTests {
         )
         #expect(change.scheduledDate == today)
         #expect(change.order.map(FractionalIndex.isValid) == true)
+
+        let timedChange = try #require(
+            plan.changes.first(where: { $0.id == overdueTimedID })
+        )
+        let timedStart = try #require(timedChange.scheduledDate)
+        let timedEnd = try #require(timedChange.endDate)
+        #expect(calendar.isDate(timedStart, inSameDayAs: today))
+        #expect(calendar.component(.hour, from: timedStart) == 9)
+        #expect(calendar.component(.minute, from: timedStart) == 30)
+        #expect(timedEnd.timeIntervalSince(timedStart) == 5_400)
     }
 
     private var fixedCalendar: Calendar {
@@ -164,8 +195,8 @@ struct OrderingOrchestratorTests {
         let date = try #require(calendar.date(
             from: DateComponents(year: 2026, month: 8, day: 1)
         ))
-        let firstID = ItemID.todo(UUID())
-        let secondID = ItemID.todo(UUID())
+        let firstID = UUID()
+        let secondID = UUID()
         let persistence = FailingItemOrderingPersistence(items: [
             item(firstID, order: "9", date: date),
             item(secondID, order: "i", date: date)
@@ -189,8 +220,8 @@ struct OrderingOrchestratorTests {
     ) -> ItemSnapshot {
         ItemSnapshot(
             id: id,
-            kind: .todo,
             scheduledDate: date,
+            includesTime: false,
             endDate: nil,
             completedAt: nil,
             createdAt: date,

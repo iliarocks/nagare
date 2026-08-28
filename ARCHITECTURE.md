@@ -80,8 +80,10 @@ version independently, or accidentally let drift from the local graph.
 
 iCloud is an explicit user preference and defaults to off. Startup always
 passes either `.private(...)` or `.none` to `ModelConfiguration`; capabilities
-alone never decide whether a person's store syncs. A preference change applies
-on the next launch so only one stack ever has the SQLite store open.
+alone never decide whether a person's store syncs. A preference change retires
+the current runtime before opening the replacement, so only one stack ever has
+the SQLite store open. If the replacement fails, Nagare reopens the prior
+configuration and leaves the saved preference unchanged.
 
 `NagareSchemaV1` is the frozen model shipped before sync. `NagareSchemaV2` is
 the first CloudKit-compatible model, and `NagareMigrationPlan` owns the
@@ -96,10 +98,12 @@ application invariant:
    semantic UUID, so exact timestamp ties have a device-independent survivor.
 2. `SwiftDataTransaction` stamps every changed record's `modifiedAt` and is the
    only production save boundary.
-3. `SyncIntegrityMonitor` owns continuous persistent-history observation and
-   debounces reconciliation after remote events. Every repair and following
-   publication uses fresh contexts. No view lifecycle keeps data correct, and
-   a repair rollback can never discard an in-progress UI transaction.
+3. `SyncIntegrityMonitor` owns continuous persistent-history observation.
+   History publishes a fresh immutable snapshot immediately; a completed
+   CloudKit import separately debounces reconciliation. Observation, repair,
+   and partial-import failures retry indefinitely with a capped backoff, and
+   every repair uses a fresh context. No view lifecycle keeps data correct,
+   and a repair rollback can never discard an in-progress UI transaction.
 4. `SyncReconciliationPlanner` receives one immutable graph and returns an
    explicit deterministic plan. Missing relationship edges are pending import
    states. It never reads SwiftData identity or performs I/O.
@@ -110,17 +114,15 @@ The repair rules are idempotent and preserve records when a related CloudKit
 record may still be in flight. The same complete input therefore converges to
 the same result on every device.
 
-Calendar invite UIDs are an additional semantic identity for nonrepeating
-imports. If two offline devices import the same invite before either record is
-replicated, reconciliation keeps one deterministic canonical event. Repeating
-events are deliberately excluded from this simple merge because their series
-template names the occurrence UUID.
-
 A migrated V1 record without a physical identity deterministically uses its
 semantic UUID. Random IDs and store-local persistent identifiers are forbidden
 as replicated conflict tie-breakers. A local token may choose between records
 only after every replicated field is equal, when either deletion produces the
 same replicated result.
+
+Reconciliation writes preserve existing `modifiedAt` values. Assigning a
+physical identity, reconnecting a relationship, or removing a duplicate is not
+a user edit and must never make an old record win a later content conflict.
 
 Virtual recurrence projection consumes an immutable graph of every template
 and occurrence fetched independently. It identifies the current item by

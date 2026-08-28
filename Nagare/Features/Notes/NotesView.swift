@@ -4,22 +4,24 @@ struct NotesView: View {
     @NagareDataStoreEnvironment private var dataStore
 
     let id: NoteRecordID
-    let onOpenProject: (UUID) -> Void
+    let onOpenUpcomingDate: (Date) -> Void
 
     @State private var title = ""
     @State private var notes = ""
     @State private var lastLoadedRecord: NoteRecordSnapshot?
-    @State private var todoBeingRescheduled: TodoRecordSnapshot?
-    @State private var eventBeingRescheduled: EventRecordSnapshot?
+    @State private var itemScheduleBeingEdited: TodoRecordSnapshot?
+    @State private var recurrenceTemplateBeingEdited:
+        RecurrenceTemplateRecordSnapshot?
     @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
+    @FocusState private var focusedField: NagareEditorField?
 
     init(
         id: NoteRecordID,
-        onOpenProject: @escaping (UUID) -> Void = { _ in }
+        onOpenUpcomingDate: @escaping (Date) -> Void = { _ in }
     ) {
         self.id = id
-        self.onOpenProject = onOpenProject
+        self.onOpenUpcomingDate = onOpenUpcomingDate
     }
 
     private var record: NoteRecordSnapshot? {
@@ -45,14 +47,12 @@ struct NotesView: View {
             pendingSave?.cancel()
             save()
         }
-        .nagareModal(item: $todoBeingRescheduled) { todo in
-            TodoDateEditor(todo: todo)
-                .nagareSheetDetents([.medium])
-                .presentationDragIndicator(.visible)
+        .nagareModal(item: $itemScheduleBeingEdited) { todo in
+            TodoScheduleEditor(todo: todo)
         }
-        .nagareModal(item: $eventBeingRescheduled) { event in
-            EventScheduleEditor(event: event)
-                .nagareSheetDetents([EventScheduleEditor.sheetDetent])
+        .nagareModal(item: $recurrenceTemplateBeingEdited) { template in
+            RecurrenceEditor(template: template)
+                .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .alert("Nagare Couldn't Complete That Action", isPresented: isShowingError) {
@@ -63,37 +63,38 @@ struct NotesView: View {
     }
 
     private func editor(_ record: NoteRecordSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                metadata(record)
+        NavigationStack {
+            editorContent(record)
+                .nagareEditorMetadataChrome(
+                    scheduleTitle: scheduleTitle(for: record),
+                    scheduleAccessibilityIdentifier: "Notes Date",
+                    projects: dataStore.projects,
+                    selectedProject: selectedProject(for: record),
+                    hasRepeat: hasRepeat(record),
+                    projectAccessibilityIdentifier: "Notes Project",
+                    repeatAccessibilityIdentifier: "Notes Repeat",
+                    onSchedule: scheduleAction(for: record),
+                    onSelectProject: { assign($0, to: record) },
+                    onRepeat: repeatAction(for: record)
+                )
+        }
+    }
 
-                NagareEditableTitle(placeholder: "Title", text: $title)
-                    .font(.title.weight(.semibold))
-                    .textFieldStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("Item Title")
-
-                if let projectID = record.projectID,
-                   let project = dataStore.snapshot.projectsByID[projectID] {
-                    Button { onOpenProject(projectID) } label: {
-                        Text(project.title)
-                            .lineLimit(1)
-                    }
-                    .nagareMetadataFont()
-                    .foregroundStyle(.secondary)
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("Notes Project")
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 32)
-
+    private func editorContent(_ record: NoteRecordSnapshot) -> some View {
+        NagareDocumentComposerLayout(bottomPadding: 0) {
+            NagareEditableTitle(placeholder: "Title", text: $title)
+                .font(.title.weight(.semibold))
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .title)
+                .accessibilityIdentifier("Item Title")
+        } document: {
             NagareDocumentEditor(
                 text: $notes,
-                accessibilityIdentifier: "Item Notes"
+                accessibilityIdentifier: "Item Notes",
+                focus: $focusedField,
+                bottomScrollContentMargin:
+                    NagareDocumentBottomFade.scrollContentMargin
             )
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .nagareDocumentBottomFade()
         .nagareAvoidsInitialFocus()
@@ -101,43 +102,80 @@ struct NotesView: View {
         .onChange(of: notes) { scheduleSave() }
     }
 
-    @ViewBuilder
-    private func metadata(_ record: NoteRecordSnapshot) -> some View {
-        if let scheduledItem = scheduledItem(for: record) {
-            HStack(spacing: 12) {
-                Button { presentScheduleEditor(for: scheduledItem) } label: {
-                    Text(
-                        scheduledItem.scheduledDate,
-                        format: .dateTime.weekday(.abbreviated).month(.abbreviated).day()
-                    )
-                }
-                .accessibilityIdentifier("Notes Date")
-
-                Spacer(minLength: 16)
-
-                if case .event(let event) = scheduledItem {
-                    EventTimeLabel(
-                        startDate: event.scheduledDate,
-                        endDate: event.endDate
-                    )
-                    .accessibilityIdentifier("Event Time")
-                }
-            }
-            .nagareMetadataFont()
-            .foregroundStyle(.secondary)
-            .buttonStyle(.plain)
+    private func hasRepeat(_ record: NoteRecordSnapshot) -> Bool {
+        switch record {
+        case .recurrenceTemplate:
+            true
+        case .todo(let todo):
+            todo.recurrenceTemplateID != nil
         }
+    }
+
+    private func repeatAction(
+        for record: NoteRecordSnapshot
+    ) -> (() -> Void)? {
+        switch record {
+        case .recurrenceTemplate(let template):
+            return {
+                focusedField = nil
+                recurrenceTemplateBeingEdited = template
+            }
+        case .todo(let todo):
+            guard let templateID = todo.recurrenceTemplateID else {
+                return nil
+            }
+
+            guard let template = dataStore.snapshot.templatesByID[templateID]
+            else {
+                return nil
+            }
+
+            guard let nextDate = RecurrencePresentation.nextDate(
+                after: todo.scheduledDate,
+                for: template
+            ) else { return nil }
+
+            return {
+                focusedField = nil
+                onOpenUpcomingDate(nextDate)
+            }
+        }
+    }
+
+    private func scheduleAction(
+        for record: NoteRecordSnapshot
+    ) -> (() -> Void)? {
+        guard let item = scheduledItem(for: record) else { return nil }
+        return { presentScheduleEditor(for: item) }
+    }
+
+    private func scheduleTitle(for record: NoteRecordSnapshot) -> String {
+        guard let item = scheduledItem(for: record) else { return "No date" }
+        return ScheduleToolbarPresentation.title(
+            scheduledDate: item.scheduledDate,
+            includesTime: item.includesTime,
+            endDate: item.endDate
+        )
     }
 
     private func scheduledItem(
         for record: NoteRecordSnapshot
     ) -> ItemRecordSnapshot? {
         switch record {
-        case .todo(let todo): .todo(todo)
-        case .event(let event): .event(event)
+        case .todo(let todo): todo
         case .recurrenceTemplate(let template):
             dataStore.snapshot.currentItem(for: template)
         }
+    }
+
+    private func selectedProject(
+        for record: NoteRecordSnapshot
+    ) -> ProjectRecordSnapshot? {
+        guard let projectID = record.projectID,
+              let project = dataStore.snapshot.projectsByID[projectID] else {
+            return nil
+        }
+        return project
     }
 
     private var isShowingError: Binding<Bool> {
@@ -148,9 +186,26 @@ struct NotesView: View {
     }
 
     private func presentScheduleEditor(for item: ItemRecordSnapshot) {
-        switch item {
-        case .todo(let todo): todoBeingRescheduled = todo
-        case .event(let event): eventBeingRescheduled = event
+        focusedField = nil
+        itemScheduleBeingEdited = item
+    }
+
+    private func assign(
+        _ project: ProjectRecordSnapshot?,
+        to record: NoteRecordSnapshot
+    ) {
+        do {
+            switch record {
+            case .todo(let todo):
+                try dataStore.assign(.item(todo.id), to: project?.id)
+            case .recurrenceTemplate(let template):
+                try dataStore.assign(
+                    .recurrenceTemplate(template.id),
+                    to: project?.id
+                )
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

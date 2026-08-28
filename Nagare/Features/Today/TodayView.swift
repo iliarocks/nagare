@@ -12,10 +12,6 @@ struct TodayView: View {
         dataStore.todos
     }
 
-    private var events: [EventRecordSnapshot] {
-        dataStore.events
-    }
-
     private var todayTodos: [TodoRecordSnapshot] {
         let calendar = Calendar.autoupdatingCurrent
         guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now)) else {
@@ -27,20 +23,8 @@ struct TodayView: View {
         }
     }
 
-    private var todayEvents: [EventRecordSnapshot] {
-        let calendar = Calendar.autoupdatingCurrent
-        let today = calendar.startOfDay(for: .now)
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else {
-            return []
-        }
-
-        return events.filter { event in
-            event.scheduledDate >= today && event.scheduledDate < tomorrow
-        }
-    }
-
     private var persistedTodayItems: [ItemRecordSnapshot] {
-        ItemRecordSnapshot.ordered(todos: todayTodos, events: todayEvents)
+        TodoRecordSnapshot.ordered(todayTodos)
     }
 
     private var persistedTodayItemIDs: [ItemID] {
@@ -96,16 +80,10 @@ struct TodayView: View {
                 Button("Test reorder last before first") {
                     guard
                         let sourceIndex = todayItems.firstIndex(where: {
-                            guard case .todo(let todo) = $0 else {
-                                return false
-                            }
-                            return todo.title == "Reorder Third"
+                            $0.title == "Reorder Third"
                         }),
                         let destinationIndex = todayItems.firstIndex(where: {
-                            guard case .todo(let todo) = $0 else {
-                                return false
-                            }
-                            return todo.title == "Reorder First"
+                            $0.title == "Reorder First"
                         })
                     else {
                         errorMessage = "Nagare couldn't prepare the reorder regression action. (ORDER-UI-006)"

@@ -1,17 +1,7 @@
 import SwiftUI
 
-nonisolated private enum ProjectTier: Hashable, Sendable {
-    case priority
-    case background
-
-    var isPriority: Bool {
-        self == .priority
-    }
-}
-
 nonisolated private struct PersistedProjectProjection: Equatable {
-    let priorityIDs: [UUID]
-    let backgroundIDs: [UUID]
+    let idsByPriority: [ProjectPriority: [UUID]]
 }
 
 struct ProjectsView: View {
@@ -19,8 +9,8 @@ struct ProjectsView: View {
 
     @State private var isCreatingProject = false
     @State private var errorMessage: String?
-    @State private var displayedPriorityProjectIDs: [UUID]?
-    @State private var displayedBackgroundProjectIDs: [UUID]?
+    @State private var displayedProjectIDsByPriority:
+        [ProjectPriority: [UUID]] = [:]
 
     let onOpenSettings: () -> Void
 
@@ -32,40 +22,13 @@ struct ProjectsView: View {
         self.onOpenSettings = onOpenSettings
     }
 
-    private var persistedPriorityProjects: [ProjectRecordSnapshot] {
-        ordered(projects.filter(\.isPriority))
-    }
-
-    private var persistedBackgroundProjects: [ProjectRecordSnapshot] {
-        ordered(projects.filter { !$0.isPriority })
-    }
-
-    private var persistedPriorityProjectIDs: [UUID] {
-        persistedPriorityProjects.map(\.id)
-    }
-
-    private var persistedBackgroundProjectIDs: [UUID] {
-        persistedBackgroundProjects.map(\.id)
-    }
-
     private var persistedProjectProjection: PersistedProjectProjection {
         PersistedProjectProjection(
-            priorityIDs: persistedPriorityProjectIDs,
-            backgroundIDs: persistedBackgroundProjectIDs
-        )
-    }
-
-    private var priorityProjects: [ProjectRecordSnapshot] {
-        displayedProjects(
-            persistedPriorityProjects,
-            using: displayedPriorityProjectIDs
-        )
-    }
-
-    private var backgroundProjects: [ProjectRecordSnapshot] {
-        displayedProjects(
-            persistedBackgroundProjects,
-            using: displayedBackgroundProjectIDs
+            idsByPriority: Dictionary(
+                uniqueKeysWithValues: ProjectPriority.allCases.map {
+                    ($0, persistedProjectIDs(for: $0))
+                }
+            )
         )
     }
 
@@ -112,8 +75,7 @@ struct ProjectsView: View {
         }
         .onChange(of: persistedProjectProjection, initial: true) {
             _, projection in
-            displayedPriorityProjectIDs = projection.priorityIDs
-            displayedBackgroundProjectIDs = projection.backgroundIDs
+            displayedProjectIDsByPriority = projection.idsByPriority
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -126,31 +88,23 @@ struct ProjectsView: View {
 
     private var projectList: some View {
         List {
-            if !priorityProjects.isEmpty {
-                Section {
-                    ForEach(priorityProjects) { project in
-                        projectRow(project)
-                            .nagareItemListRow()
+            ForEach(ProjectPriority.displayOrder, id: \.self) { priority in
+                let tierProjects = displayedProjects(for: priority)
+                if !tierProjects.isEmpty {
+                    Section {
+                        ForEach(tierProjects) { project in
+                            projectRow(project)
+                                .nagareItemListRow()
+                        }
+                        .reorderable(collectionID: priority)
+                        .nagareDesktopListRow()
                     }
-                    .reorderable(collectionID: ProjectTier.priority)
-                    .nagareDesktopListRow()
-                }
-            }
-
-            if !backgroundProjects.isEmpty {
-                Section {
-                    ForEach(backgroundProjects) { project in
-                        projectRow(project)
-                            .nagareItemListRow()
-                    }
-                    .reorderable(collectionID: ProjectTier.background)
-                    .nagareDesktopListRow()
                 }
             }
         }
         .reorderContainer(
             for: ProjectRecordSnapshot.self,
-            in: ProjectTier.self
+            in: ProjectPriority.self
         ) {
             reorder($0)
         }
@@ -165,19 +119,24 @@ struct ProjectsView: View {
         }
         .accessibilityIdentifier("Project \(project.title)")
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                changePriority(of: project)
-            } label: {
-                Image(
-                    systemName: project.isPriority
-                        ? "arrow.down"
-                        : "arrow.up"
-                )
+            if let higher = project.priority.higher {
+                Button {
+                    changePriority(of: project, to: higher)
+                } label: {
+                    Image(systemName: "arrow.up")
+                }
+                .accessibilityLabel("Prioritize")
             }
-            .accessibilityLabel(
-                project.isPriority ? "Deprioritize" : "Prioritize"
-            )
-            .tint(project.isPriority ? .gray : .blue)
+
+            if let lower = project.priority.lower {
+                Button {
+                    changePriority(of: project, to: lower)
+                } label: {
+                    Image(systemName: "arrow.down")
+                }
+                .tint(.gray)
+                .accessibilityLabel("Deprioritize")
+            }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
@@ -188,15 +147,20 @@ struct ProjectsView: View {
             .accessibilityLabel("Delete")
         }
         .nagareDesktopContextMenu {
-            Button {
-                changePriority(of: project)
-            } label: {
-                Label(
-                    project.isPriority ? "Deprioritize" : "Prioritize",
-                    systemImage: project.isPriority
-                        ? "arrow.down"
-                        : "arrow.up"
-                )
+            if let higher = project.priority.higher {
+                Button {
+                    changePriority(of: project, to: higher)
+                } label: {
+                    Label("Prioritize", systemImage: "arrow.up")
+                }
+            }
+
+            if let lower = project.priority.lower {
+                Button {
+                    changePriority(of: project, to: lower)
+                } label: {
+                    Label("Deprioritize", systemImage: "arrow.down")
+                }
             }
 
             Divider()
@@ -210,13 +174,38 @@ struct ProjectsView: View {
     }
 
     private func reorder(
-        _ difference: ReorderDifference<UUID, ProjectTier>
+        _ difference: ReorderDifference<UUID, ProjectPriority>
     ) {
-        let tier = difference.destination.collectionID
-        let displayedProjectIDs = tier.isPriority
-            ? priorityProjects.map(\.id)
-            : backgroundProjects.map(\.id)
-        guard difference.sources.allSatisfy(displayedProjectIDs.contains) else {
+        guard !difference.sources.isEmpty else { return }
+        let priority = difference.destination.collectionID
+        let displayedProjectIDs = displayedProjects(for: priority).map(\.id)
+        let destinationID: UUID?
+        switch difference.destination.position {
+        case .before(let id):
+            guard displayedProjectIDs.contains(id) else { return }
+            destinationID = id
+        case .end:
+            destinationID = nil
+        }
+
+        let projectsByID = Dictionary(
+            uniqueKeysWithValues: projects.map { ($0.id, $0) }
+        )
+        let sourceProjects = difference.sources.compactMap { projectsByID[$0] }
+        guard sourceProjects.count == difference.sources.count else {
+            return
+        }
+
+        if sourceProjects.contains(where: { $0.priority != priority }) {
+            do {
+                try dataStore.moveProjects(
+                    difference.sources,
+                    toPriority: priority,
+                    before: destinationID
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+            }
             return
         }
 
@@ -231,13 +220,14 @@ struct ProjectsView: View {
         }
 
         let destinationOffset: Int
-        switch difference.destination.position {
-        case .before(let id):
-            guard let index = displayedProjectIDs.firstIndex(of: id) else {
+        if let destinationID {
+            guard let index = displayedProjectIDs.firstIndex(
+                of: destinationID
+            ) else {
                 return
             }
             destinationOffset = index
-        case .end:
+        } else {
             destinationOffset = displayedProjectIDs.endIndex
         }
 
@@ -251,22 +241,35 @@ struct ProjectsView: View {
                 return
             }
 
-            setDisplayedProjectIDs(newProjectIDs, for: tier)
+            setDisplayedProjectIDs(newProjectIDs, for: priority)
             try dataStore.reorderProjects(
                 newProjectIDs,
-                isPriority: tier.isPriority,
+                priority: priority,
             )
         } catch {
-            restoreDisplayedProjectIDs(for: tier)
+            restoreDisplayedProjectIDs(for: priority)
             errorMessage = error.localizedDescription
         }
     }
 
-    private func displayedProjects(
-        _ persistedProjects: [ProjectRecordSnapshot],
-        using displayedProjectIDs: [UUID]?
+    private func persistedProjects(
+        for priority: ProjectPriority
     ) -> [ProjectRecordSnapshot] {
-        guard let displayedProjectIDs else {
+        ordered(projects.filter { $0.priority == priority })
+    }
+
+    private func persistedProjectIDs(
+        for priority: ProjectPriority
+    ) -> [UUID] {
+        persistedProjects(for: priority).map(\.id)
+    }
+
+    private func displayedProjects(
+        for priority: ProjectPriority
+    ) -> [ProjectRecordSnapshot] {
+        let persistedProjects = persistedProjects(for: priority)
+        guard let displayedProjectIDs =
+                displayedProjectIDsByPriority[priority] else {
             return persistedProjects
         }
 
@@ -276,11 +279,10 @@ struct ProjectsView: View {
         let projectedProjects = displayedProjectIDs.compactMap {
             projectsByID[$0]
         }
-        let allDisplayedIDs = Set(
-            (displayedPriorityProjectIDs ?? persistedPriorityProjectIDs)
-                + (displayedBackgroundProjectIDs
-                    ?? persistedBackgroundProjectIDs)
-        )
+        let allDisplayedIDs = Set(ProjectPriority.allCases.flatMap {
+            displayedProjectIDsByPriority[$0]
+                ?? persistedProjectIDs(for: $0)
+        })
         return projectedProjects + persistedProjects.filter {
             !allDisplayedIDs.contains($0.id)
         }
@@ -288,37 +290,33 @@ struct ProjectsView: View {
 
     private func setDisplayedProjectIDs(
         _ projectIDs: [UUID],
-        for tier: ProjectTier
+        for priority: ProjectPriority
     ) {
-        if tier.isPriority {
-            displayedPriorityProjectIDs = projectIDs
-        } else {
-            displayedBackgroundProjectIDs = projectIDs
-        }
+        displayedProjectIDsByPriority[priority] = projectIDs
     }
 
-    private func restoreDisplayedProjectIDs(for tier: ProjectTier) {
+    private func restoreDisplayedProjectIDs(for priority: ProjectPriority) {
         setDisplayedProjectIDs(
-            tier.isPriority
-                ? persistedPriorityProjectIDs
-                : persistedBackgroundProjectIDs,
-            for: tier
+            persistedProjectIDs(for: priority),
+            for: priority
         )
     }
 
-    private func changePriority(of project: ProjectRecordSnapshot) {
-        let destinationTier: ProjectTier = project.isPriority
-            ? .background
-            : .priority
-        let sourceTier: ProjectTier = project.isPriority
-            ? .priority
-            : .background
-        let sourceProjectIDs = sourceTier.isPriority
-            ? priorityProjects.map(\.id)
-            : backgroundProjects.map(\.id)
-        var destinationProjectIDs = destinationTier.isPriority
-            ? priorityProjects.map(\.id)
-            : backgroundProjects.map(\.id)
+    private func changePriority(
+        of project: ProjectRecordSnapshot,
+        to destinationPriority: ProjectPriority
+    ) {
+        let sourcePriority = project.priority
+        guard sourcePriority.higher == destinationPriority
+                || sourcePriority.lower == destinationPriority else {
+            return
+        }
+        let sourceProjectIDs = displayedProjects(
+            for: sourcePriority
+        ).map(\.id)
+        var destinationProjectIDs = displayedProjects(
+            for: destinationPriority
+        ).map(\.id)
         guard sourceProjectIDs.contains(project.id) else {
             return
         }
@@ -328,7 +326,7 @@ struct ProjectsView: View {
         }
         destinationProjectIDs.removeAll { $0 == project.id }
         let destinationID: UUID?
-        if destinationTier.isPriority {
+        if destinationPriority > sourcePriority {
             destinationProjectIDs.append(project.id)
             destinationID = nil
         } else {
@@ -339,24 +337,24 @@ struct ProjectsView: View {
         withAnimation(.smooth) {
             setDisplayedProjectIDs(
                 remainingSourceProjectIDs,
-                for: sourceTier
+                for: sourcePriority
             )
             setDisplayedProjectIDs(
                 destinationProjectIDs,
-                for: destinationTier
+                for: destinationPriority
             )
         }
 
         do {
             try dataStore.moveProjects(
                 [project.id],
-                toPriority: destinationTier.isPriority,
+                toPriority: destinationPriority,
                 before: destinationID
             )
         } catch {
             withAnimation(.smooth) {
-                restoreDisplayedProjectIDs(for: sourceTier)
-                restoreDisplayedProjectIDs(for: destinationTier)
+                restoreDisplayedProjectIDs(for: sourcePriority)
+                restoreDisplayedProjectIDs(for: destinationPriority)
             }
             errorMessage = error.localizedDescription
         }

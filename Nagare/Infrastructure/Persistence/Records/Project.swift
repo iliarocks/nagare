@@ -9,6 +9,7 @@ final class Project: Note, SyncRecord {
     var title: String = ""
     var notes: String?
     var isPriority: Bool = false
+    var priorityRawValue: Int?
     var order: String = ""
     var createdAt: Date = Date.now
     var modifiedAt: Date?
@@ -53,6 +54,31 @@ final class Project: Note, SyncRecord {
         self.title = title
         self.notes = notes
         self.isPriority = isPriority
+        self.priorityRawValue = ProjectPriority(
+            isPriority: isPriority
+        ).rawValue
+        self.order = order
+        self.createdAt = createdAt
+        self.modifiedAt = createdAt
+        self.syncRecordID = UUID()
+        self.storedTodos = []
+        self.storedEvents = []
+        self.storedRecurrenceTemplates = []
+    }
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        notes: String? = nil,
+        priority: ProjectPriority,
+        order: String,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.title = title
+        self.notes = notes
+        self.isPriority = priority == .high
+        self.priorityRawValue = priority.rawValue
         self.order = order
         self.createdAt = createdAt
         self.modifiedAt = createdAt
@@ -68,6 +94,19 @@ final class Project: Note, SyncRecord {
                 return $0.order < $1.order
             }
             return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+}
+
+extension Project {
+    var priority: ProjectPriority {
+        get {
+            priorityRawValue.flatMap(ProjectPriority.init(rawValue:))
+                ?? ProjectPriority(isPriority: isPriority)
+        }
+        set {
+            priorityRawValue = newValue.rawValue
+            isPriority = newValue == .high
         }
     }
 }

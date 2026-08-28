@@ -1,28 +1,20 @@
 import SwiftUI
 
 struct CreateView: View {
-    private enum ItemType: String, CaseIterable, Identifiable {
-        case todo
-        case event
+    private enum PresentedEditor: String, Identifiable {
+        case schedule
+        case repeatPattern
 
         var id: Self { self }
-
-        var title: String {
-            switch self {
-            case .todo: "Todo"
-            case .event: "Event"
-            }
-        }
-
     }
 
     @Environment(\.dismiss) private var dismiss
     @NagareDataStoreEnvironment private var dataStore
 
-    @State private var itemType = ItemType.todo
     @State private var title = ""
     @State private var notes = ""
     @State private var scheduledDate = Date.now
+    @State private var includesTime = false
     @State private var startTime = Date.now
     @State private var includesEndTime = false
     @State private var endTime =
@@ -33,10 +25,9 @@ struct CreateView: View {
         ) ?? .now
     @State private var recurrence = RecurrenceFormState.disabled
     @State private var selectedProject: ProjectRecordSnapshot?
-    @State private var isShowingDetails = false
-    @State private var fieldToRestoreAfterDetails = NagareEditorField.title
+    @State private var presentedEditor: PresentedEditor?
+    @State private var fieldToRestoreAfterEditor = NagareEditorField.title
     @State private var persistedItemID: ItemID?
-    @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
     @FocusState private var focusedField: NagareEditorField?
 
@@ -64,26 +55,21 @@ struct CreateView: View {
             : notes
     }
 
-    private var eventScheduledDate: Date {
-        ScheduleDateTime.combining(scheduledDate, with: startTime)
+    private var resolvedScheduledDate: Date {
+        if includesTime {
+            return ScheduleDateTime.combining(scheduledDate, with: startTime)
+        }
+        return Calendar.autoupdatingCurrent.startOfDay(for: scheduledDate)
     }
 
-    private var eventEndDate: Date? {
-        guard includesEndTime else {
-            return nil
-        }
+    private var resolvedEndDate: Date? {
+        guard includesTime && includesEndTime else { return nil }
         return ScheduleDateTime.combining(scheduledDate, with: endTime)
     }
 
     private var isScheduleValid: Bool {
-        guard let eventEndDate else {
-            return true
-        }
-        return eventEndDate > eventScheduledDate
-    }
-
-    private var recurrenceItemType: RecurrenceItemType {
-        itemType == .todo ? .todo : .event
+        guard let resolvedEndDate else { return true }
+        return resolvedEndDate > resolvedScheduledDate
     }
 
     private var isDraftStructurallyValid: Bool {
@@ -95,271 +81,115 @@ struct CreateView: View {
             .nagareSheetDetents([.large])
             .presentationDragIndicator(.visible)
             .nagareModal(
-                isPresented: $isShowingDetails,
-                onDismiss: restoreFocusAfterDetails
-            ) {
-                details
-                    .nagareSheetDetents([.large])
-                    .presentationDragIndicator(.visible)
+                item: $presentedEditor,
+                onDismiss: restoreFocusAfterEditor
+            ) { editor in
+                presentedView(editor)
             }
             .alert(
-                "\(itemType.title) Couldn't Be Saved",
+                "Todo Couldn't Be Saved",
                 isPresented: isShowingError
             ) {
-                Button("OK", role: .cancel) {
-                    errorMessage = nil
-                }
+                Button("OK", role: .cancel) { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "An unknown error occurred.")
             }
             .task {
                 focusedField = .title
             }
-            .onChange(of: title) {
-                scheduleSave()
-            }
-            .onChange(of: notes) {
-                scheduleSave()
-            }
-            .onChange(of: itemType) {
-                let referenceDate = itemType == .todo
-                    ? scheduledDate
-                    : eventScheduledDate
+            .onChange(of: includesTime) {
+                let referenceDate = resolvedScheduledDate
                 recurrence.prepare(
-                    for: recurrenceItemType,
                     referenceDate: referenceDate
                 )
                 recurrence.rebaseReference(to: referenceDate)
-                scheduleSave()
             }
             .onChange(of: scheduledDate) {
-                if itemType == .todo {
-                    recurrence.rebaseReference(to: scheduledDate)
-                }
-                scheduleSave()
+                recurrence.rebaseReference(to: resolvedScheduledDate)
             }
-            .onChange(of: eventScheduledDate) {
-                if itemType == .event {
-                    recurrence.rebaseReference(to: eventScheduledDate)
-                }
-                scheduleSave()
-            }
-            .onChange(of: includesEndTime) {
-                scheduleSave()
-            }
-            .onChange(of: endTime) {
-                scheduleSave()
-            }
-            .onChange(of: selectedProject?.id) {
-                scheduleSave()
-            }
-            .onChange(of: recurrence) {
-                scheduleSave()
-            }
-            .onDisappear {
-                pendingSave?.cancel()
-                saveDraft()
+            .onChange(of: resolvedScheduledDate) {
+                recurrence.rebaseReference(to: resolvedScheduledDate)
             }
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        NavigationStack {
+            composerContent
+                .nagareEditorMetadataChrome(
+                    scheduleTitle: ScheduleToolbarPresentation.title(
+                        scheduledDate: resolvedScheduledDate,
+                        includesTime: includesTime,
+                        endDate: resolvedEndDate
+                    ),
+                    scheduleAccessibilityIdentifier: "Create Date",
+                    projects: projects,
+                    selectedProject: selectedProject,
+                    hasRepeat: recurrence.isEnabled,
+                    projectAccessibilityIdentifier: "Create Project",
+                    repeatAccessibilityIdentifier: "Create Repeat",
+                    submitAccessibilityIdentifier: "Create Submit",
+                    isSubmitDisabled:
+                        trimmedTitle.isEmpty || !isDraftStructurallyValid,
+                    onSchedule: { present(.schedule) },
+                    onSelectProject: { selectedProject = $0 },
+                    onRepeat: { present(.repeatPattern) },
+                    onSubmit: submit
+                )
+        }
+    }
+
+    private var composerContent: some View {
+        NagareDocumentComposerLayout {
             TextField(
-                itemType == .todo
-                    ? "What needs doing?"
-                    : "What's happening?",
+                "What needs doing?",
                 text: $title
             )
             .font(.title.weight(.semibold))
             .textFieldStyle(.plain)
             .focused($focusedField, equals: .title)
             .submitLabel(.done)
-            .onSubmit {
-                submit()
-            }
+            .onSubmit { submit() }
             .accessibilityIdentifier("Create Title")
-
+        } document: {
             NagareDocumentEditor(
                 text: $notes,
                 accessibilityIdentifier: "Create Notes",
                 focus: $focusedField
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            Button {
-                fieldToRestoreAfterDetails = focusedField ?? .title
-                focusedField = nil
-                isShowingDetails = true
-            } label: {
-                HStack(spacing: 12) {
-                    Text(detailsSummary)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("Create Details")
-            .padding(.vertical, 8)
         }
-        .nagareComposerContentPadding()
         .nagareComposerFrame(width: 620, height: 400)
     }
 
-    private var details: some View {
-        Form {
-            Section {
-                Picker("Type", selection: $itemType) {
-                    ForEach(ItemType.allCases) { type in
-                        Text(type.title)
-                            .tag(type)
-                    }
-                }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("Create Item Type")
-            }
-
-            Section {
-                if itemType == .event {
-                    ScheduleFields(
-                        date: $scheduledDate,
-                        startTime: $startTime,
-                        includesEndTime: $includesEndTime,
-                        endTime: $endTime
-                    )
-                } else {
-                    DatePicker(
-                        "Date",
-                        selection: $scheduledDate,
-                        in: Calendar.autoupdatingCurrent.startOfDay(for: .now)...,
-                        displayedComponents: .date
-                    )
-                    .nagareCompactDatePickerStyle()
-                }
-            } footer: {
-                if itemType == .event && !isScheduleValid {
-                    Text("The end time must be later than the start time.")
-                        .foregroundStyle(.red)
-                }
-            }
-
-            Section {
-                ProjectPicker(
-                    projects: projects,
-                    selectedProject: selectedProject,
-                    onSelect: { selectedProject = $0 }
-                )
-            }
-
-            RecurrenceFields(
-                state: $recurrence,
-                itemType: recurrenceItemType,
-                referenceDate: itemType == .todo
-                    ? scheduledDate
-                    : eventScheduledDate
+    @ViewBuilder
+    private func presentedView(_ editor: PresentedEditor) -> some View {
+        switch editor {
+        case .schedule:
+            DraftScheduleEditor(
+                scheduledDate: $scheduledDate,
+                includesTime: $includesTime,
+                startTime: $startTime,
+                includesEndTime: $includesEndTime,
+                endTime: $endTime
             )
+        case .repeatPattern:
+            DraftRecurrenceEditor(
+                state: $recurrence,
+                referenceDate: resolvedScheduledDate
+            )
+            .nagareSheetDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
-        .nagareDetailsForm(height: detailsHeight)
-    }
-
-    private var detailsHeight: CGFloat {
-        guard recurrence.isEnabled else {
-            return itemType == .event ? 300 : 250
-        }
-        var height: CGFloat = itemType == .event ? 370 : 360
-        if recurrence.mode == .absolute && recurrence.unit == .week {
-            height += 70
-        }
-        if recurrence.mode == .absolute && recurrence.unit == .month {
-            height += 200
-        }
-        return height
-    }
-
-    private var detailsSummary: String {
-        [scheduleSummary, projectSummary, recurrenceSummary]
-            .joined(separator: " · ")
-    }
-
-    private var scheduleSummary: String {
-        let calendar = Calendar.autoupdatingCurrent
-        let date: Date
-        let includesTime: Bool
-        switch itemType {
-        case .todo:
-            date = scheduledDate
-            includesTime = false
-        case .event:
-            date = eventScheduledDate
-            includesTime = true
-        }
-
-        let day: String
-        if calendar.isDateInToday(date) {
-            day = "Today"
-        } else if calendar.isDateInTomorrow(date) {
-            day = "Tomorrow"
-        } else {
-            day = date.formatted(date: .abbreviated, time: .omitted)
-        }
-
-        guard includesTime else {
-            return day
-        }
-        return "\(day) at \(date.formatted(date: .omitted, time: .shortened))"
-    }
-
-    private var projectSummary: String {
-        selectedProject?.title ?? "No Project"
-    }
-
-    private var recurrenceSummary: String {
-        guard recurrence.isEnabled else {
-            return "No Repeat"
-        }
-
-        let cadence = recurrence.interval == 1
-            ? "Every \(recurrence.unit.singularTitle)"
-            : "Every \(recurrence.interval) \(recurrence.unit.pluralTitle)"
-        return recurrence.mode == .relative
-            ? "\(cadence) after completion"
-            : cadence
     }
 
     private var isShowingError: Binding<Bool> {
         Binding(
             get: { errorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    errorMessage = nil
-                }
-            }
+            set: { if !$0 { errorMessage = nil } }
         )
     }
 
-    private func scheduleSave() {
-        pendingSave?.cancel()
-        pendingSave = Task {
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-            } catch {
-                return
-            }
-
-            saveDraft()
-        }
-    }
-
     private func submit() {
-        pendingSave?.cancel()
-        guard saveDraft(allowingEmptyTitle: true) else { return }
+        guard saveDraft() else { return }
         if let onDismiss {
             onDismiss()
         } else {
@@ -367,50 +197,48 @@ struct CreateView: View {
         }
     }
 
-    private func restoreFocusAfterDetails() {
-        restoreFocus(fieldToRestoreAfterDetails)
+    private func present(_ editor: PresentedEditor) {
+        fieldToRestoreAfterEditor = focusedField ?? .title
+        focusedField = nil
+        presentedEditor = editor
+    }
+
+    private func restoreFocusAfterEditor() {
+        restoreFocus(fieldToRestoreAfterEditor)
     }
 
     private func restoreFocus(_ field: NagareEditorField) {
         Task { @MainActor in
             await Task.yield()
-            guard !isShowingDetails else {
-                return
-            }
+            guard presentedEditor == nil else { return }
             focusedField = field
         }
     }
 
     @discardableResult
-    private func saveDraft(allowingEmptyTitle: Bool = false) -> Bool {
+    private func saveDraft() -> Bool {
         guard isDraftStructurallyValid,
-              allowingEmptyTitle || !trimmedTitle.isEmpty else {
+              !trimmedTitle.isEmpty else {
             return false
         }
 
         do {
-            let referenceDate = itemType == .todo
-                ? scheduledDate
-                : eventScheduledDate
+            let referenceDate = resolvedScheduledDate
             let rule = try recurrence.rule(referenceDate: referenceDate)
 
             persistedItemID = try dataStore.upsertItem(
                 ItemDraft(
-                    kind: itemType == .todo ? .todo : .event,
                     title: trimmedTitle,
                     notes: savedNotes,
-                    scheduledDate: itemType == .todo
-                        ? scheduledDate
-                        : eventScheduledDate,
-                    endDate: itemType == .event ? eventEndDate : nil,
+                    scheduledDate: resolvedScheduledDate,
+                    includesTime: includesTime,
+                    endDate: resolvedEndDate,
                     projectID: selectedProject?.id,
                     recurrenceRule: rule,
-                    eventStartTimeSeconds: itemType == .event
-                        ? wallTimeSeconds(eventScheduledDate)
+                    startTimeSeconds: includesTime
+                        ? wallTimeSeconds(resolvedScheduledDate)
                         : nil,
-                    eventEndTimeSeconds: itemType == .event
-                        ? eventEndDate.map(wallTimeSeconds)
-                        : nil
+                    endTimeSeconds: resolvedEndDate.map(wallTimeSeconds)
                 ),
                 existingID: persistedItemID
             )
@@ -430,5 +258,4 @@ struct CreateView: View {
             + (components.minute ?? 0) * 60
             + (components.second ?? 0)
     }
-
 }

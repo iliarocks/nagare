@@ -27,13 +27,14 @@ struct NagareIntentSemanticsTests {
     }
 
     @Test func todoWithoutDateDefaultsToToday() throws {
-        let result = try NagareIntentSemantics.todoDate(
+        let result = try NagareIntentSemantics.todoSchedule(
             from: nil,
             now: date(2026, 8, 3, hour: 18),
             calendar: calendar
         )
 
-        #expect(result == date(2026, 8, 3))
+        #expect(result.scheduledDate == date(2026, 8, 3))
+        #expect(!result.includesTime)
     }
 
     @Test func todoAcceptsTomorrowWithoutAddingATime() throws {
@@ -45,16 +46,17 @@ struct NagareIntentSemanticsTests {
             day: 4
         )
 
-        let result = try NagareIntentSemantics.todoDate(
+        let result = try NagareIntentSemantics.todoSchedule(
             from: components,
             now: date(2026, 8, 3, hour: 18),
             calendar: calendar
         )
 
-        #expect(result == date(2026, 8, 4))
+        #expect(result.scheduledDate == date(2026, 8, 4))
+        #expect(!result.includesTime)
     }
 
-    @Test func todoRejectsExplicitTimesAndPastDates() {
+    @Test func todoAcceptsExplicitTimesButStillRejectsPastDays() throws {
         let timed = DateComponents(
             calendar: calendar,
             timeZone: calendar.timeZone,
@@ -63,13 +65,13 @@ struct NagareIntentSemanticsTests {
             day: 4,
             hour: 15
         )
-        #expect(throws: NagareIntentError.todoCannotHaveTime) {
-            try NagareIntentSemantics.todoDate(
-                from: timed,
-                now: date(2026, 8, 3),
-                calendar: calendar
-            )
-        }
+        let result = try NagareIntentSemantics.todoSchedule(
+            from: timed,
+            now: date(2026, 8, 3),
+            calendar: calendar
+        )
+        #expect(result.scheduledDate == date(2026, 8, 4, hour: 15))
+        #expect(result.includesTime)
 
         let past = DateComponents(
             calendar: calendar,
@@ -79,7 +81,7 @@ struct NagareIntentSemanticsTests {
             day: 2
         )
         #expect(throws: NagareIntentError.pastTodoDate) {
-            try NagareIntentSemantics.todoDate(
+            try NagareIntentSemantics.todoSchedule(
                 from: past,
                 now: date(2026, 8, 3),
                 calendar: calendar
@@ -121,26 +123,28 @@ struct NagareIntentSemanticsTests {
 
         #expect(snapshot.title == "Buy cereal")
         #expect(snapshot.scheduledDate == tomorrow)
+        #expect(!snapshot.includesTime)
         #expect(snapshot.endDate == nil)
         let persisted = try fixture.repository.load()
         #expect(persisted.todos.count == 1)
+        #expect(persisted.todos.first?.includesTime == false)
         #expect(persisted.recurrenceTemplates.isEmpty)
     }
 
-    @Test func storeCreatesEventsWithOrWithoutAnEnd() throws {
+    @Test func storeCreatesTimedTodosWithOrWithoutAnEnd() throws {
         let fixture = try makeFixture()
         let store = fixture.store
         let basketball = date(2026, 8, 8, hour: 18, minute: 30)
         let hangStart = date(2026, 8, 8, hour: 16)
         let hangEnd = date(2026, 8, 8, hour: 17)
 
-        let openEnded = try store.createEvent(
+        let openEnded = try store.createTimedTodo(
             title: "Play Basketball",
             notes: nil,
             scheduledDate: basketball,
             endDate: nil
         )
-        let ranged = try store.createEvent(
+        let ranged = try store.createTimedTodo(
             title: "Bro's Hang",
             notes: nil,
             scheduledDate: hangStart,
@@ -148,12 +152,34 @@ struct NagareIntentSemanticsTests {
         )
 
         #expect(openEnded.scheduledDate == basketball)
+        #expect(openEnded.includesTime)
         #expect(openEnded.endDate == nil)
         #expect(ranged.scheduledDate == hangStart)
+        #expect(ranged.includesTime)
         #expect(ranged.endDate == hangEnd)
         let persisted = try fixture.repository.load()
-        #expect(persisted.events.count == 2)
+        #expect(persisted.todos.count == 2)
+        #expect(persisted.todos.allSatisfy { $0.includesTime })
         #expect(persisted.recurrenceTemplates.isEmpty)
+    }
+
+    @Test func reminderStoreCreatesATimedTodo() throws {
+        let fixture = try makeFixture()
+        let scheduledDate = date(2026, 8, 8, hour: 18, minute: 30)
+
+        let snapshot = try fixture.store.createTodo(
+            title: "Play Basketball",
+            notes: nil,
+            scheduledDate: scheduledDate,
+            includesTime: true,
+            calendar: calendar
+        )
+
+        #expect(snapshot.scheduledDate == scheduledDate)
+        #expect(snapshot.includesTime)
+        let persisted = try fixture.repository.load()
+        #expect(persisted.todos.first?.scheduledDate == scheduledDate)
+        #expect(persisted.todos.first?.includesTime == true)
     }
 
     private func makeFixture() throws -> Fixture {

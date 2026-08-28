@@ -110,6 +110,13 @@ struct CompletedView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                if todo.includesTime {
+                    ItemTimeLabel(
+                        startDate: todo.scheduledDate,
+                        endDate: todo.endDate
+                    )
+                }
+
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -132,7 +139,6 @@ struct CompletedView: View {
             } label: {
                 Image(systemName: "arrow.uturn.backward")
             }
-            .tint(.blue)
             .accessibilityLabel("Reinstate")
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

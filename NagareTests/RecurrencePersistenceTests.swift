@@ -35,7 +35,6 @@ struct RecurrencePersistenceTests {
             in: context
         )
 
-        #expect(template.itemType == .todo)
         #expect(template.currentItemID == todo.id)
         #expect(template.currentSequence == 0)
         #expect(template.anchors == [0, 4])
@@ -130,7 +129,7 @@ struct RecurrencePersistenceTests {
             )
         }
 
-        #expect(error?.code == "RECURRENCE-PERSIST-008")
+        #expect(error?.code == "RECURRENCE-PERSIST-004")
         #expect(try context.fetch(FetchDescriptor<Todo>()).count == 2)
         #expect(
             try context.fetch(FetchDescriptor<Todo>())
@@ -228,13 +227,8 @@ struct RecurrencePersistenceTests {
         #expect(completed.notes == "Keep these notes")
         #expect(completed.order > existing.order)
         #expect(
-            SwiftDataItem.ordered(todos: [completed, existing], events: [])
-                .compactMap { item in
-                    guard case .todo(let todo) = item else {
-                        return nil
-                    }
-                    return todo.title
-                } == ["Already Today", "Completed Early"]
+            Todo.ordered([completed, existing]).map(\.title)
+                == ["Already Today", "Completed Early"]
         )
     }
 
@@ -331,7 +325,7 @@ struct RecurrencePersistenceTests {
             )
         }
 
-        #expect(error?.code == "RECURRENCE-PERSIST-019")
+        #expect(error?.code == "RECURRENCE-PERSIST-005")
         #expect(active.completedAt == nil)
         #expect(active.scheduledDate == date(2026, 7, 1))
     }
@@ -438,11 +432,12 @@ struct RecurrencePersistenceTests {
         #expect(current.scheduledDate == date(2026, 7, 1))
     }
 
-    @Test func updatingEventTemplateChangesOnlyFutureWallTimes() throws {
+    @Test func updatingTimedTodoTemplateChangesOnlyFutureWallTimes() throws {
         let context = try makeContext()
-        let current = Event(
-            title: "Current event",
+        let current = Todo(
+            title: "Current timed todo",
             scheduledDate: date(2026, 7, 6, hour: 9),
+            includesTime: true,
             endDate: date(2026, 7, 6, hour: 10),
             order: "i"
         )
@@ -464,13 +459,13 @@ struct RecurrencePersistenceTests {
         try RecurrencePersistence.updateTemplate(
             template,
             rule: rule,
-            eventStartTimeSeconds: 13 * 3_600 + 30 * 60,
-            eventEndTimeSeconds: 15 * 3_600,
+            startTimeSeconds: 48_600,
+            endTimeSeconds: 54_000,
             in: context
         )
 
-        #expect(template.startTimeSeconds == 13 * 3_600 + 30 * 60)
-        #expect(template.endTimeSeconds == 15 * 3_600)
+        #expect(template.startTimeSeconds == 48_600)
+        #expect(template.endTimeSeconds == 54_000)
         #expect(current.scheduledDate == date(2026, 7, 6, hour: 9))
         #expect(current.endDate == date(2026, 7, 6, hour: 10))
     }
@@ -506,12 +501,13 @@ struct RecurrencePersistenceTests {
         #expect(next.scheduledDate == date(2026, 1, 19))
     }
 
-    @Test func createsAbsoluteEventTemplateWithSameDayWallTimes() throws {
+    @Test func createsAbsoluteTimedTodoTemplateWithSameDayWallTimes() throws {
         let context = try makeContext()
-        let event = Event(
+        let event = Todo(
             title: "Weekly call",
             notes: "Status update",
             scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
+            includesTime: true,
             endDate: date(2026, 7, 1, hour: 10, minute: 45),
             order: "i"
         )
@@ -531,18 +527,18 @@ struct RecurrencePersistenceTests {
             calendar: calendar
         )
 
-        #expect(template.itemType == .event)
-        #expect(template.startTimeSeconds == 9 * 3_600 + 30 * 60)
-        #expect(template.endTimeSeconds == 10 * 3_600 + 45 * 60)
-        #expect(template.eventOccurrences.map(\.id) == [event.id])
+        #expect(template.startTimeSeconds == 34_200)
+        #expect(template.endTimeSeconds == 38_700)
+        #expect(template.todoOccurrences.map(\.id) == [event.id])
         #expect(event.recurrenceTemplate?.id == template.id)
     }
 
-    @Test func deletingRecurringEventCreatesNextWithSameWallTimes() throws {
+    @Test func deletingRecurringTimedTodoCreatesNextWithSameWallTimes() throws {
         let context = try makeContext()
-        let event = Event(
+        let event = Todo(
             title: "Weekly call",
             scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
+            includesTime: true,
             endDate: date(2026, 7, 1, hour: 10, minute: 45),
             order: "i"
         )
@@ -573,9 +569,9 @@ struct RecurrencePersistenceTests {
         #expect(next.endDate == date(2026, 7, 8, hour: 10, minute: 45))
         #expect(next.recurrenceSequence == 1)
         #expect(template.currentItemID == next.id)
-        #expect(template.eventOccurrences.map(\.id) == [next.id])
-        let events = try context.fetch(FetchDescriptor<Event>())
-        #expect(!events.contains { $0.id == eventID })
+        #expect(template.todoOccurrences.map(\.id) == [next.id])
+        let todos = try context.fetch(FetchDescriptor<Todo>())
+        #expect(!todos.contains { $0.id == eventID })
     }
 
     @Test func deletingMixedSelectionAdvancesEveryRecurrenceInOneTransaction() throws {
@@ -591,9 +587,10 @@ struct RecurrencePersistenceTests {
             rule: try .relative(every: 1, unit: .day),
             in: context
         )
-        let event = Event(
+        let event = Todo(
             title: "Weekly call",
             scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
+            includesTime: true,
             endDate: date(2026, 7, 1, hour: 10, minute: 15),
             order: "j"
         )
@@ -612,20 +609,22 @@ struct RecurrencePersistenceTests {
             calendar: calendar
         )
 
-        try RecurrencePersistence.delete(
-            todos: [todo],
-            events: [event],
+        _ = try RecurrencePersistence.delete(
+            [todo, event],
             at: date(2026, 7, 1, hour: 12),
             in: context,
             calendar: calendar
         )
 
         let todos = try context.fetch(FetchDescriptor<Todo>())
-        let events = try context.fetch(FetchDescriptor<Event>())
-        let nextTodo = try #require(todos.first)
-        let nextEvent = try #require(events.first)
+        let nextTodo = try #require(todos.first {
+            $0.recurrenceTemplate?.id == todoTemplate.id
+        })
+        let nextEvent = try #require(todos.first {
+            $0.recurrenceTemplate?.id == eventTemplate.id
+        })
         #expect(!todos.contains { $0.id == todoID })
-        #expect(!events.contains { $0.id == eventID })
+        #expect(!todos.contains { $0.id == eventID })
         #expect(nextTodo.scheduledDate == date(2026, 7, 2))
         #expect(nextEvent.scheduledDate == date(2026, 7, 8, hour: 9, minute: 30))
         #expect(todoTemplate.currentItemID == nextTodo.id)
@@ -634,22 +633,17 @@ struct RecurrencePersistenceTests {
         #expect(eventTemplate.currentSequence == 1)
     }
 
-    @Test func advancingPastRecurringEventCatchesUpInOneTransition() throws {
+    @Test func relativeTimedTodoRecurrenceIsSupported() throws {
         let context = try makeContext()
-        let event = Event(
-            title: "Daily standup",
-            scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
-            endDate: date(2026, 7, 1, hour: 9, minute: 45),
+        let event = Todo(
+            title: "Timed Todo",
+            scheduledDate: date(2026, 7, 1, hour: 9),
+            includesTime: true,
             order: "i"
         )
         context.insert(event)
-        let rule = try RecurrenceRule.absolute(
-            every: 1,
-            unit: .day,
-            anchors: [],
-            reference: event.scheduledDate,
-            calendar: calendar
-        )
+        let rule = try RecurrenceRule.relative(every: 1, unit: .week)
+
         let template = try RecurrencePersistence.createTemplate(
             for: event,
             rule: rule,
@@ -657,178 +651,16 @@ struct RecurrencePersistenceTests {
             calendar: calendar
         )
 
-        let current = try RecurrencePersistence.advance(
-            event,
-            through: date(2026, 7, 5),
-            at: date(2026, 7, 5, hour: 8),
-            in: context,
-            calendar: calendar
-        )
-
-        #expect(current.scheduledDate == date(2026, 7, 5, hour: 9, minute: 30))
-        #expect(current.endDate == date(2026, 7, 5, hour: 9, minute: 45))
-        #expect(current.recurrenceSequence == 4)
-        #expect(template.currentItemID == current.id)
-        #expect(template.currentSequence == 4)
-        #expect(template.eventOccurrences.map(\.id) == [current.id])
-        #expect(try context.fetch(FetchDescriptor<Event>()).map(\.id) == [current.id])
+        #expect(event.recurrenceTemplate === template)
+        #expect(template.modeRawValue == RecurrenceMode.relative.rawValue)
     }
 
-    @Test func advancingNonRepeatingEventFailsLoudly() throws {
+    @Test func rejectsTimedTodoThatCrossesDateBoundary() throws {
         let context = try makeContext()
-        let event = Event(
-            title: "One time",
-            scheduledDate: date(2026, 7, 1, hour: 9),
-            order: "i"
-        )
-        context.insert(event)
-        try context.save()
-
-        let error = capturePersistenceError {
-            _ = try RecurrencePersistence.advance(
-                event,
-                through: date(2026, 7, 5),
-                in: context,
-                calendar: calendar
-            )
-        }
-
-        #expect(error?.code == "RECURRENCE-PERSIST-017")
-        #expect(try context.fetch(FetchDescriptor<Event>()).map(\.id) == [event.id])
-    }
-
-    @Test func eventMaintenanceDeletesOneTimeEventsAndAdvancesRepeatingEvents() throws {
-        let context = try makeContext()
-        let oneTime = Event(
-            title: "Old appointment",
-            scheduledDate: date(2026, 7, 1, hour: 11),
-            order: "a"
-        )
-        let repeating = Event(
-            title: "Weekly call",
-            scheduledDate: date(2026, 7, 1, hour: 9),
-            endDate: date(2026, 7, 1, hour: 10),
-            order: "i"
-        )
-        context.insert(oneTime)
-        context.insert(repeating)
-        let rule = try RecurrenceRule.absolute(
-            every: 1,
-            unit: .week,
-            anchors: [2],
-            reference: repeating.scheduledDate,
-            calendar: calendar
-        )
-        let template = try RecurrencePersistence.createTemplate(
-            for: repeating,
-            rule: rule,
-            in: context,
-            calendar: calendar
-        )
-
-        try EventMaintenance.deletePastEvents(
-            in: context,
-            calendar: calendar,
-            now: date(2026, 7, 23, hour: 8)
-        )
-
-        let events = try context.fetch(FetchDescriptor<Event>())
-        let current = try #require(events.first)
-        #expect(events.count == 1)
-        #expect(current.title == "Weekly call")
-        #expect(current.scheduledDate == date(2026, 7, 29, hour: 9))
-        #expect(current.endDate == date(2026, 7, 29, hour: 10))
-        #expect(current.recurrenceSequence == 4)
-        #expect(template.currentItemID == current.id)
-    }
-
-    @Test func eventMaintenanceRollsBackTheWholeBatchWhenRecurrenceIsCorrupt() throws {
-        let context = try makeContext()
-        let oneTime = Event(
-            title: "Old appointment",
-            scheduledDate: date(2026, 7, 1, hour: 11),
-            order: "a"
-        )
-        let repeating = Event(
-            title: "Weekly call",
-            scheduledDate: date(2026, 7, 1, hour: 9),
-            order: "i"
-        )
-        context.insert(oneTime)
-        context.insert(repeating)
-        let rule = try RecurrenceRule.absolute(
-            every: 1,
-            unit: .week,
-            anchors: [2],
-            reference: repeating.scheduledDate,
-            calendar: calendar
-        )
-        let template = try RecurrencePersistence.createTemplate(
-            for: repeating,
-            rule: rule,
-            in: context,
-            calendar: calendar
-        )
-        let unexpectedCurrent = Event(
-            title: "Corrupt second current",
-            scheduledDate: date(2026, 7, 8, hour: 9),
-            order: "z"
-        )
-        context.insert(unexpectedCurrent)
-        unexpectedCurrent.recurrenceSequence = template.currentSequence
-        unexpectedCurrent.recurrenceTemplate = template
-        try context.save()
-
-        let error = capturePersistenceError {
-            try EventMaintenance.deletePastEvents(
-                in: context,
-                calendar: calendar,
-                now: date(2026, 7, 23, hour: 8)
-            )
-        }
-
-        #expect(error != nil)
-        let events = try context.fetch(FetchDescriptor<Event>())
-        #expect(Set(events.map(\.id)) == [
-            oneTime.id,
-            repeating.id,
-            unexpectedCurrent.id
-        ])
-        #expect(template.currentItemID == repeating.id)
-        #expect(template.currentSequence == 0)
-    }
-
-    @Test func rejectsRelativeEventRecurrence() throws {
-        let context = try makeContext()
-        let event = Event(
-            title: "Event",
-            scheduledDate: date(2026, 7, 1, hour: 9),
-            order: "i"
-        )
-        context.insert(event)
-        let rule = try RecurrenceRule.relative(every: 1, unit: .week)
-
-        let error = capturePersistenceError {
-            _ = try RecurrencePersistence.createTemplate(
-                for: event,
-                rule: rule,
-                in: context,
-                calendar: calendar
-            )
-        }
-
-        #expect(error?.code == "RECURRENCE-PERSIST-002")
-        #expect(event.recurrenceTemplate == nil)
-        #expect(
-            try context.fetch(FetchDescriptor<RecurrenceTemplate>()).isEmpty
-        )
-    }
-
-    @Test func rejectsEventThatCrossesDateBoundary() throws {
-        let context = try makeContext()
-        let event = Event(
+        let event = Todo(
             title: "Overnight",
             scheduledDate: date(2026, 7, 1, hour: 23),
+            includesTime: true,
             endDate: date(2026, 7, 2, hour: 1),
             order: "i"
         )
@@ -850,15 +682,16 @@ struct RecurrencePersistenceTests {
             )
         }
 
-        #expect(error?.code == "RECURRENCE-PERSIST-003")
+        #expect(error?.code == "RECURRENCE-PERSIST-013")
         #expect(event.recurrenceTemplate == nil)
     }
 
-    @Test func rejectsEventThatEndsBeforeItStarts() throws {
+    @Test func rejectsTimedTodoThatEndsBeforeItStarts() throws {
         let context = try makeContext()
-        let event = Event(
+        let event = Todo(
             title: "Backwards",
             scheduledDate: date(2026, 7, 1, hour: 10),
+            includesTime: true,
             endDate: date(2026, 7, 1, hour: 9),
             order: "i"
         )
@@ -880,7 +713,7 @@ struct RecurrencePersistenceTests {
             )
         }
 
-        #expect(error?.code == "RECURRENCE-PERSIST-004")
+        #expect(error?.code == "RECURRENCE-PERSIST-014")
         #expect(event.recurrenceTemplate == nil)
     }
 
@@ -914,7 +747,7 @@ struct RecurrencePersistenceTests {
             )
         }
 
-        #expect(error?.code == "RECURRENCE-PERSIST-009")
+        #expect(error?.code == "RECURRENCE-PERSIST-006")
         #expect(try context.fetch(FetchDescriptor<Todo>()).count == 2)
         #expect(current.completedAt == nil)
     }

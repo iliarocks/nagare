@@ -4,7 +4,6 @@ struct ProjectRepeatRow: View {
     let template: RecurrenceTemplateRecordSnapshot
     let onOpen: () -> Void
     let onChangeRepeat: () -> Void
-    let onMoveProject: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -35,25 +34,14 @@ struct ProjectRepeatRow: View {
             Button(action: onChangeRepeat) {
                 Image(systemName: "repeat")
             }
-            .tint(.blue)
             .accessibilityLabel("Change Repeat")
 
-            Button(action: onMoveProject) {
-                Image(systemName: "folder")
-            }
-            .tint(.indigo)
-            .accessibilityLabel("Move Project")
         }
         .accessibilityAction(named: "Change Repeat", onChangeRepeat)
-        .accessibilityAction(named: "Move Project", onMoveProject)
         .accessibilityAction(named: "Stop Repeat", onDelete)
         .nagareDesktopContextMenu {
             Button(action: onChangeRepeat) {
                 Label("Change Repeat", systemImage: "repeat")
-            }
-
-            Button(action: onMoveProject) {
-                Label("Move Project", systemImage: "folder")
             }
 
             Divider()

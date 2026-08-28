@@ -36,17 +36,18 @@ struct CreateNagareTodoIntent {
         }
 
         let title = try NagareIntentSemantics.title(from: title)
-        let scheduledDate = try NagareIntentSemantics.todoDate(from: dueDate)
+        let schedule = try NagareIntentSemantics.todoSchedule(from: dueDate)
         let snapshot = try store.createTodo(
             title: title,
             notes: NagareIntentSemantics.notes(from: note),
-            scheduledDate: scheduledDate
+            scheduledDate: schedule.scheduledDate,
+            includesTime: schedule.includesTime
         )
         let entity = NagareTodoEntity(snapshot: snapshot)
 
         return .result(
             value: entity,
-            dialog: "Added \(title) to Nagare for \(scheduledDate.formatted(date: .abbreviated, time: .omitted))."
+            dialog: "Added \(title) to Nagare for \(schedule.scheduledDate.formatted(date: .abbreviated, time: schedule.includesTime ? .shortened : .omitted))."
         )
     }
 }
@@ -85,7 +86,7 @@ struct CreateNagareEventIntent {
         )
 
         let title = try NagareIntentSemantics.title(from: title)
-        let snapshot = try store.createEvent(
+        let snapshot = try store.createTimedTodo(
             title: title,
             notes: NagareIntentSemantics.notes(from: note),
             scheduledDate: startDate,

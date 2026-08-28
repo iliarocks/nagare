@@ -9,7 +9,6 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
     private var projects: [SyncRecordReference: Project] = [:]
     private var templates: [SyncRecordReference: RecurrenceTemplate] = [:]
     private var todos: [SyncRecordReference: Todo] = [:]
-    private var events: [SyncRecordReference: Event] = [:]
 
     init(context: ModelContext) {
         self.context = context
@@ -22,12 +21,10 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
                 FetchDescriptor<RecurrenceTemplate>()
             )
             let todoRecords = try context.fetch(FetchDescriptor<Todo>())
-            let eventRecords = try context.fetch(FetchDescriptor<Event>())
 
             projects = index(projectRecords, kind: .project)
             templates = index(templateRecords, kind: .recurrenceTemplate)
             todos = index(todoRecords, kind: .todo)
-            events = index(eventRecords, kind: .event)
 
             return SyncGraphSnapshot(
                 projects: projectRecords.map(
@@ -36,8 +33,7 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
                 recurrenceTemplates: templateRecords.map(
                     SwiftDataSyncSnapshotMapper.recurrenceTemplate
                 ),
-                todos: todoRecords.map(SwiftDataSyncSnapshotMapper.todo),
-                events: eventRecords.map(SwiftDataSyncSnapshotMapper.event)
+                todos: todoRecords.map(SwiftDataSyncSnapshotMapper.todo)
             )
         } catch {
             throw SyncReconciliationPersistenceError.loadFailed(
@@ -60,9 +56,12 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
         }
     }
 
-    func save(at transactionDate: Date) throws {
+    func savePreservingMetadata() throws {
         do {
-            try SwiftDataTransaction.save(context, at: transactionDate)
+            // Reconciliation restores replicated structure; it is not a user
+            // edit. Preserve each record's revision so assigning a physical ID
+            // or repairing a relationship cannot win a later content conflict.
+            try SwiftDataTransaction.savePreservingMetadata(context)
         } catch {
             throw SyncReconciliationPersistenceError.saveFailed(
                 error.localizedDescription
@@ -89,14 +88,6 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
                 templateReference
             )
             todo.recurrenceTemplate = template
-
-        case .attachEvent(let eventReference, let templateReference):
-            let event = try require(events[eventReference], eventReference)
-            let template = try require(
-                templates[templateReference],
-                templateReference
-            )
-            event.recurrenceTemplate = template
 
         case .completeTodo(let reference, let completedAt):
             try require(todos[reference], reference).completedAt = completedAt
@@ -132,9 +123,6 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
             for todo in todos.values where todo.project === old {
                 todo.project = survivor
             }
-            for event in events.values where event.project === old {
-                event.project = survivor
-            }
             for template in templates.values where template.project === old {
                 template.project = survivor
             }
@@ -146,16 +134,11 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
             for todo in todos.values where todo.recurrenceTemplate === old {
                 todo.recurrenceTemplate = survivor
             }
-            for event in events.values where event.recurrenceTemplate === old {
-                event.recurrenceTemplate = survivor
-            }
             context.delete(old)
 
         case .todo:
             context.delete(try require(todos[duplicate], duplicate))
 
-        case .event:
-            context.delete(try require(events[duplicate], duplicate))
         }
     }
 
@@ -167,8 +150,6 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
             context.delete(try require(templates[reference], reference))
         case .todo:
             context.delete(try require(todos[reference], reference))
-        case .event:
-            context.delete(try require(events[reference], reference))
         }
     }
 
@@ -182,8 +163,6 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
             try require(templates[reference], reference)
         case .todo:
             try require(todos[reference], reference)
-        case .event:
-            try require(events[reference], reference)
         }
     }
 

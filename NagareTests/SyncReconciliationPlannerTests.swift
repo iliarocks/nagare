@@ -173,39 +173,6 @@ struct SyncReconciliationPlannerTests {
         ])
     }
 
-    @Test func higherEventSequenceAdvancesStaleTemplateDeterministically() {
-        let template = eventTemplate(
-            currentItemID: currentID,
-            currentSequence: 0
-        )
-        let old = event(
-            id: currentID,
-            localID: "old",
-            sequence: 0,
-            templateID: templateID
-        )
-        let new = event(
-            id: laterID,
-            localID: "new",
-            sequence: 1,
-            templateID: templateID
-        )
-
-        let plan = SyncReconciliationPlanner.plan(
-            for: graph(templates: [template], events: [old, new])
-        )
-
-        #expect(plan.pendingTemplates.isEmpty)
-        #expect(plan.mutations == [
-            .delete(record: old.metadata.reference),
-            .updateTemplate(
-                record: template.metadata.reference,
-                currentItemID: laterID,
-                currentSequence: 1
-            )
-        ])
-    }
-
     @Test func inputPermutationDoesNotChangeThePlan() {
         let template = todoTemplate(
             currentItemID: currentID,
@@ -247,14 +214,12 @@ struct SyncReconciliationPlannerTests {
 
     private func graph(
         templates: [SyncRecurrenceTemplateSnapshot] = [],
-        todos: [SyncTodoSnapshot] = [],
-        events: [SyncEventSnapshot] = []
+        todos: [SyncTodoSnapshot] = []
     ) -> SyncGraphSnapshot {
         SyncGraphSnapshot(
             projects: [],
             recurrenceTemplates: templates,
-            todos: todos,
-            events: events
+            todos: todos
         )
     }
 
@@ -263,25 +228,12 @@ struct SyncReconciliationPlannerTests {
         currentSequence: Int
     ) -> SyncRecurrenceTemplateSnapshot {
         template(
-            itemType: "todo",
-            currentItemID: currentItemID,
-            currentSequence: currentSequence
-        )
-    }
-
-    private func eventTemplate(
-        currentItemID: UUID,
-        currentSequence: Int
-    ) -> SyncRecurrenceTemplateSnapshot {
-        template(
-            itemType: "event",
             currentItemID: currentItemID,
             currentSequence: currentSequence
         )
     }
 
     private func template(
-        itemType: String,
         currentItemID: UUID,
         currentSequence: Int
     ) -> SyncRecurrenceTemplateSnapshot {
@@ -291,7 +243,6 @@ struct SyncReconciliationPlannerTests {
                 localID: "template",
                 semanticID: templateID
             ),
-            itemTypeRawValue: itemType,
             currentItemID: currentItemID,
             currentSequence: currentSequence,
             projectID: nil
@@ -314,26 +265,6 @@ struct SyncReconciliationPlannerTests {
                 physicalID: physicalID ?? id
             ),
             completedAt: completedAt,
-            recurrenceSequence: sequence,
-            recurrenceTemplateID: templateID,
-            projectID: nil
-        )
-    }
-
-    private func event(
-        id: UUID,
-        localID: String,
-        physicalID: UUID? = nil,
-        sequence: Int? = nil,
-        templateID: UUID? = nil
-    ) -> SyncEventSnapshot {
-        SyncEventSnapshot(
-            metadata: metadata(
-                kind: .event,
-                localID: localID,
-                semanticID: id,
-                physicalID: physicalID
-            ),
             recurrenceSequence: sequence,
             recurrenceTemplateID: templateID,
             projectID: nil
@@ -425,8 +356,7 @@ private final class FailingSyncPersistence: SyncReconciliationPersistence {
                     recurrenceTemplateID: nil,
                     projectID: nil
                 )
-            ],
-            events: []
+            ]
         )
     }
 
@@ -439,7 +369,7 @@ private final class FailingSyncPersistence: SyncReconciliationPersistence {
         }
     }
 
-    func save(at transactionDate: Date) throws {
+    func savePreservingMetadata() throws {
         didSave = true
         if failure == .save {
             throw SyncReconciliationPersistenceError.saveFailed(

@@ -29,10 +29,11 @@ iCloud sync is off by default. The Settings screen is the single home for
 Completed history, the sync preference, and future privacy/import/export
 features. Enabling or disabling sync rebuilds the app's data session around
 the same local store, so the change takes effect immediately without a manual
-relaunch. During that handoff the outgoing container remains alive until the
-replacement opens successfully; a failed handoff leaves the active session
-and preference unchanged. Disabling sync preserves the local database and
-stops future replication on that device, but does not claim to delete the
+relaunch. During that handoff Nagare releases the outgoing history monitor,
+App Intent store, CloudKit event monitor, and model container before opening
+the replacement. A failed handoff reopens the prior configuration and leaves
+the saved preference unchanged. Disabling sync preserves the local database
+and stops future replication on that device, but does not claim to delete the
 user's existing private CloudKit copy.
 
 ## Schema evolution
@@ -63,13 +64,16 @@ and rolls the context back on failure. The import linter rejects new direct
 `ModelContext.save()` calls elsewhere.
 
 CloudKit imports are eventually consistent and may briefly expose only one
-side of a relationship. `SyncIntegrityMonitor` debounces persistent-history
-events before asking `SyncIntegrityRepair` to restore semantic invariants.
-The repair also runs at launch and whenever the app becomes active.
+side of a relationship. Persistent-history events publish a fresh immutable
+snapshot immediately. A successful CloudKit import event separately asks
+`SyncIntegrityMonitor` to debounce `SyncIntegrityRepair`, so ordinary local
+edits do not trigger a complete reconciliation scan. Repair also runs at
+launch and after later foreground activations.
 
-SwiftUI reads one immutable `NagareDataSnapshot`. A history event first runs
-semantic reconciliation through a fresh short-lived context, then a separate
-fresh read context reconstructs and publishes the complete value graph.
+SwiftUI reads one immutable `NagareDataSnapshot`. A history event uses a fresh
+read context to reconstruct and publish the complete value graph. Import-driven
+semantic reconciliation follows through another fresh short-lived context and
+publishes again only when the repair actually changed persisted data.
 SwiftData records never cross the repository boundary. This is intentional:
 independently coordinated updates can leave objects registered in a long-lived
 context stale even while inserts appear. An integration test opens the same
@@ -82,9 +86,6 @@ Conflict rules are deterministic:
 - Duplicate semantic UUIDs keep the greatest `modifiedAt`, falling back to
   `createdAt` and then the replicated `syncRecordID`. Project and recurrence
   relationships are moved to the canonical record before deletion.
-- Duplicate nonrepeating calendar imports with the same calendar UID use the
-  same canonical ordering. This covers two devices importing one invite while
-  both are offline without inventing a parallel calendar schema.
 - Competing todo successors keep the occurrence named by the template when it
   is available; otherwise they use the same deterministic record ordering.
   Earlier occurrences remain as completed history.
@@ -115,12 +116,13 @@ Nagare Dev build therefore opens deterministic sample data without attaching
 to CloudKit unless development sync is explicitly enabled.
 
 The app remains usable offline or while account status cannot be determined.
-Settings explains whether data is local-only or expected to replicate to the
-user's other devices; low-level iCloud account state is intentionally not
-presented as user-facing status.
+Settings keeps sync as a simple on/off preference; transport details remain
+internal because there is no user action that can reliably accelerate or
+repair CloudKit transport.
 Framework import/export failures are retried by the persistent CloudKit stack;
-semantic repair failures are nonfatal and retry on the next history event,
-foreground activation, or launch.
+history observation, partial imports, and semantic repair failures are nonfatal
+and retry indefinitely with a capped delay. Foreground activation resets those
+retries immediately.
 
 ### Resolved development finding: `VIRTUAL-001`
 

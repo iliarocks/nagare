@@ -3,18 +3,15 @@ import SwiftUI
 struct RecurrenceFields: View {
     @Binding var state: RecurrenceFormState
 
-    let itemType: RecurrenceItemType
     let referenceDate: Date
     let showsToggle: Bool
 
     init(
         state: Binding<RecurrenceFormState>,
-        itemType: RecurrenceItemType,
         referenceDate: Date,
         showsToggle: Bool = true
     ) {
         _state = state
-        self.itemType = itemType
         self.referenceDate = referenceDate
         self.showsToggle = showsToggle
     }
@@ -29,7 +26,6 @@ struct RecurrenceFields: View {
                         set: { enabled in
                             state.setEnabled(
                                 enabled,
-                                for: itemType,
                                 referenceDate: referenceDate
                             )
                         }
@@ -38,23 +34,20 @@ struct RecurrenceFields: View {
             }
 
             if state.isEnabled {
-                if itemType == .todo {
-                    Picker(
-                        "Timing",
-                        selection: Binding(
-                            get: { state.mode },
-                            set: { mode in
-                                state.selectMode(
-                                    mode,
-                                    for: itemType,
-                                    referenceDate: referenceDate
-                                )
-                            }
-                        )
-                    ) {
-                        ForEach(RecurrenceMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                Picker(
+                    "Timing",
+                    selection: Binding(
+                        get: { state.mode },
+                        set: { mode in
+                            state.selectMode(
+                                mode,
+                                referenceDate: referenceDate
+                            )
                         }
+                    )
+                ) {
+                    ForEach(RecurrenceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
                 }
 

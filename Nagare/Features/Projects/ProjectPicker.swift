@@ -1,46 +1,34 @@
 import Foundation
 import SwiftUI
 
-struct ProjectPicker: View {
+/// Native project-selection actions for an enclosing menu.
+struct ProjectMenuActions: View {
     let projects: [ProjectRecordSnapshot]
     let selectedProject: ProjectRecordSnapshot?
     let onSelect: (ProjectRecordSnapshot?) -> Void
 
-    private var priorityProjects: [ProjectRecordSnapshot] {
-        ordered(projects.filter(\.isPriority))
-    }
-
-    private var backgroundProjects: [ProjectRecordSnapshot] {
-        ordered(projects.filter { !$0.isPriority })
-    }
-
     var body: some View {
-        Picker("Project", selection: selectedProjectID) {
-            Text("No Project")
-                .tag(nil as UUID?)
+        Picker("Project", selection: selection) {
+            Text("No project")
+                .tag(Optional<UUID>.none)
 
-            ForEach(priorityProjects) { project in
-                Text(project.title)
-                    .tag(Optional(project.id))
-            }
-
-            ForEach(backgroundProjects) { project in
-                Text(project.title)
-                    .tag(Optional(project.id))
+            ForEach(ProjectPriority.displayOrder, id: \.self) { priority in
+                ForEach(ordered(projects.filter { $0.priority == priority })) {
+                    project in
+                    Text(project.title)
+                        .tag(Optional(project.id))
+                }
             }
         }
-        .pickerStyle(.menu)
-        .accessibilityIdentifier("Project Picker")
+        .pickerStyle(.inline)
+        .labelsHidden()
     }
 
-    private var selectedProjectID: Binding<UUID?> {
+    private var selection: Binding<UUID?> {
         Binding(
             get: { selectedProject?.id },
-            set: { projectID in
-                let project = projectID.flatMap { id in
-                    projects.first { $0.id == id }
-                }
-                onSelect(project)
+            set: { id in
+                onSelect(projects.first { $0.id == id })
             }
         )
     }

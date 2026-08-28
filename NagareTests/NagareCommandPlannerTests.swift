@@ -15,7 +15,7 @@ struct NagareCommandPlannerTests {
         let existing = todo(id: id, order: "g")
         let plan = try NagareCommandPlanner.upsertItem(
             itemDraft(title: "Edited", scheduledDate: day),
-            existingID: .todo(id),
+            existingID: id,
             in: snapshot(todos: [existing]),
             calendar: calendar
         )
@@ -37,7 +37,7 @@ struct NagareCommandPlannerTests {
 
         let plan = try NagareCommandPlanner.upsertItem(
             itemDraft(title: "Moved", scheduledDate: nextDay),
-            existingID: .todo(existingID),
+            existingID: existingID,
             in: snapshot(todos: [existing, other]),
             calendar: calendar
         )
@@ -127,7 +127,7 @@ struct NagareCommandPlannerTests {
         #expect(throws: NagareCommandPlanner.PlanningError.missingItem) {
             try NagareCommandPlanner.upsertItem(
                 itemDraft(title: "Missing", scheduledDate: day),
-                existingID: .todo(UUID()),
+                existingID: UUID(),
                 in: .empty,
                 calendar: calendar
             )
@@ -158,17 +158,17 @@ struct NagareCommandPlannerTests {
         )
 
         let plan = try NagareCommandPlanner.assign(
-            .item(.todo(movingID)),
+            .item(movingID),
             to: projectID,
             in: graph
         )
 
-        #expect(plan.itemID == .todo(movingID))
+        #expect(plan.itemID == movingID)
         #expect(plan.projectID == projectID)
         #expect(plan.projectOrder.map(FractionalIndex.isValid) == true)
         #expect(plan.projectOrderRepairs.count == 1)
         #expect(
-            plan.projectOrderRepairs.first?.id == .todo(destinationID)
+            plan.projectOrderRepairs.first?.id == destinationID
         )
     }
 
@@ -200,15 +200,15 @@ struct NagareCommandPlannerTests {
         )
 
         let plan = try NagareCommandPlanner.assign(
-            [.item(.todo(firstID)), .item(.todo(secondID))],
+            [.item(firstID), .item(secondID)],
             to: projectID,
             in: graph
         )
 
         #expect(plan.projectID == projectID)
         #expect(plan.entries.map(\.itemID) == [
-            .todo(firstID),
-            .todo(secondID)
+            firstID,
+            secondID
         ])
         #expect(plan.projectOrderChanges.count == 3)
         let orders = plan.projectOrderChanges.map(\.projectOrder)
@@ -260,7 +260,7 @@ struct NagareCommandPlannerTests {
         #expect(plan.orderRepairs.count == 2)
         #expect(plan.projectOrder.map(FractionalIndex.isValid) == true)
         #expect(plan.projectOrderRepairs.count == 1)
-        #expect(plan.projectOrderRepairs.first?.id == .todo(activeID))
+        #expect(plan.projectOrderRepairs.first?.id == activeID)
     }
 
     @Test func transientDuplicateIdentityHasOneDeterministicReadValue() {
@@ -289,18 +289,16 @@ struct NagareCommandPlannerTests {
 
         #expect(graph.todosByID[id]?.title == "Newer")
         #expect(graph.canonicalTodos.map(\.title) == ["Newer"])
-        #expect(graph.itemsByID[.todo(id)]?.title == "Newer")
+        #expect(graph.itemsByID[id]?.title == "Newer")
     }
 
     private func snapshot(
         projects: [ProjectRecordSnapshot] = [],
-        todos: [TodoRecordSnapshot] = [],
-        events: [EventRecordSnapshot] = []
+        todos: [TodoRecordSnapshot] = []
     ) -> NagareDataSnapshot {
         NagareDataSnapshot(
             projects: projects,
             todos: todos,
-            events: events,
             recurrenceTemplates: []
         )
     }
@@ -311,15 +309,15 @@ struct NagareCommandPlannerTests {
         projectID: UUID? = nil
     ) -> ItemDraft {
         ItemDraft(
-            kind: .todo,
             title: title,
             notes: nil,
             scheduledDate: scheduledDate,
+            includesTime: false,
             endDate: nil,
             projectID: projectID,
             recurrenceRule: nil,
-            eventStartTimeSeconds: nil,
-            eventEndTimeSeconds: nil
+            startTimeSeconds: nil,
+            endTimeSeconds: nil
         )
     }
 
@@ -341,6 +339,9 @@ struct NagareCommandPlannerTests {
             title: title,
             notes: nil,
             scheduledDate: day,
+            includesTime: false,
+            endDate: nil,
+            calendarIdentifier: nil,
             completedAt: completedAt,
             order: order,
             projectOrder: projectOrder,

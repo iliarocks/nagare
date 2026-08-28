@@ -20,9 +20,9 @@ struct ItemOrderingTests {
         try context.save()
 
         let outcome = try ItemOrdering.move(
-            [.todo(third.id)],
+            [third.id],
             to: day,
-            before: .todo(first.id),
+            before: first.id,
             in: context,
             calendar: calendar
         )
@@ -46,7 +46,7 @@ struct ItemOrderingTests {
         try context.save()
 
         try ItemOrdering.move(
-            [.todo(first.id)],
+            [first.id],
             to: day,
             before: nil,
             in: context,
@@ -66,9 +66,9 @@ struct ItemOrderingTests {
         try context.save()
 
         try ItemOrdering.move(
-            [.todo(third.id), .todo(first.id)],
+            [third.id, first.id],
             to: day,
-            before: .todo(second.id),
+            before: second.id,
             in: context,
             calendar: calendar
         )
@@ -88,9 +88,9 @@ struct ItemOrderingTests {
         try context.save()
 
         try ItemOrdering.move(
-            [.todo(third.id)],
+            [third.id],
             to: day,
-            before: .todo(second.id),
+            before: second.id,
             in: context,
             calendar: calendar
         )
@@ -112,9 +112,9 @@ struct ItemOrderingTests {
         try context.save()
 
         try ItemOrdering.move(
-            [.todo(moving.id)],
+            [moving.id],
             to: firstDay,
-            before: .todo(second.id),
+            before: second.id,
             in: context,
             calendar: calendar
         )
@@ -123,7 +123,7 @@ struct ItemOrderingTests {
         #expect(calendar.isDate(moving.scheduledDate, inSameDayAs: firstDay))
     }
 
-    @Test func movesEventAcrossDaysWithoutChangingItsTimeOrDuration() throws {
+    @Test func movesTimedTodoAcrossDaysWithoutChangingItsTimeOrDuration() throws {
         let context = try makeContext()
         let firstDay = date(day: 1)
         let secondDay = date(day: 2)
@@ -142,9 +142,10 @@ struct ItemOrderingTests {
             )
         )
         let end = start.addingTimeInterval(90 * 60)
-        let moving = Event(
-            title: "Moving Event",
+        let moving = Todo(
+            title: "Moving Timed Todo",
             scheduledDate: start,
+            includesTime: true,
             endDate: end,
             order: "r"
         )
@@ -152,9 +153,9 @@ struct ItemOrderingTests {
         try context.save()
 
         try ItemOrdering.move(
-            [.event(moving.id)],
+            [moving.id],
             to: firstDay,
-            before: .todo(destination.id),
+            before: destination.id,
             in: context,
             calendar: calendar
         )
@@ -172,11 +173,11 @@ struct ItemOrderingTests {
         )
 
         let verificationContext = ModelContext(context.container)
-        let persistedEvents = try verificationContext.fetch(
-            FetchDescriptor<Event>()
+        let persistedTodos = try verificationContext.fetch(
+            FetchDescriptor<Todo>()
         )
         let persisted = try #require(
-            persistedEvents.first(where: { $0.id == moving.id })
+            persistedTodos.first(where: { $0.id == moving.id })
         )
         #expect(
             calendar.isDate(persisted.scheduledDate, inSameDayAs: firstDay)
@@ -195,7 +196,7 @@ struct ItemOrderingTests {
 
         let error = captureMoveError {
             try ItemOrdering.move(
-                [.todo(todo.id), .todo(todo.id)],
+                [todo.id, todo.id],
                 to: day,
                 before: nil,
                 in: context,
@@ -212,7 +213,7 @@ struct ItemOrderingTests {
 
         let error = captureMoveError {
             try ItemOrdering.move(
-                [.todo(UUID())],
+                [UUID()],
                 to: day,
                 before: nil,
                 in: context,
@@ -231,9 +232,9 @@ struct ItemOrderingTests {
 
         let error = captureMoveError {
             try ItemOrdering.move(
-                [.todo(todo.id)],
+                [todo.id],
                 to: day,
-                before: .todo(UUID()),
+                before: UUID(),
                 in: context,
                 calendar: calendar
             )
@@ -250,9 +251,9 @@ struct ItemOrderingTests {
 
         let error = captureMoveError {
             try ItemOrdering.move(
-                [.todo(todo.id)],
+                [todo.id],
                 to: day,
-                before: .todo(todo.id),
+                before: todo.id,
                 in: context,
                 calendar: calendar
             )
@@ -270,7 +271,7 @@ struct ItemOrderingTests {
 
         let error = captureMoveError {
             try ItemOrdering.move(
-                [.todo(invalid.id)],
+                [invalid.id],
                 to: day,
                 before: nil,
                 in: context,
@@ -291,9 +292,9 @@ struct ItemOrderingTests {
         try context.save()
 
         let outcome = try ItemOrdering.move(
-            [.todo(second.id)],
+            [second.id],
             to: firstDay,
-            before: .todo(first.id),
+            before: first.id,
             in: context,
             calendar: calendar
         )
@@ -311,9 +312,9 @@ struct ItemOrderingTests {
         try context.save()
 
         let outcome = try ItemOrdering.move(
-            [.todo(second.id)],
+            [second.id],
             to: day,
-            before: .todo(third.id),
+            before: third.id,
             in: context,
             calendar: calendar
         )
@@ -331,7 +332,7 @@ struct ItemOrderingTests {
         try context.save()
 
         try ItemOrdering.saveDisplayedOrder(
-            [.todo(third.id), .todo(first.id), .todo(second.id)],
+            [third.id, first.id, second.id],
             on: day,
             in: context,
             calendar: calendar
@@ -385,10 +386,7 @@ struct ItemOrderingTests {
         let todos = try context.fetch(FetchDescriptor<Todo>()).filter {
             calendar.isDate($0.scheduledDate, inSameDayAs: day)
         }
-        return SwiftDataItem.ordered(todos: todos, events: []).compactMap { item in
-            guard case .todo(let todo) = item else { return nil }
-            return todo
-        }
+        return Todo.ordered(todos)
     }
 
     private func date(day: Int) -> Date {

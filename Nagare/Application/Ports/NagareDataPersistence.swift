@@ -5,6 +5,10 @@ nonisolated protocol NagareDataReading: AnyObject {
 }
 
 nonisolated protocol NagareDataWriting: AnyObject {
+    func importData(
+        _ plan: NagareDataImportPlan,
+        at date: Date
+    ) throws
     func upsertItem(
         _ plan: ItemUpsertPlan,
         at date: Date
@@ -44,10 +48,6 @@ nonisolated protocol NagareDataWriting: AnyObject {
         at transactionDate: Date
     ) throws
     func deleteCompletedTodo(_ id: UUID, at date: Date) throws
-    func deletePastEvents(
-        before date: Date,
-        at transactionDate: Date
-    ) throws
     func deleteItem(_ id: ItemID, at date: Date) throws
     func deleteItems(_ ids: [ItemID], at date: Date) throws
     func deleteRecurrenceTemplate(_ id: UUID, at date: Date) throws
@@ -56,8 +56,8 @@ nonisolated protocol NagareDataWriting: AnyObject {
     func updateRecurrenceTemplate(
         _ id: UUID,
         rule: RecurrenceRule,
-        eventStartTimeSeconds: Int?,
-        eventEndTimeSeconds: Int?,
+        startTimeSeconds: Int?,
+        endTimeSeconds: Int?,
         at date: Date
     ) throws
 }

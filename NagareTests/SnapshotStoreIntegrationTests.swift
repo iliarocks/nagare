@@ -1,10 +1,36 @@
 import Foundation
+import Observation
 import SwiftData
 import Testing
 @testable import Nagare
 
 @MainActor
 struct SnapshotStoreIntegrationTests {
+    @Test func foregroundActivationRecoversHistoryObservation() throws {
+        let storeURL = temporaryStoreURL()
+        defer { removeStoreFiles(at: storeURL) }
+
+        let container = try makeContainer(at: storeURL)
+        let observer = TestSyncHistoryObserver()
+        var attempts = 0
+        let monitor = SyncIntegrityMonitor(
+            modelContainer: container,
+            requiresReconciliation: false,
+            historyObserverFactory: { _ in
+                attempts += 1
+                if attempts == 1 {
+                    throw TestHistoryObserverError.unavailable
+                }
+                return observer
+            }
+        )
+
+        #expect(!monitor.isObservingHistory)
+        monitor.applicationDidBecomeActive()
+        #expect(monitor.isObservingHistory)
+        #expect(attempts == 2)
+    }
+
     @Test func freshReadSeesUpdateFromAnotherStoreCoordinator() throws {
         let storeURL = temporaryStoreURL()
         defer { removeStoreFiles(at: storeURL) }
@@ -45,13 +71,13 @@ struct SnapshotStoreIntegrationTests {
             scheduledDate: transactionDate,
             order: "a"
         )
-        let event = Event(
-            title: "Event",
+        let timedTodo = Todo(
+            title: "Timed Todo",
             scheduledDate: transactionDate,
+            includesTime: true,
             order: "b"
         )
         let template = RecurrenceTemplate(
-            itemType: .todo,
             title: "Template",
             notes: nil,
             rule: try .relative(every: 1, unit: .day),
@@ -59,7 +85,7 @@ struct SnapshotStoreIntegrationTests {
         )
         context.insert(project)
         context.insert(todo)
-        context.insert(event)
+        context.insert(timedTodo)
         context.insert(template)
         try context.save()
 
@@ -71,9 +97,9 @@ struct SnapshotStoreIntegrationTests {
             at: transactionDate
         )
         try repository.updateNote(
-            .event(event.id),
-            title: "Edited Event",
-            notes: "Event notes",
+            .todo(timedTodo.id),
+            title: "Edited Timed Todo",
+            notes: "Timed Todo notes",
             at: transactionDate
         )
         try repository.updateNote(
@@ -90,8 +116,8 @@ struct SnapshotStoreIntegrationTests {
         )
         try repository.saveItemOrdering(
             [
-                ItemOrderingChange(id: .todo(todo.id), order: "c"),
-                ItemOrderingChange(id: .event(event.id), order: "d")
+                ItemOrderingChange(id: todo.id, order: "c"),
+                ItemOrderingChange(id: timedTodo.id, order: "d")
             ],
             at: transactionDate
         )
@@ -100,7 +126,7 @@ struct SnapshotStoreIntegrationTests {
                 ProjectOrderingChange(
                     id: project.id,
                     order: "e",
-                    isPriority: true
+                    priority: .high
                 )
             ],
             at: transactionDate
@@ -110,9 +136,13 @@ struct SnapshotStoreIntegrationTests {
         #expect(snapshot.todosByID[todo.id]?.title == "Edited Todo")
         #expect(snapshot.todosByID[todo.id]?.notes == "Todo notes")
         #expect(snapshot.todosByID[todo.id]?.order == "c")
-        #expect(snapshot.eventsByID[event.id]?.title == "Edited Event")
-        #expect(snapshot.eventsByID[event.id]?.notes == "Event notes")
-        #expect(snapshot.eventsByID[event.id]?.order == "d")
+        #expect(
+            snapshot.todosByID[timedTodo.id]?.title == "Edited Timed Todo"
+        )
+        #expect(
+            snapshot.todosByID[timedTodo.id]?.notes == "Timed Todo notes"
+        )
+        #expect(snapshot.todosByID[timedTodo.id]?.order == "d")
         #expect(
             snapshot.templatesByID[template.id]?.title == "Edited Template"
         )
@@ -135,9 +165,9 @@ struct SnapshotStoreIntegrationTests {
         try seedContext.save()
 
         let store = try makeStore(in: readerContainer)
-        let monitor = try SyncIntegrityMonitor(
+        let monitor = SyncIntegrityMonitor(
             modelContainer: readerContainer,
-            onReconciled: { try? store.reload() }
+            onPersistedChange: { _ = try? store.reload() }
         )
         _ = monitor
         #expect(store.todos.map(\.title) == ["Original"])
@@ -168,9 +198,9 @@ struct SnapshotStoreIntegrationTests {
         try seedContext.save()
 
         let store = try makeStore(in: readerContainer)
-        let monitor = try SyncIntegrityMonitor(
+        let monitor = SyncIntegrityMonitor(
             modelContainer: readerContainer,
-            onReconciled: { try? store.reload() }
+            onPersistedChange: { _ = try? store.reload() }
         )
         _ = monitor
 
@@ -206,9 +236,9 @@ struct SnapshotStoreIntegrationTests {
         try seedContext.save()
 
         let store = try makeStore(in: readerContainer)
-        let monitor = try SyncIntegrityMonitor(
+        let monitor = SyncIntegrityMonitor(
             modelContainer: readerContainer,
-            onReconciled: { try? store.reload() }
+            onPersistedChange: { _ = try? store.reload() }
         )
         _ = monitor
 
@@ -289,23 +319,20 @@ struct SnapshotStoreIntegrationTests {
 
         let id = try store.upsertItem(
             ItemDraft(
-                kind: .todo,
                 title: "Created",
                 notes: nil,
                 scheduledDate: createdAt,
+                includesTime: false,
                 endDate: nil,
                 projectID: nil,
                 recurrenceRule: nil,
-                eventStartTimeSeconds: nil,
-                eventEndTimeSeconds: nil
+                startTimeSeconds: nil,
+                endTimeSeconds: nil
             ),
             existingID: nil,
             at: createdAt
         )
-        guard case .todo(let todoID) = id else {
-            Issue.record("Expected a Todo identity")
-            return
-        }
+        let todoID = id
         #expect(store.snapshot.todosByID[todoID]?.modifiedAt == createdAt)
 
         try store.updateNote(
@@ -315,6 +342,134 @@ struct SnapshotStoreIntegrationTests {
             at: updatedAt
         )
         #expect(store.snapshot.todosByID[todoID]?.modifiedAt == updatedAt)
+    }
+
+    @Test
+    func changingCurrentOccurrenceScheduleKeepsTemplateTimesAndRebasesProjection()
+        throws
+    {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        func date(
+            _ year: Int,
+            _ month: Int,
+            _ day: Int,
+            hour: Int = 0,
+            minute: Int = 0
+        ) -> Date {
+            calendar.date(
+                from: DateComponents(
+                    year: year,
+                    month: month,
+                    day: day,
+                    hour: hour,
+                    minute: minute
+                )
+            )!
+        }
+
+        let configuration = ModelConfiguration(
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: Project.self,
+            Todo.self,
+            Event.self,
+            RecurrenceTemplate.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+        let current = Todo(
+            title: "Daily timed occurrence",
+            scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
+            includesTime: true,
+            endDate: date(2026, 7, 1, hour: 10, minute: 30),
+            order: "a",
+            calendar: calendar
+        )
+        context.insert(current)
+        let template = try RecurrencePersistence.createTemplate(
+            for: current,
+            rule: try .relative(every: 1, unit: .day),
+            in: context,
+            calendar: calendar
+        )
+        let templateID = template.id
+        let store = try makeStore(in: container)
+
+        let before = RecurrenceProjectionLogic.generate(
+            from: store.snapshot.recurrenceProjectionInput,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 6),
+            calendar: calendar
+        )
+        #expect(before.items.first?.date == date(2026, 7, 2))
+        #expect(
+            before.items.first?.startDate
+                == date(2026, 7, 2, hour: 9, minute: 30)
+        )
+
+        try store.updateTodoSchedule(
+            current.id,
+            scheduledDate: date(2026, 7, 1, hour: 14, minute: 15),
+            includesTime: true,
+            endDate: date(2026, 7, 1, hour: 15, minute: 15),
+            calendar: calendar
+        )
+
+        let timeEditedCurrent = try #require(
+            store.snapshot.todosByID[current.id]
+        )
+        let unchangedTemplate = try #require(
+            store.snapshot.templatesByID[templateID]
+        )
+        #expect(
+            timeEditedCurrent.scheduledDate
+                == date(2026, 7, 1, hour: 14, minute: 15)
+        )
+        #expect(
+            timeEditedCurrent.endDate
+                == date(2026, 7, 1, hour: 15, minute: 15)
+        )
+        #expect(unchangedTemplate.startTimeSeconds == 9 * 3_600 + 30 * 60)
+        #expect(unchangedTemplate.endTimeSeconds == 10 * 3_600 + 30 * 60)
+
+        let afterTimeEdit = RecurrenceProjectionLogic.generate(
+            from: store.snapshot.recurrenceProjectionInput,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 6),
+            calendar: calendar
+        )
+        #expect(afterTimeEdit.items.first?.date == date(2026, 7, 2))
+        #expect(
+            afterTimeEdit.items.first?.startDate
+                == date(2026, 7, 2, hour: 9, minute: 30)
+        )
+
+        try store.updateTodoSchedule(
+            current.id,
+            scheduledDate: date(2026, 7, 3, hour: 14, minute: 15),
+            includesTime: true,
+            endDate: date(2026, 7, 3, hour: 15, minute: 15),
+            calendar: calendar
+        )
+
+        let afterDateEdit = RecurrenceProjectionLogic.generate(
+            from: store.snapshot.recurrenceProjectionInput,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 6),
+            calendar: calendar
+        )
+        #expect(afterDateEdit.items.first?.date == date(2026, 7, 4))
+        #expect(
+            afterDateEdit.items.first?.startDate
+                == date(2026, 7, 4, hour: 9, minute: 30)
+        )
+        #expect(
+            afterDateEdit.items.first?.endDate
+                == date(2026, 7, 4, hour: 10, minute: 30)
+        )
     }
 
     @Test func projectReorderRepairsMissingLegacyOrderInSameTransaction() throws {
@@ -344,8 +499,8 @@ struct SnapshotStoreIntegrationTests {
 
         let store = try makeStore(in: container)
         try store.moveProjectItems(
-            [.todo(second.id)],
-            before: .todo(first.id),
+            [second.id],
+            before: first.id,
             projectID: project.id
         )
 
@@ -383,7 +538,6 @@ struct SnapshotStoreIntegrationTests {
         )
         return try ModelContainer(
             for: NagareSchema.current,
-            migrationPlan: NagareMigrationPlan.self,
             configurations: configuration
         )
     }
@@ -405,4 +559,14 @@ struct SnapshotStoreIntegrationTests {
             )
         }
     }
+}
+
+@MainActor
+@Observable
+private final class TestSyncHistoryObserver: SyncHistoryObserving {
+    var eventCounter = 0
+}
+
+private enum TestHistoryObserverError: Error {
+    case unavailable
 }

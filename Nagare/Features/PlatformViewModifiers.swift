@@ -86,17 +86,20 @@ struct NagareDocumentEditor: View {
 
     private let accessibilityIdentifier: String
     private let focus: FocusState<NagareEditorField?>.Binding?
+    private let bottomScrollContentMargin: CGFloat
 
     init(
         _ placeholder: String = "Notes",
         text: Binding<String>,
         accessibilityIdentifier: String,
-        focus: FocusState<NagareEditorField?>.Binding? = nil
+        focus: FocusState<NagareEditorField?>.Binding? = nil,
+        bottomScrollContentMargin: CGFloat = 0
     ) {
         self.placeholder = placeholder
         _text = text
         self.accessibilityIdentifier = accessibilityIdentifier
         self.focus = focus
+        self.bottomScrollContentMargin = bottomScrollContentMargin
     }
 
     var body: some View {
@@ -125,7 +128,311 @@ struct NagareDocumentEditor: View {
         TextEditor(text: $text)
             .textEditorStyle(.plain)
             .nagareDocumentEditorStyle()
+            .nagareBottomScrollContentMargin(bottomScrollContentMargin)
             .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+enum NagareDocumentBottomFade {
+    static let height: CGFloat = 64
+    static let scrollContentMargin: CGFloat = height + 16
+}
+
+struct NagareDocumentComposerLayout<Title: View, Document: View>: View {
+    let bottomPadding: CGFloat
+    @ViewBuilder let title: () -> Title
+    @ViewBuilder let document: () -> Document
+
+    init(
+        bottomPadding: CGFloat = 16,
+        @ViewBuilder title: @escaping () -> Title,
+        @ViewBuilder document: @escaping () -> Document
+    ) {
+        self.bottomPadding = bottomPadding
+        self.title = title
+        self.document = document
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            title()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            document()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, bottomPadding)
+    }
+}
+
+/// The native metadata controls shared by item creation and note editing.
+struct NagareEditorMetadataToolbar: ToolbarContent {
+    let scheduleTitle: String
+    let scheduleAccessibilityIdentifier: String
+    let projects: [ProjectRecordSnapshot]
+    let selectedProject: ProjectRecordSnapshot?
+    let hasRepeat: Bool
+    let projectAccessibilityIdentifier: String
+    let repeatAccessibilityIdentifier: String
+    let submitAccessibilityIdentifier: String?
+    let isSubmitDisabled: Bool
+    let onSchedule: (() -> Void)?
+    let onSelectProject: (ProjectRecordSnapshot?) -> Void
+    let onRepeat: (() -> Void)?
+    let onSubmit: (() -> Void)?
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .nagareLeading) {
+            NagareEditorScheduleControl(
+                title: scheduleTitle,
+                accessibilityIdentifier: scheduleAccessibilityIdentifier,
+                action: onSchedule
+            )
+        }
+
+        ToolbarItemGroup(placement: .nagareTrailing) {
+            NagareEditorProjectControl(
+                projects: projects,
+                selectedProject: selectedProject,
+                accessibilityIdentifier: projectAccessibilityIdentifier,
+                onSelect: onSelectProject
+            )
+
+            NagareEditorRepeatControl(
+                hasRepeat: hasRepeat,
+                accessibilityIdentifier: repeatAccessibilityIdentifier,
+                action: onRepeat
+            )
+
+            NagareEditorSubmitControl(
+                accessibilityIdentifier: submitAccessibilityIdentifier,
+                isDisabled: isSubmitDisabled,
+                action: onSubmit
+            )
+        }
+    }
+}
+
+#if os(macOS)
+/// macOS sheets do not host SwiftUI navigation toolbars consistently, so the
+/// same controls are placed in a native in-sheet header there.
+private struct NagareEditorMetadataHeader: View {
+    let scheduleTitle: String
+    let scheduleAccessibilityIdentifier: String
+    let projects: [ProjectRecordSnapshot]
+    let selectedProject: ProjectRecordSnapshot?
+    let hasRepeat: Bool
+    let projectAccessibilityIdentifier: String
+    let repeatAccessibilityIdentifier: String
+    let submitAccessibilityIdentifier: String?
+    let isSubmitDisabled: Bool
+    let onSchedule: (() -> Void)?
+    let onSelectProject: (ProjectRecordSnapshot?) -> Void
+    let onRepeat: (() -> Void)?
+    let onSubmit: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            NagareEditorScheduleControl(
+                title: scheduleTitle,
+                accessibilityIdentifier: scheduleAccessibilityIdentifier,
+                action: onSchedule
+            )
+
+            Spacer()
+
+            NagareEditorProjectControl(
+                projects: projects,
+                selectedProject: selectedProject,
+                accessibilityIdentifier: projectAccessibilityIdentifier,
+                onSelect: onSelectProject
+            )
+
+            NagareEditorRepeatControl(
+                hasRepeat: hasRepeat,
+                accessibilityIdentifier: repeatAccessibilityIdentifier,
+                action: onRepeat
+            )
+
+            NagareEditorSubmitControl(
+                accessibilityIdentifier: submitAccessibilityIdentifier,
+                isDisabled: isSubmitDisabled,
+                action: onSubmit
+            )
+        }
+        .controlSize(.large)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+}
+#endif
+
+private struct NagareEditorScheduleControl: View {
+    let title: String
+    let accessibilityIdentifier: String
+    let action: (() -> Void)?
+
+    var body: some View {
+        Button {
+            action?()
+        } label: {
+            Text(title)
+                .lineLimit(1)
+        }
+        .disabled(action == nil)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+private struct NagareEditorProjectControl: View {
+    let projects: [ProjectRecordSnapshot]
+    let selectedProject: ProjectRecordSnapshot?
+    let accessibilityIdentifier: String
+    let onSelect: (ProjectRecordSnapshot?) -> Void
+
+    var body: some View {
+        Menu {
+            ProjectMenuActions(
+                projects: projects,
+                selectedProject: selectedProject,
+                onSelect: onSelect
+            )
+        } label: {
+            Label("Project", systemImage: "folder")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(
+                    selectedProject == nil ? Color.primary : Color.accentColor
+                )
+        }
+        .menuOrder(.fixed)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+private struct NagareEditorRepeatControl: View {
+    let hasRepeat: Bool
+    let accessibilityIdentifier: String
+    let action: (() -> Void)?
+
+    @ViewBuilder
+    var body: some View {
+        if let action {
+            Button(action: action) {
+                Label("Repeat", systemImage: "repeat")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(
+                        hasRepeat ? Color.accentColor : Color.primary
+                    )
+            }
+            .accessibilityIdentifier(accessibilityIdentifier)
+        }
+    }
+}
+
+private struct NagareEditorSubmitControl: View {
+    let accessibilityIdentifier: String?
+    let isDisabled: Bool
+    let action: (() -> Void)?
+
+    @ViewBuilder
+    var body: some View {
+        if let action, let accessibilityIdentifier {
+            Button(action: action) {
+                Label("Submit", systemImage: "checkmark")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isDisabled)
+            .accessibilityIdentifier(accessibilityIdentifier)
+        }
+    }
+}
+
+#if os(macOS)
+private struct NagareProjectCreationHeader: View {
+    let isSubmitDisabled: Bool
+    let onClose: () -> Void
+    let onSubmit: () -> Void
+
+    var body: some View {
+        HStack {
+            Button(action: onClose) {
+                Label("Close", systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+            }
+            .accessibilityIdentifier("Create Project Close")
+
+            Spacer()
+
+            Button(action: onSubmit) {
+                Label("Create Project", systemImage: "checkmark")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(isSubmitDisabled)
+            .accessibilityIdentifier("Create Project Submit")
+        }
+        .controlSize(.large)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+}
+#endif
+
+struct NagareProjectCreationToolbar: ToolbarContent {
+    let isSubmitDisabled: Bool
+    let onClose: () -> Void
+    let onSubmit: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .nagareLeading) {
+            Button(action: onClose) {
+                Label("Close", systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+            }
+            .accessibilityIdentifier("Create Project Close")
+        }
+
+        ToolbarItem(placement: .nagareTrailing) {
+            Button(action: onSubmit) {
+                Label("Create Project", systemImage: "checkmark")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSubmitDisabled)
+            .accessibilityIdentifier("Create Project Submit")
+        }
+    }
+}
+
+enum ScheduleToolbarPresentation {
+    static func title(
+        scheduledDate: Date,
+        includesTime: Bool,
+        endDate: Date?
+    ) -> String {
+        let date = scheduledDate.formatted(
+            .dateTime.month(.abbreviated).day()
+        )
+        guard includesTime else { return date }
+
+        let startTime = scheduledDate.formatted(
+            date: .omitted,
+            time: .shortened
+        )
+        guard let endDate else {
+            return "\(date)  \(startTime)"
+        }
+
+        let endTime = endDate.formatted(
+            date: .omitted,
+            time: .shortened
+        )
+        return "\(date)  \(startTime) - \(endTime)"
     }
 }
 
@@ -169,56 +476,6 @@ struct NagarePrimaryRowAction<Label: View>: View {
 }
 
 #if os(macOS)
-private struct NagareEscapeKeyMonitor: NSViewRepresentable {
-    let action: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        context.coordinator.start()
-        return NSView(frame: .zero)
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.action = action
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.stop()
-    }
-
-    final class Coordinator {
-        var action: () -> Void
-        private var monitor: Any?
-
-        init(action: @escaping () -> Void) {
-            self.action = action
-        }
-
-        func start() {
-            guard monitor == nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
-                [weak self] event in
-                guard event.keyCode == 53 else { return event }
-                self?.action()
-                return nil
-            }
-        }
-
-        func stop() {
-            guard let monitor else { return }
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
-        }
-
-        deinit {
-            stop()
-        }
-    }
-}
-
 private struct NagareInitialFocusReset: NSViewRepresentable {
     func makeNSView(context: Context) -> ResetView {
         ResetView()
@@ -237,113 +494,6 @@ private struct NagareInitialFocusReset: NSViewRepresentable {
                 self?.window?.makeFirstResponder(nil)
             }
         }
-    }
-}
-
-private struct NagareModalSurface<Presented: View>: View {
-    let dismiss: () -> Void
-    @ViewBuilder let presented: () -> Presented
-
-    var body: some View {
-        ZStack {
-            Button(action: dismiss) {
-                Color.black.opacity(0.24)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHidden(true)
-
-            presented()
-                .environment(
-                    \.nagareDismissModal,
-                    NagareModalDismissAction(dismiss)
-                )
-                .background(
-                    .regularMaterial,
-                    in: RoundedRectangle(
-                        cornerRadius: 18,
-                        style: .continuous
-                    )
-                )
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 18,
-                        style: .continuous
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: 18,
-                        style: .continuous
-                    )
-                    .stroke(.separator.opacity(0.65), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
-                .transition(
-                    .scale(scale: 0.97).combined(with: .opacity)
-                )
-        }
-        .onExitCommand(perform: dismiss)
-        .background(NagareEscapeKeyMonitor(action: dismiss))
-        .zIndex(1)
-    }
-}
-
-private struct NagareItemModalModifier<
-    Item: Identifiable,
-    Presented: View
->: ViewModifier {
-    @Binding var item: Item?
-    let onDismiss: () -> Void
-    @ViewBuilder let presented: (Item) -> Presented
-
-    func body(content: Content) -> some View {
-        content
-            .overlay {
-                if let item {
-                    NagareModalSurface(dismiss: dismiss) {
-                        presented(item)
-                    }
-                }
-            }
-            .animation(.snappy(duration: 0.18), value: item?.id)
-            .onChange(of: item?.id) { oldValue, newValue in
-                if oldValue != nil && newValue == nil {
-                    onDismiss()
-                }
-            }
-    }
-
-    private func dismiss() {
-        item = nil
-    }
-}
-
-private struct NagarePresentedModalModifier<Presented: View>: ViewModifier {
-    @Binding var isPresented: Bool
-    let onDismiss: () -> Void
-    @ViewBuilder let presented: () -> Presented
-
-    func body(content: Content) -> some View {
-        content
-            .overlay {
-                if isPresented {
-                    NagareModalSurface(dismiss: dismiss) {
-                        presented()
-                    }
-                }
-            }
-            .animation(.snappy(duration: 0.18), value: isPresented)
-            .onChange(of: isPresented) { oldValue, newValue in
-                if oldValue && !newValue {
-                    onDismiss()
-                }
-            }
-    }
-
-    private func dismiss() {
-        isPresented = false
     }
 }
 #endif
@@ -384,6 +534,109 @@ extension ToolbarItemPlacement {
 
 extension View {
     @ViewBuilder
+    fileprivate func nagareBottomScrollContentMargin(
+        _ margin: CGFloat
+    ) -> some View {
+#if os(macOS)
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: margin)
+                .allowsHitTesting(false)
+        }
+#else
+        contentMargins(.bottom, margin, for: .scrollContent)
+#endif
+    }
+
+    @ViewBuilder
+    func nagareEditorMetadataChrome(
+        scheduleTitle: String,
+        scheduleAccessibilityIdentifier: String,
+        projects: [ProjectRecordSnapshot],
+        selectedProject: ProjectRecordSnapshot?,
+        hasRepeat: Bool,
+        projectAccessibilityIdentifier: String,
+        repeatAccessibilityIdentifier: String,
+        submitAccessibilityIdentifier: String? = nil,
+        isSubmitDisabled: Bool = false,
+        onSchedule: (() -> Void)?,
+        onSelectProject: @escaping (ProjectRecordSnapshot?) -> Void,
+        onRepeat: (() -> Void)?,
+        onSubmit: (() -> Void)? = nil
+    ) -> some View {
+#if os(macOS)
+        safeAreaInset(edge: .top, spacing: 0) {
+            NagareEditorMetadataHeader(
+                scheduleTitle: scheduleTitle,
+                scheduleAccessibilityIdentifier:
+                    scheduleAccessibilityIdentifier,
+                projects: projects,
+                selectedProject: selectedProject,
+                hasRepeat: hasRepeat,
+                projectAccessibilityIdentifier:
+                    projectAccessibilityIdentifier,
+                repeatAccessibilityIdentifier:
+                    repeatAccessibilityIdentifier,
+                submitAccessibilityIdentifier:
+                    submitAccessibilityIdentifier,
+                isSubmitDisabled: isSubmitDisabled,
+                onSchedule: onSchedule,
+                onSelectProject: onSelectProject,
+                onRepeat: onRepeat,
+                onSubmit: onSubmit
+            )
+        }
+#else
+        toolbar {
+            NagareEditorMetadataToolbar(
+                scheduleTitle: scheduleTitle,
+                scheduleAccessibilityIdentifier:
+                    scheduleAccessibilityIdentifier,
+                projects: projects,
+                selectedProject: selectedProject,
+                hasRepeat: hasRepeat,
+                projectAccessibilityIdentifier:
+                    projectAccessibilityIdentifier,
+                repeatAccessibilityIdentifier:
+                    repeatAccessibilityIdentifier,
+                submitAccessibilityIdentifier:
+                    submitAccessibilityIdentifier,
+                isSubmitDisabled: isSubmitDisabled,
+                onSchedule: onSchedule,
+                onSelectProject: onSelectProject,
+                onRepeat: onRepeat,
+                onSubmit: onSubmit
+            )
+        }
+#endif
+    }
+
+    @ViewBuilder
+    func nagareProjectCreationChrome(
+        isSubmitDisabled: Bool,
+        onClose: @escaping () -> Void,
+        onSubmit: @escaping () -> Void
+    ) -> some View {
+#if os(macOS)
+        safeAreaInset(edge: .top, spacing: 0) {
+            NagareProjectCreationHeader(
+                isSubmitDisabled: isSubmitDisabled,
+                onClose: onClose,
+                onSubmit: onSubmit
+            )
+        }
+#else
+        toolbar {
+            NagareProjectCreationToolbar(
+                isSubmitDisabled: isSubmitDisabled,
+                onClose: onClose,
+                onSubmit: onSubmit
+            )
+        }
+#endif
+    }
+
+    @ViewBuilder
     func nagareToolbarButton() -> some View {
 #if os(macOS)
         buttonStyle(NagareToolbarButtonStyle())
@@ -402,7 +655,7 @@ extension View {
     }
 
     @ViewBuilder
-    func nagareEventTimeFont() -> some View {
+    func nagareTimeFont() -> some View {
 #if os(macOS)
         font(.system(size: 14))
 #else
@@ -485,9 +738,7 @@ extension View {
 #if os(macOS)
         listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
-            .listRowInsets(
-                EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
-            )
+            .listRowInsets(EdgeInsets())
 #else
         self
 #endif
@@ -501,7 +752,7 @@ extension View {
 #if os(macOS)
         frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 8)
             .padding(.vertical, 7)
             .frame(minHeight: 40)
 #else
@@ -579,25 +830,12 @@ extension View {
         isPresented: Binding<Bool>,
         @ViewBuilder composer: @escaping () -> Composer
     ) -> some View {
-#if os(macOS)
-        overlay {
-            if isPresented.wrappedValue {
-                NagareModalSurface(dismiss: {
-                    withAnimation(.snappy(duration: 0.18)) {
-                        isPresented.wrappedValue = false
-                    }
-                }) {
-                    composer()
-                }
-            }
-        }
-#else
         sheet(isPresented: isPresented) {
             composer()
+                .nagareNativeSheetMargins()
                 .nagareSheetDetents([.large])
                 .presentationDragIndicator(.visible)
         }
-#endif
     }
 
     @ViewBuilder
@@ -609,17 +847,6 @@ extension View {
         frame(width: width, height: height)
 #else
         self
-#endif
-    }
-
-    @ViewBuilder
-    func nagareComposerContentPadding() -> some View {
-#if os(macOS)
-        padding(.horizontal, 24)
-            .padding(.top, 32)
-            .padding(.bottom, 16)
-#else
-        padding(24)
 #endif
     }
 
@@ -642,20 +869,19 @@ extension View {
     }
 
     func nagareDocumentBottomFade() -> some View {
-        overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(.regularMaterial)
-                .mask {
+        ignoresSafeArea(edges: .bottom)
+            .mask {
+                VStack(spacing: 0) {
+                    Color.black
+
                     LinearGradient(
-                        colors: [.clear, .black],
+                        colors: [.black, .clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )
+                    .frame(height: NagareDocumentBottomFade.height)
                 }
-                .frame(height: 64)
-                .ignoresSafeArea(edges: .bottom)
-                .allowsHitTesting(false)
-        }
+            }
     }
 
     @ViewBuilder
@@ -664,17 +890,9 @@ extension View {
         onDismiss: @escaping () -> Void = {},
         @ViewBuilder content: @escaping (Item) -> Presented
     ) -> some View {
-#if os(macOS)
-        modifier(
-            NagareItemModalModifier(
-                item: item,
-                onDismiss: onDismiss,
-                presented: content
-            )
-        )
-#else
         sheet(item: item, onDismiss: onDismiss) { value in
             content(value)
+                .nagareNativeSheetMargins()
                 .environment(
                     \.nagareDismissModal,
                     NagareModalDismissAction {
@@ -682,7 +900,6 @@ extension View {
                     }
                 )
         }
-#endif
     }
 
     @ViewBuilder
@@ -691,17 +908,9 @@ extension View {
         onDismiss: @escaping () -> Void = {},
         @ViewBuilder content: @escaping () -> Presented
     ) -> some View {
-#if os(macOS)
-        modifier(
-            NagarePresentedModalModifier(
-                isPresented: isPresented,
-                onDismiss: onDismiss,
-                presented: content
-            )
-        )
-#else
         sheet(isPresented: isPresented, onDismiss: onDismiss) {
             content()
+                .nagareNativeSheetMargins()
                 .environment(
                     \.nagareDismissModal,
                     NagareModalDismissAction {
@@ -709,6 +918,14 @@ extension View {
                     }
                 )
         }
+    }
+
+    @ViewBuilder
+    private func nagareNativeSheetMargins() -> some View {
+#if os(macOS)
+        padding(8)
+#else
+        self
 #endif
     }
 

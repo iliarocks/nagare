@@ -6,7 +6,8 @@ final class RecurrenceTemplate: Note, SyncRecord {
     #Index<RecurrenceTemplate>([\.id])
 
     @Attribute(.preserveValueOnDeletion) var id: UUID = UUID()
-    var itemTypeRawValue: String = RecurrenceItemType.todo.rawValue
+    /// Temporary V3 bridge field. Active templates always contain "todo".
+    var itemTypeRawValue: String = "todo"
     var title: String = ""
     var notes: String?
     var modeRawValue: String = RecurrenceMode.relative.rawValue
@@ -42,7 +43,6 @@ final class RecurrenceTemplate: Note, SyncRecord {
 
     init(
         id: UUID = UUID(),
-        itemType: RecurrenceItemType,
         title: String,
         notes: String?,
         rule: RecurrenceRule,
@@ -53,7 +53,7 @@ final class RecurrenceTemplate: Note, SyncRecord {
         createdAt: Date = .now
     ) {
         self.id = id
-        self.itemTypeRawValue = itemType.rawValue
+        self.itemTypeRawValue = "todo"
         self.title = title
         self.notes = notes
         self.modeRawValue = rule.mode.rawValue
@@ -71,10 +71,6 @@ final class RecurrenceTemplate: Note, SyncRecord {
         self.project = nil
         self.storedTodoOccurrences = []
         self.storedEventOccurrences = []
-    }
-
-    var itemType: RecurrenceItemType? {
-        RecurrenceItemType(rawValue: itemTypeRawValue)
     }
 
     func rule(

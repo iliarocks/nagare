@@ -7,7 +7,8 @@ enum NagareWidgetConstants {
 
 enum NagareWidgetItemKind: String, Codable, Sendable {
     case todo
-    case event
+    /// Retains the old raw value so already-written widget data still decodes.
+    case timedTodo = "event"
 }
 
 struct NagareWidgetItem: Codable, Hashable, Identifiable, Sendable {
@@ -42,7 +43,7 @@ struct NagareWidgetData: Codable, Equatable, Sendable {
                 switch item.kind {
                 case .todo:
                     item.scheduledDate < tomorrow
-                case .event:
+                case .timedTodo:
                     item.scheduledDate >= today
                         && item.scheduledDate < tomorrow
                 }

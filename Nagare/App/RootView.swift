@@ -29,14 +29,15 @@ struct RootView: View {
 #endif
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
+    @State private var upcomingTargetDate: Date?
     @State private var projectPath: [UUID] = []
     @State private var maintenanceAlert: MaintenanceAlert?
+    @State private var lastActiveRefreshAt: Date?
 
     let intentStore: NagareIntentStore?
     let syncMonitor: SyncIntegrityMonitor?
     let cloudSyncEnabledForCurrentLaunch: Bool
     let onSetCloudSyncEnabled: (Bool) async throws -> Void
-    let onSyncNow: () -> Void
 
     private var projects: [ProjectRecordSnapshot] {
         dataStore.projects
@@ -46,15 +47,13 @@ struct RootView: View {
         intentStore: NagareIntentStore? = nil,
         syncMonitor: SyncIntegrityMonitor? = nil,
         cloudSyncEnabledForCurrentLaunch: Bool = false,
-        onSetCloudSyncEnabled: @escaping (Bool) async throws -> Void = { _ in },
-        onSyncNow: @escaping () -> Void = {}
+        onSetCloudSyncEnabled: @escaping (Bool) async throws -> Void = { _ in }
     ) {
         self.intentStore = intentStore
         self.syncMonitor = syncMonitor
         self.cloudSyncEnabledForCurrentLaunch =
             cloudSyncEnabledForCurrentLaunch
         self.onSetCloudSyncEnabled = onSetCloudSyncEnabled
-        self.onSyncNow = onSyncNow
     }
 
     var body: some View {
@@ -70,8 +69,7 @@ struct RootView: View {
             NagareSettingsView(
                 cloudSyncEnabledForCurrentLaunch:
                     cloudSyncEnabledForCurrentLaunch,
-                onSetCloudSyncEnabled: onSetCloudSyncEnabled,
-                onSyncNow: onSyncNow
+                onSetCloudSyncEnabled: onSetCloudSyncEnabled
             )
         }
         #if !os(macOS)
@@ -79,6 +77,7 @@ struct RootView: View {
             NavigationStack {
                 CompletedView()
                     .navigationTitle("Completed")
+                    .navigationBarTitleDisplayMode(.inline)
             }
             .nagareSheetDetents([.large])
             .presentationDragIndicator(.visible)
@@ -91,7 +90,7 @@ struct RootView: View {
             NotesSheet(
                 destination: destination,
                 detent: $notesDetent,
-                onOpenProject: openProject
+                onOpenUpcomingDate: openUpcoming
             )
                 .id(destination.id)
         }
@@ -150,7 +149,10 @@ struct RootView: View {
 
             Tab(value: NavigationSection.upcoming) {
                 NavigationStack {
-                    UpcomingView(onOpenNotes: openNotes)
+                    UpcomingView(
+                        onOpenNotes: openNotes,
+                        scrollTargetDate: $upcomingTargetDate
+                    )
                         .toolbar {
                             itemToolbar
                         }
@@ -167,7 +169,10 @@ struct RootView: View {
                             if let project = projects.first(where: {
                                 $0.id == projectID
                             }) {
-                                ProjectDetailView(project: project)
+                                ProjectDetailView(
+                                    project: project,
+                                    onOpenUpcomingDate: openUpcoming
+                                )
                             } else {
                                 ContentUnavailableView(
                                     "Project Not Found",
@@ -211,7 +216,10 @@ struct RootView: View {
                     }
                 case .upcoming:
                     NavigationStack {
-                        UpcomingView(onOpenNotes: openNotes)
+                        UpcomingView(
+                            onOpenNotes: openNotes,
+                            scrollTargetDate: $upcomingTargetDate
+                        )
                             .toolbar { itemToolbar }
                     }
                 case .projects:
@@ -244,7 +252,10 @@ struct RootView: View {
     @ViewBuilder
     private func projectDestination(for projectID: UUID) -> some View {
         if let project = projects.first(where: { $0.id == projectID }) {
-            ProjectDetailView(project: project)
+            ProjectDetailView(
+                project: project,
+                onOpenUpcomingDate: openUpcoming
+            )
         } else {
             ContentUnavailableView(
                 "Project Not Found",
@@ -315,10 +326,10 @@ struct RootView: View {
         notesDetent = .medium
     }
 
-    private func openProject(_ projectID: UUID) {
+    private func openUpcoming(_ date: Date) {
         notesDestination = nil
-        selectedSection = .projects
-        projectPath = [projectID]
+        upcomingTargetDate = Calendar.autoupdatingCurrent.startOfDay(for: date)
+        selectedSection = .upcoming
     }
 
     private func beginManualCreate() {
@@ -326,31 +337,37 @@ struct RootView: View {
     }
 
     private func refreshForActiveScene() {
+        let now = Date.now
+        if let lastActiveRefreshAt,
+           now.timeIntervalSince(lastActiveRefreshAt) < 0.5 {
+            return
+        }
+        self.lastActiveRefreshAt = now
         do {
-            try dataStore.performMaintenance()
+            try dataStore.performMaintenance(at: now)
         } catch {
             maintenanceAlert = MaintenanceAlert(
                 title: "Nagare Couldn't Update Today",
                 message: error.localizedDescription
             )
         }
-        syncMonitor?.repair()
+        syncMonitor?.applicationDidBecomeActive()
     }
 }
 
 struct NotesSheet: View {
     let destination: NotesDestination
     @Binding var detent: PresentationDetent
-    let onOpenProject: (UUID) -> Void
+    let onOpenUpcomingDate: (Date) -> Void
 
     init(
         destination: NotesDestination,
         detent: Binding<PresentationDetent>,
-        onOpenProject: @escaping (UUID) -> Void = { _ in }
+        onOpenUpcomingDate: @escaping (Date) -> Void = { _ in }
     ) {
         self.destination = destination
         _detent = detent
-        self.onOpenProject = onOpenProject
+        self.onOpenUpcomingDate = onOpenUpcomingDate
     }
 
     var body: some View {
@@ -367,7 +384,7 @@ struct NotesSheet: View {
     private var notesView: some View {
         NotesView(
             id: destination.recordID,
-            onOpenProject: onOpenProject
+            onOpenUpcomingDate: onOpenUpcomingDate
         )
     }
 }

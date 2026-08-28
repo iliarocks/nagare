@@ -4,12 +4,12 @@ import Foundation
 @MainActor
 enum ProjectOrderingOrchestrator {
     static func prepareNextOrder(
-        isPriority: Bool,
+        priority: ProjectPriority,
         using persistence: any ProjectOrderingPersistence
     ) throws -> String {
         let projects = ordered(
             try loadProjects(using: persistence).filter {
-                $0.isPriority == isPriority
+                $0.priority == priority
             }
         )
         let plan = try OrderingPlanner.nextOrder(
@@ -32,7 +32,7 @@ enum ProjectOrderingOrchestrator {
 
     static func move(
         _ sourceIDs: [UUID],
-        toPriority isPriority: Bool,
+        toPriority priority: ProjectPriority,
         before destinationID: UUID?,
         using persistence: any ProjectOrderingPersistence
     ) throws {
@@ -47,7 +47,7 @@ enum ProjectOrderingOrchestrator {
             return project
         }
         let destination = ordered(allProjects.filter {
-            $0.isPriority == isPriority
+            $0.priority == priority
         })
         let plan = try OrderingPlanner.move(
             sourceIDs,
@@ -61,7 +61,7 @@ enum ProjectOrderingOrchestrator {
             validatesSourceOrders: false
         )
         if plan.orderedIDs == destination.map(\.id),
-           sourceProjects.allSatisfy({ $0.isPriority == isPriority }) {
+           sourceProjects.allSatisfy({ $0.priority == priority }) {
             return
         }
 
@@ -69,7 +69,7 @@ enum ProjectOrderingOrchestrator {
             ProjectOrderingChange(id: $0.id, order: $0.order)
         }
         let tierChanges = sourceProjects.map {
-            ProjectOrderingChange(id: $0.id, isPriority: isPriority)
+            ProjectOrderingChange(id: $0.id, priority: priority)
         }
         do {
             try persistence.apply(orderChanges + tierChanges)
@@ -85,12 +85,12 @@ enum ProjectOrderingOrchestrator {
 
     static func saveDisplayedOrder(
         _ projectIDs: [UUID],
-        isPriority: Bool,
+        priority: ProjectPriority,
         using persistence: any ProjectOrderingPersistence
     ) throws {
         let projects = ordered(
             try loadProjects(using: persistence).filter {
-                $0.isPriority == isPriority
+                $0.priority == priority
             }
         )
         let plan = try OrderingPlanner.displayedOrder(

@@ -18,7 +18,6 @@ struct RecurrenceFormState: Equatable {
     )
 
     static func enabled(
-        for itemType: RecurrenceItemType,
         referenceDate: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) -> RecurrenceFormState {
@@ -36,9 +35,15 @@ struct RecurrenceFormState: Equatable {
         _ template: RecurrenceTemplateRecordSnapshot,
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> RecurrenceFormState {
-        guard let mode = RecurrenceMode(rawValue: template.modeRawValue),
-              let unit = RecurrenceUnit(rawValue: template.unitRawValue) else {
-            throw RecurrencePersistenceError.wrongItemType
+        guard let mode = RecurrenceMode(rawValue: template.modeRawValue) else {
+            throw RecurrencePersistenceError.invalidStoredMode(
+                template.modeRawValue
+            )
+        }
+        guard let unit = RecurrenceUnit(rawValue: template.unitRawValue) else {
+            throw RecurrencePersistenceError.invalidStoredUnit(
+                template.unitRawValue
+            )
         }
         let rule: RecurrenceRule
         switch mode {
@@ -89,7 +94,6 @@ struct RecurrenceFormState: Equatable {
 
     mutating func setEnabled(
         _ enabled: Bool,
-        for itemType: RecurrenceItemType,
         referenceDate: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) {
@@ -100,28 +104,22 @@ struct RecurrenceFormState: Equatable {
 
         if !isEnabled {
             self = .enabled(
-                for: itemType,
                 referenceDate: referenceDate,
                 calendar: calendar
             )
         }
         prepare(
-            for: itemType,
             referenceDate: referenceDate,
             calendar: calendar
         )
     }
 
     mutating func prepare(
-        for itemType: RecurrenceItemType,
         referenceDate: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) {
         guard isEnabled else {
             return
-        }
-        if itemType == .event {
-            mode = .absolute
         }
         normalizeAnchors(
             referenceDate: referenceDate,
@@ -131,11 +129,10 @@ struct RecurrenceFormState: Equatable {
 
     mutating func selectMode(
         _ newMode: RecurrenceMode,
-        for itemType: RecurrenceItemType,
         referenceDate: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) {
-        mode = itemType == .event ? .absolute : newMode
+        mode = newMode
         reference = nil
         normalizeAnchors(
             referenceDate: referenceDate,

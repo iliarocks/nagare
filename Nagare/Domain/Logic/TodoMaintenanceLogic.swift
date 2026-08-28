@@ -25,8 +25,7 @@ nonisolated enum TodoMaintenanceLogic {
 
         let overdueTodos = items
             .filter {
-                $0.kind == .todo
-                    && !$0.isCompleted
+                !$0.isCompleted
                     && $0.scheduledDate < today
             }
             .sorted {
@@ -43,11 +42,17 @@ nonisolated enum TodoMaintenanceLogic {
             }
 
         for todo in overdueTodos {
+            let movedSchedule = ItemScheduleLogic.moving(
+                todo,
+                to: today,
+                calendar: calendar
+            )
             changes.append(
                 ItemOrderingChange(
                     id: todo.id,
                     order: previousOrder,
-                    scheduledDate: today
+                    scheduledDate: movedSchedule.scheduledDate,
+                    endDate: movedSchedule.endDate
                 )
             )
             guard let followingOrder = FractionalIndex.between(

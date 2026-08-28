@@ -4,6 +4,7 @@ struct ProjectDetailView: View {
     @NagareDataStoreEnvironment private var dataStore
 
     let project: ProjectRecordSnapshot
+    let onOpenUpcomingDate: (Date) -> Void
 
     @State private var isCreatingItem = false
     @State private var title: String
@@ -13,19 +14,13 @@ struct ProjectDetailView: View {
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
     @State private var todoBeingRescheduled: TodoRecordSnapshot?
-    @State private var eventBeingRescheduled: EventRecordSnapshot?
     @State private var recurrenceTemplateBeingEdited: RecurrenceTemplateRecordSnapshot?
-    @State private var projectMoveTarget: ProjectMoveTarget?
     @State private var itemSelectionBeingRescheduled: ItemSelectionAction?
     @State private var selectedItemIDs: Set<ItemID> = []
     @State private var errorMessage: String?
 
     private var todos: [TodoRecordSnapshot] {
         dataStore.todos
-    }
-
-    private var events: [EventRecordSnapshot] {
-        dataStore.events
     }
 
     private var templates: [RecurrenceTemplateRecordSnapshot] {
@@ -36,19 +31,22 @@ struct ProjectDetailView: View {
         dataStore.snapshot.projectsByID[project.id] ?? project
     }
 
-    init(project: ProjectRecordSnapshot) {
+    init(
+        project: ProjectRecordSnapshot,
+        onOpenUpcomingDate: @escaping (Date) -> Void = { _ in }
+    ) {
         self.project = project
+        self.onOpenUpcomingDate = onOpenUpcomingDate
         _title = State(initialValue: project.title)
         _notes = State(initialValue: project.notes ?? "")
         _lastLoadedProject = State(initialValue: project)
     }
 
     private var actualItems: [ItemRecordSnapshot] {
-        ItemRecordSnapshot.orderedInProject(
-            todos: todos.filter {
+        TodoRecordSnapshot.orderedInProject(
+            todos.filter {
                 $0.projectID == project.id && $0.completedAt == nil
-            },
-            events: events.filter { $0.projectID == project.id }
+            }
         )
     }
 
@@ -95,33 +93,24 @@ struct ProjectDetailView: View {
             NotesSheet(
                 destination: $0,
                 detent: $notesDetent,
-                onOpenProject: { _ in notesDestination = nil }
+                onOpenUpcomingDate: { date in
+                    notesDestination = nil
+                    onOpenUpcomingDate(date)
+                }
             )
                 .id($0.id)
         }
         .nagareModal(item: $todoBeingRescheduled) { todo in
-            TodoDateEditor(todo: todo)
-                .nagareSheetDetents([.medium])
-                .presentationDragIndicator(.visible)
+            TodoScheduleEditor(todo: todo)
         }
         .nagareModal(item: $itemSelectionBeingRescheduled) { selection in
             ItemDateEditor(items: selection.items)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .nagareModal(item: $eventBeingRescheduled) { event in
-            EventScheduleEditor(event: event)
-                .nagareSheetDetents([EventScheduleEditor.sheetDetent])
-                .presentationDragIndicator(.visible)
-        }
         .nagareModal(item: $recurrenceTemplateBeingEdited) { template in
             RecurrenceEditor(template: template)
                 .nagareSheetDetents([.medium])
-                .presentationDragIndicator(.visible)
-        }
-        .nagareModal(item: $projectMoveTarget) { target in
-            ProjectMoveEditor(target: target)
-                .nagareSheetDetents([.fraction(0.25)])
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: title) {
@@ -195,7 +184,6 @@ struct ProjectDetailView: View {
                         onComplete: complete,
                         contextItems: contextItems(for: item),
                         onChangeSchedule: presentScheduleEditor,
-                        onMoveProject: presentProjectMoveEditor,
                         onDelete: delete
                     )
                     .nagareItemListRow()
@@ -220,9 +208,6 @@ struct ProjectDetailView: View {
                         onOpen: { notesDestination = .template(template.id) },
                         onChangeRepeat: {
                             recurrenceTemplateBeingEdited = template
-                        },
-                        onMoveProject: {
-                            projectMoveTarget = .template(template)
                         },
                         onDelete: { deleteTemplate(template) }
                     )
@@ -409,20 +394,7 @@ struct ProjectDetailView: View {
             itemSelectionBeingRescheduled = ItemSelectionAction(items: items)
             return
         }
-        switch item {
-        case .todo(let todo):
-            todoBeingRescheduled = todo
-        case .event(let event):
-            eventBeingRescheduled = event
-        }
-    }
-
-    private func presentProjectMoveEditor(_ items: [ItemRecordSnapshot]) {
-        guard items.count == 1, let item = items.first else {
-            projectMoveTarget = .items(items)
-            return
-        }
-        projectMoveTarget = .item(item)
+        todoBeingRescheduled = item
     }
 
     private func currentProjectOrder(

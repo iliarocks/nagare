@@ -8,10 +8,6 @@ struct TodayWidgetSync: ViewModifier {
         dataStore.todos
     }
 
-    private var events: [EventRecordSnapshot] {
-        dataStore.events
-    }
-
     private var widgetData: NagareWidgetData {
         NagareWidgetData(
             items: todos.compactMap { todo in
@@ -22,19 +18,10 @@ struct TodayWidgetSync: ViewModifier {
                 return NagareWidgetItem(
                     id: "todo-\(todo.id.uuidString)",
                     title: todo.title,
-                    kind: .todo,
+                    kind: todo.includesTime ? .timedTodo : .todo,
                     scheduledDate: todo.scheduledDate,
-                    endDate: nil,
+                    endDate: todo.endDate,
                     order: todo.order
-                )
-            } + events.map { event in
-                NagareWidgetItem(
-                    id: "event-\(event.id.uuidString)",
-                    title: event.title,
-                    kind: .event,
-                    scheduledDate: event.scheduledDate,
-                    endDate: event.endDate,
-                    order: event.order
                 )
             }
         )

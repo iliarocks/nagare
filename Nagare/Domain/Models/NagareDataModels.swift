@@ -1,5 +1,36 @@
 import Foundation
 
+nonisolated enum ProjectPriority:
+    Int,
+    Codable,
+    CaseIterable,
+    Comparable,
+    Hashable,
+    Sendable
+{
+    case low = 0
+    case normal = 1
+    case high = 2
+
+    static let displayOrder: [ProjectPriority] = [.high, .normal, .low]
+
+    init(isPriority: Bool) {
+        self = isPriority ? .high : .normal
+    }
+
+    var higher: ProjectPriority? {
+        ProjectPriority(rawValue: rawValue + 1)
+    }
+
+    var lower: ProjectPriority? {
+        ProjectPriority(rawValue: rawValue - 1)
+    }
+
+    static func < (lhs: ProjectPriority, rhs: ProjectPriority) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
 /// Immutable application data. Persistent framework objects never cross the
 /// repository boundary; identity is always a replicated semantic UUID.
 nonisolated struct TodoRecordSnapshot: Hashable, Sendable, Identifiable {
@@ -10,6 +41,9 @@ nonisolated struct TodoRecordSnapshot: Hashable, Sendable, Identifiable {
     let title: String
     let notes: String?
     let scheduledDate: Date
+    let includesTime: Bool
+    let endDate: Date?
+    let calendarIdentifier: String?
     let completedAt: Date?
     let order: String
     let projectOrder: String?
@@ -17,24 +51,51 @@ nonisolated struct TodoRecordSnapshot: Hashable, Sendable, Identifiable {
     let recurrenceTemplateID: UUID?
     let projectID: UUID?
 
+    var isCompleted: Bool { completedAt != nil }
+
+    var orderingSnapshot: ItemSnapshot {
+        ItemSnapshot(
+            id: id,
+            scheduledDate: scheduledDate,
+            includesTime: includesTime,
+            endDate: endDate,
+            completedAt: completedAt,
+            createdAt: createdAt,
+            order: order,
+            projectID: projectID,
+            projectOrder: projectOrder
+        )
+    }
+
+    static func ordered(
+        _ todos: [TodoRecordSnapshot]
+    ) -> [TodoRecordSnapshot] {
+        todos.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
+    static func orderedInProject(
+        _ todos: [TodoRecordSnapshot]
+    ) -> [TodoRecordSnapshot] {
+        todos.sorted {
+            switch ($0.projectOrder, $1.projectOrder) {
+            case let (.some(first), .some(second)) where first != second:
+                return first < second
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                return $0.id.uuidString < $1.id.uuidString
+            }
+        }
+    }
 }
 
-nonisolated struct EventRecordSnapshot: Hashable, Sendable, Identifiable {
-    let id: UUID
-    let syncRecordID: UUID?
-    let createdAt: Date
-    let modifiedAt: Date?
-    let title: String
-    let notes: String?
-    let scheduledDate: Date
-    let endDate: Date?
-    let order: String
-    let projectOrder: String?
-    let recurrenceSequence: Int?
-    let recurrenceTemplateID: UUID?
-    let projectID: UUID?
-
-}
+/// “Item” remains useful UI language, but it is no longer a sum type.
+typealias ItemRecordSnapshot = TodoRecordSnapshot
 
 nonisolated struct ProjectRecordSnapshot: Hashable, Sendable, Identifiable {
     let id: UUID
@@ -43,9 +104,52 @@ nonisolated struct ProjectRecordSnapshot: Hashable, Sendable, Identifiable {
     let modifiedAt: Date?
     let title: String
     let notes: String?
-    let isPriority: Bool
+    let priority: ProjectPriority
     let order: String
 
+    var isPriority: Bool { priority == .high }
+
+    init(
+        id: UUID,
+        syncRecordID: UUID?,
+        createdAt: Date,
+        modifiedAt: Date?,
+        title: String,
+        notes: String?,
+        priority: ProjectPriority,
+        order: String
+    ) {
+        self.id = id
+        self.syncRecordID = syncRecordID
+        self.createdAt = createdAt
+        self.modifiedAt = modifiedAt
+        self.title = title
+        self.notes = notes
+        self.priority = priority
+        self.order = order
+    }
+
+    init(
+        id: UUID,
+        syncRecordID: UUID?,
+        createdAt: Date,
+        modifiedAt: Date?,
+        title: String,
+        notes: String?,
+        isPriority: Bool,
+        order: String
+    ) {
+        self.init(
+            id: id,
+            syncRecordID: syncRecordID,
+            createdAt: createdAt,
+            modifiedAt: modifiedAt,
+            title: title,
+            notes: notes,
+            priority: ProjectPriority(isPriority: isPriority),
+            order: order
+        )
+    }
 }
 
 nonisolated struct RecurrenceTemplateRecordSnapshot:
@@ -57,7 +161,6 @@ nonisolated struct RecurrenceTemplateRecordSnapshot:
     let syncRecordID: UUID?
     let createdAt: Date
     let modifiedAt: Date?
-    let itemTypeRawValue: String
     let title: String
     let notes: String?
     let modeRawValue: String
@@ -71,22 +174,16 @@ nonisolated struct RecurrenceTemplateRecordSnapshot:
     let currentSequence: Int
     let currentScheduledDate: Date?
     let projectID: UUID?
-
-    var itemType: RecurrenceItemType? {
-        RecurrenceItemType(rawValue: itemTypeRawValue)
-    }
 }
 
 nonisolated struct NagareDataSnapshot: Equatable, Sendable {
     let projects: [ProjectRecordSnapshot]
     let todos: [TodoRecordSnapshot]
-    let events: [EventRecordSnapshot]
     let recurrenceTemplates: [RecurrenceTemplateRecordSnapshot]
 
     static let empty = NagareDataSnapshot(
         projects: [],
         todos: [],
-        events: [],
         recurrenceTemplates: []
     )
 
@@ -104,33 +201,13 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
         )
     }
 
-    var eventsByID: [UUID: EventRecordSnapshot] {
-        Dictionary(
-            events.map { ($0.id, $0) },
-            uniquingKeysWith: preferredEvent
-        )
-    }
+    var itemsByID: [UUID: TodoRecordSnapshot] { todosByID }
 
     var templatesByID: [UUID: RecurrenceTemplateRecordSnapshot] {
         Dictionary(
             recurrenceTemplates.map { ($0.id, $0) },
             uniquingKeysWith: preferredTemplate
         )
-    }
-
-    var itemsByID: [ItemID: ItemRecordSnapshot] {
-        var result = Dictionary(
-            uniqueKeysWithValues: todosByID.map {
-                (ItemID.todo($0.key), ItemRecordSnapshot.todo($0.value))
-            }
-        )
-        result.merge(
-            eventsByID.map {
-                (ItemID.event($0.key), ItemRecordSnapshot.event($0.value))
-            },
-            uniquingKeysWith: { current, _ in current }
-        )
-        return result
     }
 
     var canonicalProjects: [ProjectRecordSnapshot] {
@@ -141,10 +218,6 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
         todosByID.values.sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
-    var canonicalEvents: [EventRecordSnapshot] {
-        eventsByID.values.sorted { $0.id.uuidString < $1.id.uuidString }
-    }
-
     var canonicalRecurrenceTemplates: [RecurrenceTemplateRecordSnapshot] {
         templatesByID.values.sorted { $0.id.uuidString < $1.id.uuidString }
     }
@@ -153,8 +226,6 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
         switch id {
         case .todo(let id):
             todosByID[id].map(NoteRecordSnapshot.todo)
-        case .event(let id):
-            eventsByID[id].map(NoteRecordSnapshot.event)
         case .recurrenceTemplate(let id):
             templatesByID[id].map(NoteRecordSnapshot.recurrenceTemplate)
         }
@@ -162,18 +233,9 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
 
     func currentItem(
         for template: RecurrenceTemplateRecordSnapshot
-    ) -> ItemRecordSnapshot? {
-        switch template.itemType {
-        case .todo:
-            todos.first {
-                $0.id == template.currentItemID && $0.completedAt == nil
-            }.map(ItemRecordSnapshot.todo)
-        case .event:
-            events.first {
-                $0.id == template.currentItemID
-            }.map(ItemRecordSnapshot.event)
-        case nil:
-            nil
+    ) -> TodoRecordSnapshot? {
+        todos.first {
+            $0.id == template.currentItemID && $0.completedAt == nil
         }
     }
 
@@ -195,7 +257,6 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
                         modifiedAt: $0.modifiedAt,
                         stableTieBreaker: templateTieBreaker($0)
                     ),
-                    itemTypeRawValue: $0.itemTypeRawValue,
                     modeRawValue: $0.modeRawValue,
                     unitRawValue: $0.unitRawValue,
                     interval: $0.interval,
@@ -217,26 +278,8 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
                         modifiedAt: $0.modifiedAt,
                         stableTieBreaker: todoTieBreaker($0)
                     ),
-                    itemType: .todo,
                     scheduledDate: $0.scheduledDate,
                     completedAt: $0.completedAt,
-                    order: $0.order,
-                    recurrenceSequence: $0.recurrenceSequence,
-                    recurrenceTemplateID: $0.recurrenceTemplateID
-                )
-            } + events.map {
-                RecurrenceProjectionOccurrenceSnapshot(
-                    metadata: metadata(
-                        kind: .event,
-                        id: $0.id,
-                        syncRecordID: $0.syncRecordID,
-                        createdAt: $0.createdAt,
-                        modifiedAt: $0.modifiedAt,
-                        stableTieBreaker: eventTieBreaker($0)
-                    ),
-                    itemType: .event,
-                    scheduledDate: $0.scheduledDate,
-                    completedAt: nil,
                     order: $0.order,
                     recurrenceSequence: $0.recurrenceSequence,
                     recurrenceTemplateID: $0.recurrenceTemplateID
@@ -318,32 +361,6 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
         )
     }
 
-    private func preferredEvent(
-        _ first: EventRecordSnapshot,
-        _ second: EventRecordSnapshot
-    ) -> EventRecordSnapshot {
-        preferred(
-            first,
-            second,
-            firstMetadata: metadata(
-                kind: .event,
-                id: first.id,
-                syncRecordID: first.syncRecordID,
-                createdAt: first.createdAt,
-                modifiedAt: first.modifiedAt,
-                stableTieBreaker: eventTieBreaker(first)
-            ),
-            secondMetadata: metadata(
-                kind: .event,
-                id: second.id,
-                syncRecordID: second.syncRecordID,
-                createdAt: second.createdAt,
-                modifiedAt: second.modifiedAt,
-                stableTieBreaker: eventTieBreaker(second)
-            )
-        )
-    }
-
     private func preferredTemplate(
         _ first: RecurrenceTemplateRecordSnapshot,
         _ second: RecurrenceTemplateRecordSnapshot
@@ -387,7 +404,7 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
         [
             SyncStableValue.encode(project.title),
             SyncStableValue.encode(project.notes),
-            SyncStableValue.encode(project.isPriority),
+            SyncStableValue.encode(project.priority.rawValue),
             SyncStableValue.encode(project.order)
         ]
     }
@@ -397,6 +414,9 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
             SyncStableValue.encode(todo.title),
             SyncStableValue.encode(todo.notes),
             SyncStableValue.encode(todo.scheduledDate),
+            SyncStableValue.encode(todo.includesTime),
+            SyncStableValue.encode(todo.endDate),
+            SyncStableValue.encode(todo.calendarIdentifier),
             SyncStableValue.encode(todo.completedAt),
             SyncStableValue.encode(todo.order),
             SyncStableValue.encode(todo.projectOrder),
@@ -406,25 +426,10 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
         ]
     }
 
-    private func eventTieBreaker(_ event: EventRecordSnapshot) -> [String] {
-        [
-            SyncStableValue.encode(event.title),
-            SyncStableValue.encode(event.notes),
-            SyncStableValue.encode(event.scheduledDate),
-            SyncStableValue.encode(event.endDate),
-            SyncStableValue.encode(event.order),
-            SyncStableValue.encode(event.projectOrder),
-            SyncStableValue.encode(event.recurrenceSequence),
-            SyncStableValue.encode(event.recurrenceTemplateID),
-            SyncStableValue.encode(event.projectID)
-        ]
-    }
-
     private func templateTieBreaker(
         _ template: RecurrenceTemplateRecordSnapshot
     ) -> [String] {
         [
-            SyncStableValue.encode(template.itemTypeRawValue),
             SyncStableValue.encode(template.title),
             SyncStableValue.encode(template.notes),
             SyncStableValue.encode(template.modeRawValue),
@@ -441,146 +446,18 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
     }
 }
 
-nonisolated enum ItemRecordSnapshot: Hashable, Sendable, Identifiable {
-    case todo(TodoRecordSnapshot)
-    case event(EventRecordSnapshot)
-
-    var id: ItemID {
-        switch self {
-        case .todo(let todo): .todo(todo.id)
-        case .event(let event): .event(event.id)
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .todo(let todo): todo.title
-        case .event(let event): event.title
-        }
-    }
-
-    var notes: String? {
-        switch self {
-        case .todo(let todo): todo.notes
-        case .event(let event): event.notes
-        }
-    }
-
-    var scheduledDate: Date {
-        switch self {
-        case .todo(let todo): todo.scheduledDate
-        case .event(let event): event.scheduledDate
-        }
-    }
-
-    var endDate: Date? {
-        switch self {
-        case .todo: nil
-        case .event(let event): event.endDate
-        }
-    }
-
-    var order: String {
-        switch self {
-        case .todo(let todo): todo.order
-        case .event(let event): event.order
-        }
-    }
-
-    var projectID: UUID? {
-        switch self {
-        case .todo(let todo): todo.projectID
-        case .event(let event): event.projectID
-        }
-    }
-
-    var projectOrder: String? {
-        switch self {
-        case .todo(let todo): todo.projectOrder
-        case .event(let event): event.projectOrder
-        }
-    }
-
-    var isCompleted: Bool {
-        switch self {
-        case .todo(let todo): todo.completedAt != nil
-        case .event: false
-        }
-    }
-
-    var orderingSnapshot: ItemSnapshot {
-        switch self {
-        case .todo(let todo):
-            ItemSnapshot(
-                id: id,
-                kind: .todo,
-                scheduledDate: todo.scheduledDate,
-                endDate: nil,
-                completedAt: todo.completedAt,
-                createdAt: todo.createdAt,
-                order: todo.order,
-                projectID: todo.projectID,
-                projectOrder: todo.projectOrder
-            )
-        case .event(let event):
-            ItemSnapshot(
-                id: id,
-                kind: .event,
-                scheduledDate: event.scheduledDate,
-                endDate: event.endDate,
-                completedAt: nil,
-                createdAt: event.createdAt,
-                order: event.order,
-                projectID: event.projectID,
-                projectOrder: event.projectOrder
-            )
-        }
-    }
-
-    static func ordered(
-        todos: [TodoRecordSnapshot],
-        events: [EventRecordSnapshot]
-    ) -> [ItemRecordSnapshot] {
-        (todos.map(Self.todo) + events.map(Self.event)).sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.id.description < $1.id.description
-        }
-    }
-
-    static func orderedInProject(
-        todos: [TodoRecordSnapshot],
-        events: [EventRecordSnapshot]
-    ) -> [ItemRecordSnapshot] {
-        (todos.map(Self.todo) + events.map(Self.event)).sorted {
-            switch ($0.projectOrder, $1.projectOrder) {
-            case let (.some(first), .some(second)) where first != second:
-                return first < second
-            case (.some, .none):
-                return true
-            case (.none, .some):
-                return false
-            default:
-                return $0.id.description < $1.id.description
-            }
-        }
-    }
-}
-
 nonisolated enum NoteRecordID: Hashable, Sendable {
     case todo(UUID)
-    case event(UUID)
     case recurrenceTemplate(UUID)
 }
 
 nonisolated enum NoteRecordSnapshot: Hashable, Sendable, Identifiable {
     case todo(TodoRecordSnapshot)
-    case event(EventRecordSnapshot)
     case recurrenceTemplate(RecurrenceTemplateRecordSnapshot)
 
     var id: NoteRecordID {
         switch self {
         case .todo(let todo): .todo(todo.id)
-        case .event(let event): .event(event.id)
         case .recurrenceTemplate(let template):
             .recurrenceTemplate(template.id)
         }
@@ -589,7 +466,6 @@ nonisolated enum NoteRecordSnapshot: Hashable, Sendable, Identifiable {
     var title: String {
         switch self {
         case .todo(let todo): todo.title
-        case .event(let event): event.title
         case .recurrenceTemplate(let template): template.title
         }
     }
@@ -597,7 +473,6 @@ nonisolated enum NoteRecordSnapshot: Hashable, Sendable, Identifiable {
     var notes: String? {
         switch self {
         case .todo(let todo): todo.notes
-        case .event(let event): event.notes
         case .recurrenceTemplate(let template): template.notes
         }
     }
@@ -605,55 +480,49 @@ nonisolated enum NoteRecordSnapshot: Hashable, Sendable, Identifiable {
     var projectID: UUID? {
         switch self {
         case .todo(let todo): todo.projectID
-        case .event(let event): event.projectID
         case .recurrenceTemplate(let template): template.projectID
         }
     }
 }
 
 nonisolated enum ProjectMoveRecordID: Hashable, Sendable {
-    case item(ItemID)
+    case item(UUID)
     case recurrenceTemplate(UUID)
 }
 
-nonisolated enum ItemDraftKind: Hashable, Sendable {
-    case todo
-    case event
-}
-
-/// A complete immutable intent to create or revise one item. The UI owns this
+/// A complete immutable intent to create or revise one todo. The UI owns this
 /// value; the persistence adapter owns all record lookup and mutation.
 nonisolated struct ItemDraft: Sendable {
-    let kind: ItemDraftKind
     let title: String
     let notes: String?
     let scheduledDate: Date
+    let includesTime: Bool
     let endDate: Date?
     let projectID: UUID?
     let recurrenceRule: RecurrenceRule?
-    let eventStartTimeSeconds: Int?
-    let eventEndTimeSeconds: Int?
+    let startTimeSeconds: Int?
+    let endTimeSeconds: Int?
 
     init(
-        kind: ItemDraftKind,
         title: String,
         notes: String?,
         scheduledDate: Date,
-        endDate: Date?,
+        includesTime: Bool = false,
+        endDate: Date? = nil,
         projectID: UUID?,
         recurrenceRule: RecurrenceRule?,
-        eventStartTimeSeconds: Int?,
-        eventEndTimeSeconds: Int?
+        startTimeSeconds: Int? = nil,
+        endTimeSeconds: Int? = nil
     ) {
-        self.kind = kind
         self.title = title
         self.notes = notes
         self.scheduledDate = scheduledDate
-        self.endDate = endDate
+        self.includesTime = includesTime
+        self.endDate = includesTime ? endDate : nil
         self.projectID = projectID
         self.recurrenceRule = recurrenceRule
-        self.eventStartTimeSeconds = eventStartTimeSeconds
-        self.eventEndTimeSeconds = eventEndTimeSeconds
+        self.startTimeSeconds = includesTime ? startTimeSeconds : nil
+        self.endTimeSeconds = includesTime ? endTimeSeconds : nil
     }
 }
 
@@ -662,11 +531,9 @@ nonisolated struct ProjectDraft: Hashable, Sendable {
     let notes: String?
 }
 
-/// Fully planned write commands. Every order choice and repair is decided from
-/// an immutable graph before the persistence boundary is entered.
 nonisolated struct ItemUpsertPlan: Sendable {
     let draft: ItemDraft
-    let existingID: ItemID?
+    let existingID: UUID?
     let order: String
     let orderRepairs: [ItemOrderingChange]
     let projectOrder: String?
@@ -681,7 +548,7 @@ nonisolated struct ProjectUpsertPlan: Sendable {
 }
 
 nonisolated struct ProjectAssignmentPlan: Sendable {
-    let itemID: ItemID
+    let itemID: UUID
     let recurrenceTemplateID: UUID?
     let projectID: UUID?
     let projectOrder: String?
@@ -689,13 +556,11 @@ nonisolated struct ProjectAssignmentPlan: Sendable {
 }
 
 nonisolated struct ProjectAssignmentBatchEntry: Sendable {
-    let itemID: ItemID
+    let itemID: UUID
     let recurrenceTemplateID: UUID?
     let projectOrder: String?
 }
 
-/// One complete, immutable project-membership transaction for a selection.
-/// Rebalancing and every resulting item order are resolved before I/O begins.
 nonisolated struct ProjectAssignmentBatchPlan: Sendable {
     let projectID: UUID?
     let entries: [ProjectAssignmentBatchEntry]

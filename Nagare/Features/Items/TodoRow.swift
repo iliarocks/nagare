@@ -6,7 +6,6 @@ struct TodoRow: View {
     let onToggleSelection: () -> Void
     let onComplete: () -> Void
     let onChangeDate: () -> Void
-    let onMoveProject: () -> Void
     let onDelete: () -> Void
     @State private var isCompleting = false
 
@@ -16,13 +15,21 @@ struct TodoRow: View {
                 action: onOpen,
                 commandAction: onToggleSelection
             ) {
-                Text(todo.title)
-                    .nagareItemTitleFont()
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 12) {
+                    Text(todo.title)
+                        .nagareItemTitleFont()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if todo.includesTime {
+                        ItemTimeLabel(
+                            startDate: todo.scheduledDate,
+                            endDate: todo.endDate
+                        )
+                    }
+                }
             }
-            .accessibilityAction(named: "Change Date", onChangeDate)
-            .accessibilityAction(named: "Move Project", onMoveProject)
+            .accessibilityAction(named: "Change Date and Time", onChangeDate)
             .accessibilityAction(named: "Delete", onDelete)
 
             Button(action: complete) {
@@ -64,5 +71,24 @@ struct TodoRow: View {
                 }
             }
         }
+    }
+}
+
+struct ItemTimeLabel: View {
+    let startDate: Date
+    let endDate: Date?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(startDate, format: .dateTime.hour().minute())
+            if let endDate {
+                Text("–")
+                Text(endDate, format: .dateTime.hour().minute())
+            }
+        }
+        .nagareTimeFont()
+        .foregroundStyle(.secondary)
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }

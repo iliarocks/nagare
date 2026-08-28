@@ -6,6 +6,57 @@ import Testing
 
 @MainActor
 struct SyncIntegrityTests {
+    @Test func cloudSyncMonitorTracksSuccessAndRecoversFromErrors() {
+        let monitor = NagareCloudSyncMonitor(isEnabled: true)
+        defer { monitor.stop() }
+        let firstID = UUID()
+        let start = Date(timeIntervalSince1970: 100)
+        let failureDate = start.addingTimeInterval(1)
+
+        monitor.record(
+            type: .import,
+            identifier: firstID,
+            startDate: start,
+            endDate: nil,
+            succeeded: false,
+            errorDescription: nil
+        )
+        #expect(monitor.phase == .syncing)
+
+        monitor.record(
+            type: .import,
+            identifier: firstID,
+            startDate: start,
+            endDate: failureDate,
+            succeeded: false,
+            errorDescription: "Network unavailable"
+        )
+        #expect(monitor.phase == .failed)
+        #expect(monitor.lastErrorDescription == "Network unavailable")
+
+        let recoveryDate = failureDate.addingTimeInterval(10)
+        monitor.record(
+            type: .import,
+            identifier: UUID(),
+            startDate: recoveryDate,
+            endDate: recoveryDate,
+            succeeded: true,
+            errorDescription: nil
+        )
+        #expect(monitor.phase == .upToDate)
+        #expect(monitor.lastSuccessfulImport == recoveryDate)
+        #expect(monitor.lastErrorDescription == nil)
+
+        monitor.recordHistoryObservation(
+            isHealthy: false,
+            errorDescription: "History unavailable"
+        )
+        #expect(monitor.phase == .failed)
+        #expect(monitor.lastErrorDescription == "History unavailable")
+        monitor.recordHistoryObservation(isHealthy: true)
+        #expect(monitor.phase == .upToDate)
+    }
+
     @Test func iCloudSyncIsStrictlyOptIn() throws {
         let suiteName = "NagareCloudPreferencesTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -94,169 +145,6 @@ struct SyncIntegrityTests {
                 #expect(relationship.deleteRule != .denyDeleteRule)
             }
         }
-    }
-
-    @Test func versionOneStoreMigratesWithoutLosingValuesOrRelationships() throws {
-        let storeURL = temporaryStoreURL()
-        defer { removeStoreFiles(at: storeURL) }
-
-        let projectID = UUID()
-        let todoID = UUID()
-        let templateID = UUID()
-        let createdAt = Date(timeIntervalSince1970: 1_750_000_000)
-
-        try autoreleasepool {
-            let oldSchema = Schema(versionedSchema: NagareSchemaV1.self)
-            let oldConfiguration = ModelConfiguration(
-                "MigrationV1",
-                schema: oldSchema,
-                url: storeURL,
-                cloudKitDatabase: .none
-            )
-            let oldContainer = try ModelContainer(
-                for: oldSchema,
-                configurations: oldConfiguration
-            )
-            let context = oldContainer.mainContext
-
-            let project = NagareSchemaV1.Project(
-                id: projectID,
-                title: "Original project",
-                notes: "Preserve me",
-                isPriority: true,
-                order: "i",
-                createdAt: createdAt
-            )
-            let todo = NagareSchemaV1.Todo(
-                id: todoID,
-                title: "Original todo",
-                notes: "Still here",
-                scheduledDate: createdAt,
-                createdAt: createdAt,
-                order: "r",
-                projectOrder: "f"
-            )
-            let template = NagareSchemaV1.RecurrenceTemplate(
-                id: templateID,
-                itemTypeRawValue: "todo",
-                title: "Future todo",
-                notes: "Future notes",
-                modeRawValue: "relative",
-                unitRawValue: "day",
-                interval: 2,
-                currentItemID: todoID,
-                createdAt: createdAt
-            )
-            todo.project = project
-            todo.recurrenceSequence = 0
-            todo.recurrenceTemplate = template
-            template.project = project
-            context.insert(project)
-            context.insert(todo)
-            context.insert(template)
-            try context.save()
-        }
-
-        let configuration = ModelConfiguration(
-            "MigrationV2",
-            schema: NagareSchema.current,
-            url: storeURL,
-            cloudKitDatabase: .none
-        )
-        let container = try ModelContainer(
-            for: NagareSchema.current,
-            migrationPlan: NagareMigrationPlan.self,
-            configurations: configuration
-        )
-        let context = container.mainContext
-
-        let project = try #require(
-            context.fetch(FetchDescriptor<Project>()).first
-        )
-        let todo = try #require(
-            context.fetch(FetchDescriptor<Todo>()).first
-        )
-        let template = try #require(
-            context.fetch(FetchDescriptor<RecurrenceTemplate>()).first
-        )
-
-        #expect(project.id == projectID)
-        #expect(project.title == "Original project")
-        #expect(project.notes == "Preserve me")
-        #expect(project.isPriority)
-        #expect(project.createdAt == createdAt)
-        #expect(project.modifiedAt == nil)
-        #expect(project.syncRecordID == nil)
-        #expect(project.todos.map(\.id) == [todoID])
-        #expect(project.recurrenceTemplates.map(\.id) == [templateID])
-
-        #expect(todo.id == todoID)
-        #expect(todo.notes == "Still here")
-        #expect(todo.project?.id == projectID)
-        #expect(todo.recurrenceTemplate?.id == templateID)
-        #expect(todo.recurrenceSequence == 0)
-        #expect(todo.modifiedAt == nil)
-        #expect(todo.syncRecordID == nil)
-
-        #expect(template.id == templateID)
-        #expect(template.currentItemID == todoID)
-        #expect(template.todoOccurrences.map(\.id) == [todoID])
-        #expect(template.project?.id == projectID)
-        #expect(template.modifiedAt == nil)
-        #expect(template.syncRecordID == nil)
-    }
-
-    @Test func originalUnversionedStoreIsRecognizedAsVersionOne() throws {
-        let storeURL = temporaryStoreURL()
-        defer { removeStoreFiles(at: storeURL) }
-
-        let projectID = UUID()
-
-        try autoreleasepool {
-            // This is how the released app created its store before it had a
-            // migration plan. It deliberately does not use
-            // Schema(versionedSchema:).
-            let originalSchema = Schema(NagareSchemaV1.models)
-            let oldConfiguration = ModelConfiguration(
-                "OriginalUnversionedStore",
-                schema: originalSchema,
-                url: storeURL,
-                cloudKitDatabase: .none
-            )
-            let oldContainer = try ModelContainer(
-                for: originalSchema,
-                configurations: oldConfiguration
-            )
-            let context = oldContainer.mainContext
-            context.insert(
-                NagareSchemaV1.Project(
-                    id: projectID,
-                    title: "From the released app",
-                    order: "i"
-                )
-            )
-            try context.save()
-        }
-
-        let currentConfiguration = ModelConfiguration(
-            "CurrentStore",
-            schema: NagareSchema.current,
-            url: storeURL,
-            cloudKitDatabase: .none
-        )
-        let container = try ModelContainer(
-            for: NagareSchema.current,
-            migrationPlan: NagareMigrationPlan.self,
-            configurations: currentConfiguration
-        )
-        let projects = try container.mainContext.fetch(
-            FetchDescriptor<Project>()
-        )
-
-        #expect(projects.map(\.id) == [projectID])
-        #expect(projects.first?.title == "From the released app")
-        #expect(projects.first?.modifiedAt == nil)
-        #expect(projects.first?.syncRecordID == nil)
     }
 
     @Test func transactionStampsEveryChangedRecordAtOneBoundary() throws {
@@ -381,14 +269,8 @@ struct SyncIntegrityTests {
             scheduledDate: timestamp,
             order: "i"
         )
-        let event = Event(
-            title: "Attached event",
-            scheduledDate: timestamp,
-            order: "i"
-        )
         let olderTemplate = RecurrenceTemplate(
             id: templateID,
-            itemType: .todo,
             title: "Older template",
             notes: nil,
             rule: rule,
@@ -397,7 +279,6 @@ struct SyncIntegrityTests {
         )
         let newerTemplate = RecurrenceTemplate(
             id: templateID,
-            itemType: .todo,
             title: "Newer template",
             notes: nil,
             rule: rule,
@@ -406,14 +287,9 @@ struct SyncIntegrityTests {
         )
         olderTemplate.modifiedAt = timestamp
         newerTemplate.modifiedAt = timestamp.addingTimeInterval(1)
-        // The older client must preserve a future item kind while still
-        // reconnecting its relationships during semantic-ID deduplication.
-        olderTemplate.itemTypeRawValue = "future-item"
-        newerTemplate.itemTypeRawValue = "future-item"
 
         todo.project = olderProject
         todo.recurrenceTemplate = olderTemplate
-        event.project = olderProject
         olderTemplate.project = olderProject
         newerTemplate.project = newerProject
 
@@ -422,7 +298,6 @@ struct SyncIntegrityTests {
         context.insert(olderTemplate)
         context.insert(newerTemplate)
         context.insert(todo)
-        context.insert(event)
 
         let report = try SyncIntegrityRepair.repair(in: context)
         let projects = try context.fetch(FetchDescriptor<Project>())
@@ -435,14 +310,13 @@ struct SyncIntegrityTests {
         #expect(projects.count == 1)
         #expect(projects.first === newerProject)
         #expect(todo.project === newerProject)
-        #expect(event.project === newerProject)
         #expect(templates.count == 1)
         #expect(templates.first === newerTemplate)
         #expect(todo.recurrenceTemplate === newerTemplate)
         #expect(newerTemplate.project === newerProject)
     }
 
-    @Test func migratedRecordsReceiveOneStablePhysicalIdentity() throws {
+    @Test func recordsReceiveOneStablePhysicalIdentity() throws {
         let context = try makeContext()
         let todo = Todo(
             title: "Migrated",
@@ -462,6 +336,39 @@ struct SyncIntegrityTests {
         #expect(assignedID == todo.id)
     }
 
+    @Test func metadataRepairPreservesEveryRecordRevisionDate() throws {
+        let context = try makeContext()
+        let oldRevision = Date(timeIntervalSince1970: 100)
+        let newerRevision = Date(timeIntervalSince1970: 1_000)
+
+        let recordWithoutPhysicalID = Todo(
+            title: "Migrated",
+            scheduledDate: oldRevision,
+            createdAt: oldRevision,
+            order: "a"
+        )
+        recordWithoutPhysicalID.modifiedAt = oldRevision
+        recordWithoutPhysicalID.syncRecordID = nil
+
+        let unrelated = Todo(
+            title: "Unrelated newer record",
+            scheduledDate: newerRevision,
+            createdAt: newerRevision,
+            order: "b"
+        )
+        unrelated.modifiedAt = newerRevision
+        unrelated.syncRecordID = UUID()
+        context.insert(recordWithoutPhysicalID)
+        context.insert(unrelated)
+
+        let report = try SyncIntegrityRepair.repair(in: context)
+
+        #expect(report.syncRecordIDsAssigned == 1)
+        #expect(recordWithoutPhysicalID.syncRecordID == recordWithoutPhysicalID.id)
+        #expect(recordWithoutPhysicalID.modifiedAt == oldRevision)
+        #expect(unrelated.modifiedAt == newerRevision)
+    }
+
     @Test func templateAndOccurrenceImportBeforeRelationshipConverge() throws {
         let context = try makeContext()
         let day = Date(timeIntervalSince1970: 1_750_000_000)
@@ -473,7 +380,6 @@ struct SyncIntegrityTests {
         )
         todo.recurrenceSequence = 0
         let template = RecurrenceTemplate(
-            itemType: .todo,
             title: "Imported template",
             notes: nil,
             rule: try RecurrenceRule.relative(every: 1, unit: .day),
@@ -496,7 +402,6 @@ struct SyncIntegrityTests {
         let day = Date(timeIntervalSince1970: 1_750_000_000)
         let missingItemID = UUID()
         let template = RecurrenceTemplate(
-            itemType: .todo,
             title: "Imported template",
             notes: nil,
             rule: try RecurrenceRule.relative(every: 1, unit: .day),
@@ -540,7 +445,6 @@ struct SyncIntegrityTests {
         original.recurrenceSequence = 0
         let rule = try RecurrenceRule.relative(every: 1, unit: .day)
         let template = RecurrenceTemplate(
-            itemType: .todo,
             title: "Repeating",
             notes: nil,
             rule: rule,
@@ -583,12 +487,13 @@ struct SyncIntegrityTests {
         #expect(template.currentItemID == firstSuccessor.id)
     }
 
-    @Test func eventRecurrenceKeepsOnlyHighestAvailableSequence() throws {
+    @Test func timedTodoRecurrenceKeepsHistoryAndHighestActiveSequence() throws {
         let context = try makeContext()
         let day = Date(timeIntervalSince1970: 1_750_000_000)
-        let first = Event(
+        let first = Todo(
             title: "First",
             scheduledDate: day,
+            includesTime: true,
             createdAt: day,
             order: "i"
         )
@@ -600,8 +505,7 @@ struct SyncIntegrityTests {
             calendar: calendar
         )
         let template = RecurrenceTemplate(
-            itemType: .event,
-            title: "Event",
+            title: "Timed Todo",
             notes: nil,
             rule: rule,
             startTimeSeconds: 0,
@@ -610,9 +514,10 @@ struct SyncIntegrityTests {
         )
         first.recurrenceTemplate = template
 
-        let second = Event(
+        let second = Todo(
             title: "Second",
             scheduledDate: day.addingTimeInterval(86_400),
+            includesTime: true,
             createdAt: day.addingTimeInterval(1),
             order: "i"
         )
@@ -623,9 +528,11 @@ struct SyncIntegrityTests {
         context.insert(second)
 
         _ = try SyncIntegrityRepair.repair(in: context)
-        let events = try context.fetch(FetchDescriptor<Event>())
+        let todos = try context.fetch(FetchDescriptor<Todo>())
 
-        #expect(events.map(\.id) == [second.id])
+        #expect(Set(todos.map(\.id)) == [first.id, second.id])
+        #expect(first.completedAt != nil)
+        #expect(second.completedAt == nil)
         #expect(template.currentSequence == 1)
         #expect(template.currentItemID == second.id)
     }
@@ -644,12 +551,29 @@ struct SyncIntegrityTests {
         )
         let container = try ModelContainer(
             for: NagareSchema.current,
-            migrationPlan: NagareMigrationPlan.self,
             configurations: configuration
         )
         let context = ModelContext(container)
         context.autosaveEnabled = false
         return context
+    }
+
+    private func date(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        hour: Int = 0,
+        minute: Int = 0
+    ) -> Date {
+        calendar.date(
+            from: DateComponents(
+                year: year,
+                month: month,
+                day: day,
+                hour: hour,
+                minute: minute
+            )
+        )!
     }
 
     private func temporaryStoreURL() -> URL {

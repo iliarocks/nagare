@@ -18,8 +18,7 @@ final class SwiftDataOrderingAdapter:
 
     func loadItems() throws -> [ItemSnapshot] {
         do {
-            let items = try context.fetch(FetchDescriptor<Todo>()).map(SwiftDataItem.todo)
-                + context.fetch(FetchDescriptor<Event>()).map(SwiftDataItem.event)
+            let items = try context.fetch(FetchDescriptor<Todo>())
             itemsByID = Dictionary(
                 uniqueKeysWithValues: items.map { ($0.id, $0) }
             )
@@ -40,7 +39,7 @@ final class SwiftDataOrderingAdapter:
             return projects.map {
                 ProjectSnapshot(
                     id: $0.id,
-                    isPriority: $0.isPriority,
+                    priority: $0.priority,
                     order: $0.order
                 )
             }
@@ -62,6 +61,9 @@ final class SwiftDataOrderingAdapter:
                 item.applyOrder(order)
             }
             if let scheduledDate = change.scheduledDate {
+                if let includesTime = change.includesTime {
+                    item.includesTime = includesTime
+                }
                 item.applySchedule(
                     scheduledDate: scheduledDate,
                     endDate: change.endDate
@@ -93,8 +95,8 @@ final class SwiftDataOrderingAdapter:
             if let order = change.order {
                 project.order = order
             }
-            if let isPriority = change.isPriority {
-                project.isPriority = isPriority
+            if let priority = change.priority {
+                project.priority = priority
             }
         }
     }

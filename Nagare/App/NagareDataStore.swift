@@ -19,9 +19,26 @@ final class NagareDataStore {
 
     var projects: [ProjectRecordSnapshot] { snapshot.canonicalProjects }
     var todos: [TodoRecordSnapshot] { snapshot.canonicalTodos }
-    var events: [EventRecordSnapshot] { snapshot.canonicalEvents }
     var recurrenceTemplates: [RecurrenceTemplateRecordSnapshot] {
         snapshot.canonicalRecurrenceTemplates
+    }
+
+    func exportData(at date: Date = .now) throws -> Data {
+        try orchestrator.exportData(at: date)
+    }
+
+    func prepareDataImport(
+        _ data: Data,
+        calendar: Calendar = .autoupdatingCurrent
+    ) throws -> NagareDataImportPlan {
+        try orchestrator.prepareDataImport(data, calendar: calendar)
+    }
+
+    func importData(
+        _ plan: NagareDataImportPlan,
+        at date: Date = .now
+    ) throws {
+        snapshot = try orchestrator.importData(plan, at: date)
     }
 
     @discardableResult
@@ -56,8 +73,12 @@ final class NagareDataStore {
         return result.id
     }
 
-    func reload() throws {
-        snapshot = try orchestrator.load()
+    @discardableResult
+    func reload() throws -> Bool {
+        let persistedSnapshot = try orchestrator.load()
+        guard persistedSnapshot != snapshot else { return false }
+        snapshot = persistedSnapshot
+        return true
     }
 
     func updateNote(
@@ -104,25 +125,25 @@ final class NagareDataStore {
 
     func reorderProjects(
         _ displayedIDs: [UUID],
-        isPriority: Bool,
+        priority: ProjectPriority,
         at date: Date = .now
     ) throws {
         snapshot = try orchestrator.reorderProjects(
             displayedIDs,
-            isPriority: isPriority,
+            priority: priority,
             at: date
         )
     }
 
     func moveProjects(
         _ sourceIDs: [UUID],
-        toPriority isPriority: Bool,
+        toPriority priority: ProjectPriority,
         before destinationID: UUID?,
         at date: Date = .now
     ) throws {
         snapshot = try orchestrator.moveProjects(
             sourceIDs,
-            toPriority: isPriority,
+            toPriority: priority,
             before: destinationID,
             at: date
         )
@@ -209,16 +230,18 @@ final class NagareDataStore {
         )
     }
 
-    func updateEventSchedule(
+    func updateTodoSchedule(
         _ id: UUID,
         scheduledDate: Date,
+        includesTime: Bool,
         endDate: Date?,
         calendar: Calendar = .autoupdatingCurrent,
         at date: Date = .now
     ) throws {
-        snapshot = try orchestrator.updateEventSchedule(
+        snapshot = try orchestrator.updateTodoSchedule(
             id,
             scheduledDate: scheduledDate,
+            includesTime: includesTime,
             endDate: endDate,
             calendar: calendar,
             at: date
@@ -252,15 +275,15 @@ final class NagareDataStore {
     func updateRecurrenceTemplate(
         _ id: UUID,
         rule: RecurrenceRule,
-        eventStartTimeSeconds: Int?,
-        eventEndTimeSeconds: Int?,
+        startTimeSeconds: Int?,
+        endTimeSeconds: Int?,
         at date: Date = .now
     ) throws {
         snapshot = try orchestrator.updateRecurrenceTemplate(
             id,
             rule: rule,
-            eventStartTimeSeconds: eventStartTimeSeconds,
-            eventEndTimeSeconds: eventEndTimeSeconds,
+            startTimeSeconds: startTimeSeconds,
+            endTimeSeconds: endTimeSeconds,
             at: date
         )
     }

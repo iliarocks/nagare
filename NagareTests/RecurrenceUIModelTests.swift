@@ -16,7 +16,6 @@ struct RecurrenceUIModelTests {
 
         state.setEnabled(
             true,
-            for: .todo,
             referenceDate: date(2026, 7, 8),
             calendar: calendar
         )
@@ -40,7 +39,6 @@ struct RecurrenceUIModelTests {
 
     @Test func switchingToMonthlyRepeatUsesZeroBasedDayOfMonth() {
         var state = RecurrenceFormState.enabled(
-            for: .todo,
             referenceDate: date(2026, 7, 15),
             calendar: calendar
         )
@@ -57,7 +55,6 @@ struct RecurrenceUIModelTests {
 
     @Test func switchingToYearlyRepeatUsesReferenceDateWithoutAnchors() throws {
         var state = RecurrenceFormState.enabled(
-            for: .todo,
             referenceDate: date(2026, 8, 3),
             calendar: calendar
         )
@@ -79,32 +76,28 @@ struct RecurrenceUIModelTests {
         #expect(rule.reference == date(2026, 8, 3))
     }
 
-    @Test func eventRepeatCannotRemainRelative() {
+    @Test func timedTodoRepeatCanUseRelativeTiming() {
         var state = RecurrenceFormState.enabled(
-            for: .todo,
             referenceDate: date(2026, 7, 1),
             calendar: calendar
         )
         state.selectMode(
             .relative,
-            for: .todo,
             referenceDate: date(2026, 7, 1),
             calendar: calendar
         )
 
         state.prepare(
-            for: .event,
             referenceDate: date(2026, 7, 1),
             calendar: calendar
         )
 
-        #expect(state.mode == .absolute)
+        #expect(state.mode == .relative)
         #expect(state.isValid)
     }
 
     @Test func absoluteWeeklyFormRequiresAtLeastOneDay() {
         var state = RecurrenceFormState.enabled(
-            for: .todo,
             referenceDate: date(2026, 7, 6),
             calendar: calendar
         )
@@ -164,14 +157,12 @@ struct RecurrenceUIModelTests {
 
     @Test func disablingRepeatProducesNoRule() throws {
         var state = RecurrenceFormState.enabled(
-            for: .todo,
             referenceDate: date(2026, 7, 1),
             calendar: calendar
         )
 
         state.setEnabled(
             false,
-            for: .todo,
             referenceDate: date(2026, 7, 1),
             calendar: calendar
         )
@@ -187,7 +178,6 @@ struct RecurrenceUIModelTests {
 
     @Test func creationFormRebasesAbsoluteCadenceWhenDateChanges() throws {
         var state = RecurrenceFormState.enabled(
-            for: .todo,
             referenceDate: date(2026, 7, 6),
             calendar: calendar
         )
@@ -234,7 +224,6 @@ struct RecurrenceUIModelTests {
 
         #expect(items.count == 1)
         #expect(items.first?.date == date(2026, 7, 3))
-        #expect(items.first?.itemType == .todo)
         #expect(items.first?.startDate == nil)
     }
 
@@ -273,11 +262,12 @@ struct RecurrenceUIModelTests {
         #expect(Set(items.map(\.id)).count == 3)
     }
 
-    @Test func virtualEventCopiesTemplateWallTimes() throws {
+    @Test func virtualTimedTodoCopiesTemplateWallTimes() throws {
         let context = try makeContext()
-        let event = Event(
+        let event = Todo(
             title: "Office hours",
             scheduledDate: date(2026, 7, 6, hour: 9, minute: 30),
+            includesTime: true,
             endDate: date(2026, 7, 6, hour: 11),
             order: "i"
         )
@@ -306,7 +296,6 @@ struct RecurrenceUIModelTests {
 
         #expect(item.startDate == date(2026, 7, 13, hour: 9, minute: 30))
         #expect(item.endDate == date(2026, 7, 13, hour: 11))
-        #expect(item.itemType == .event)
     }
 
     @Test func freshProjectionReadsUpdatedTemplateWithoutMutatingOldSnapshot() throws {

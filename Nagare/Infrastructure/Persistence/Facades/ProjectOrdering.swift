@@ -35,12 +35,12 @@ enum ProjectOrdering {
     }
 
     static func nextOrder(
-        isPriority: Bool,
+        priority: ProjectPriority,
         in context: ModelContext
     ) throws -> String {
         try translateErrors {
             try ProjectOrderingOrchestrator.prepareNextOrder(
-                isPriority: isPriority,
+                priority: priority,
                 using: SwiftDataOrderingAdapter(context: context)
             )
         }
@@ -48,14 +48,14 @@ enum ProjectOrdering {
 
     static func move(
         _ sourceIDs: [UUID],
-        toPriority isPriority: Bool,
+        toPriority priority: ProjectPriority,
         before destinationID: UUID?,
         in context: ModelContext
     ) throws {
         try translateErrors {
             try ProjectOrderingOrchestrator.move(
                 sourceIDs,
-                toPriority: isPriority,
+                toPriority: priority,
                 before: destinationID,
                 using: SwiftDataOrderingAdapter(context: context)
             )
@@ -64,13 +64,13 @@ enum ProjectOrdering {
 
     static func saveDisplayedOrder(
         _ projectIDs: [UUID],
-        isPriority: Bool,
+        priority: ProjectPriority,
         in context: ModelContext
     ) throws {
         try translateErrors {
             try ProjectOrderingOrchestrator.saveDisplayedOrder(
                 projectIDs,
-                isPriority: isPriority,
+                priority: priority,
                 using: SwiftDataOrderingAdapter(context: context)
             )
         }

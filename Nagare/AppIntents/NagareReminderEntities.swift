@@ -156,10 +156,11 @@ struct NagareTodoEntity: AppEntity {
 
     var displayRepresentation: DisplayRepresentation {
         let date = dueDate?.date
+        let hasTime = dueDate?.hour != nil || dueDate?.minute != nil
         return DisplayRepresentation(
             title: "\(title)",
             subtitle: date.map {
-                "\($0.formatted(date: .abbreviated, time: .omitted))"
+                "\($0.formatted(date: .abbreviated, time: hasTime ? .shortened : .omitted))"
             },
             image: .init(
                 systemName: isCompleted ? "checkmark.circle.fill" : "circle"
@@ -175,8 +176,14 @@ struct NagareTodoEntity: AppEntity {
         self.urls = []
         self.title = snapshot.title
         self.note = snapshot.notes.map(AttributedString.init)
+        var components: Set<Calendar.Component> = [
+            .calendar, .timeZone, .year, .month, .day
+        ]
+        if snapshot.includesTime {
+            components.formUnion([.hour, .minute, .second])
+        }
         self.dueDate = Calendar.autoupdatingCurrent.dateComponents(
-            [.calendar, .timeZone, .year, .month, .day],
+            components,
             from: snapshot.scheduledDate
         )
         self.recurrence = nil

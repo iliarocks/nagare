@@ -4,7 +4,6 @@ struct VirtualItemRow: View {
     let item: VirtualItem
     let onOpen: () -> Void
     let onChangeRepeat: () -> Void
-    let onMoveProject: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -16,7 +15,7 @@ struct VirtualItemRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let startDate = item.startDate {
-                    EventTimeLabel(
+                    ItemTimeLabel(
                         startDate: startDate,
                         endDate: item.endDate
                     )
@@ -40,20 +39,11 @@ struct VirtualItemRow: View {
             Button(action: onChangeRepeat) {
                 Image(systemName: "repeat")
             }
-            .tint(.blue)
             .accessibilityLabel("Change Repeat")
 
-            Button(action: onMoveProject) {
-                Image(systemName: "folder")
-            }
-            .tint(.indigo)
-            .accessibilityLabel("Move Project")
         }
         .accessibilityAction(named: "Change Repeat") {
             onChangeRepeat()
-        }
-        .accessibilityAction(named: "Move Project") {
-            onMoveProject()
         }
         .accessibilityAction(named: "Delete") {
             onDelete()
@@ -61,10 +51,6 @@ struct VirtualItemRow: View {
         .nagareDesktopContextMenu {
             Button(action: onChangeRepeat) {
                 Label("Change Repeat", systemImage: "repeat")
-            }
-
-            Button(action: onMoveProject) {
-                Label("Move Project", systemImage: "folder")
             }
 
             Divider()

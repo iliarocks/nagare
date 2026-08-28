@@ -20,6 +20,32 @@ final class NagareDataOrchestrator {
         try reader.load()
     }
 
+    func exportData(at date: Date) throws -> Data {
+        try NagareDataArchiveCodec.encode(
+            reader.load(),
+            exportedAt: date
+        )
+    }
+
+    func prepareDataImport(
+        _ data: Data,
+        calendar: Calendar
+    ) throws -> NagareDataImportPlan {
+        try NagareDataArchivePlanner.planImport(
+            NagareDataArchiveCodec.decode(data),
+            into: reader.load(),
+            calendar: calendar
+        )
+    }
+
+    func importData(
+        _ plan: NagareDataImportPlan,
+        at date: Date
+    ) throws -> NagareDataSnapshot {
+        try writer.importData(plan, at: date)
+        return try reader.load()
+    }
+
     func upsertItem(
         _ draft: ItemDraft,
         existingID: ItemID?,
@@ -96,12 +122,12 @@ final class NagareDataOrchestrator {
 
     func reorderProjects(
         _ displayedIDs: [UUID],
-        isPriority: Bool,
+        priority: ProjectPriority,
         at date: Date
     ) throws -> NagareDataSnapshot {
         let current = try reader.load()
         let projects = current.canonicalProjects
-            .filter { $0.isPriority == isPriority }
+            .filter { $0.priority == priority }
             .sorted {
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.id.uuidString < $1.id.uuidString
@@ -123,7 +149,7 @@ final class NagareDataOrchestrator {
 
     func moveProjects(
         _ sourceIDs: [UUID],
-        toPriority isPriority: Bool,
+        toPriority priority: ProjectPriority,
         before destinationID: UUID?,
         at date: Date
     ) throws -> NagareDataSnapshot {
@@ -136,7 +162,7 @@ final class NagareDataOrchestrator {
             return project
         }
         let destination = current.canonicalProjects
-            .filter { $0.isPriority == isPriority }
+            .filter { $0.priority == priority }
             .sorted {
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.id.uuidString < $1.id.uuidString
@@ -160,7 +186,7 @@ final class NagareDataOrchestrator {
                 ProjectOrderingChange(
                     id: $0.id,
                     order: $0.order,
-                    isPriority: isPriority
+                    priority: priority
                 )
             },
             at: date
@@ -279,11 +305,7 @@ final class NagareDataOrchestrator {
         calendar: Calendar
     ) throws -> NagareDataSnapshot {
         let current = try reader.load()
-        let items = current.canonicalTodos.map {
-            ItemRecordSnapshot.todo($0).orderingSnapshot
-        } + current.canonicalEvents.map {
-            ItemRecordSnapshot.event($0).orderingSnapshot
-        }
+        let items = current.canonicalTodos.map(\.orderingSnapshot)
         let todoPlan = try TodoMaintenanceLogic.rollForward(
             items,
             to: date,
@@ -292,10 +314,6 @@ final class NagareDataOrchestrator {
         if !todoPlan.changes.isEmpty {
             try writer.saveItemOrdering(todoPlan.changes, at: date)
         }
-        try writer.deletePastEvents(
-            before: calendar.startOfDay(for: date),
-            at: date
-        )
         return try reader.load()
     }
 
@@ -375,29 +393,24 @@ final class NagareDataOrchestrator {
         return try reader.load()
     }
 
-    func updateEventSchedule(
+    func updateTodoSchedule(
         _ id: UUID,
         scheduledDate: Date,
+        includesTime: Bool,
         endDate: Date?,
         calendar: Calendar,
         at date: Date
     ) throws -> NagareDataSnapshot {
         let current = try reader.load()
-        guard let event = current.eventsByID[id] else {
+        guard let todo = current.todosByID[id] else {
             throw OrderingPlanner.PlanningError.missingSource
         }
         var changes: [ItemOrderingChange] = []
-        if !calendar.isDate(event.scheduledDate, inSameDayAs: scheduledDate) {
-            let destination = ItemRecordSnapshot.ordered(
-                todos: current.canonicalTodos.filter {
-                    $0.completedAt == nil
-                        && calendar.isDate(
-                            $0.scheduledDate,
-                            inSameDayAs: scheduledDate
-                        )
-                },
-                events: current.canonicalEvents.filter {
+        if !calendar.isDate(todo.scheduledDate, inSameDayAs: scheduledDate) {
+            let destination = TodoRecordSnapshot.ordered(
+                current.canonicalTodos.filter {
                     $0.id != id
+                        && $0.completedAt == nil
                         && calendar.isDate(
                             $0.scheduledDate,
                             inSameDayAs: scheduledDate
@@ -414,17 +427,19 @@ final class NagareDataOrchestrator {
             }
             changes.append(
                 ItemOrderingChange(
-                    id: .event(id),
+                    id: id,
                     order: next.order,
                     scheduledDate: scheduledDate,
+                    includesTime: includesTime,
                     endDate: endDate
                 )
             )
         } else {
             changes.append(
                 ItemOrderingChange(
-                    id: .event(id),
+                    id: id,
                     scheduledDate: scheduledDate,
+                    includesTime: includesTime,
                     endDate: endDate
                 )
             )
@@ -466,15 +481,15 @@ final class NagareDataOrchestrator {
     func updateRecurrenceTemplate(
         _ id: UUID,
         rule: RecurrenceRule,
-        eventStartTimeSeconds: Int?,
-        eventEndTimeSeconds: Int?,
+        startTimeSeconds: Int?,
+        endTimeSeconds: Int?,
         at date: Date
     ) throws -> NagareDataSnapshot {
         try writer.updateRecurrenceTemplate(
             id,
             rule: rule,
-            eventStartTimeSeconds: eventStartTimeSeconds,
-            eventEndTimeSeconds: eventEndTimeSeconds,
+            startTimeSeconds: startTimeSeconds,
+            endTimeSeconds: endTimeSeconds,
             at: date
         )
         return try reader.load()

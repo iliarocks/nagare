@@ -21,6 +21,7 @@ struct ReorderableItemGroup: Identifiable {
 struct ReorderableItemList: View {
     let groups: [ReorderableItemGroup]
     let showsDateHeaders: Bool
+    @Binding var scrollTargetDate: Date?
     let onOpen: (ItemRecordSnapshot) -> Void
     let onOpenVirtual: (VirtualItem) -> Void
     let onComplete: (TodoRecordSnapshot) -> Void
@@ -29,16 +30,15 @@ struct ReorderableItemList: View {
     let onMove: (Date, IndexSet, Int) -> Void
     let onMoveAcrossDates: ([ItemID], Date, ItemID?) -> Void
     @State private var todoBeingRescheduled: TodoRecordSnapshot?
-    @State private var eventBeingRescheduled: EventRecordSnapshot?
     @State private var recurrenceTemplateBeingEdited:
         RecurrenceTemplateRecordSnapshot?
-    @State private var projectMoveTarget: ProjectMoveTarget?
     @State private var selectedItemIDs: Set<ItemID> = []
     @State private var itemSelectionBeingRescheduled: ItemSelectionAction?
 
     init(
         groups: [ReorderableItemGroup],
         showsDateHeaders: Bool,
+        scrollTargetDate: Binding<Date?> = .constant(nil),
         onOpen: @escaping (ItemRecordSnapshot) -> Void,
         onOpenVirtual: @escaping (VirtualItem) -> Void = { _ in },
         onComplete: @escaping (TodoRecordSnapshot) -> Void,
@@ -53,6 +53,7 @@ struct ReorderableItemList: View {
     ) {
         self.groups = groups
         self.showsDateHeaders = showsDateHeaders
+        _scrollTargetDate = scrollTargetDate
         self.onOpen = onOpen
         self.onOpenVirtual = onOpenVirtual
         self.onComplete = onComplete
@@ -81,31 +82,27 @@ struct ReorderableItemList: View {
                 .presentationDragIndicator(.visible)
         }
         .nagareModal(item: $todoBeingRescheduled) { todo in
-            TodoDateEditor(todo: todo)
-                .nagareSheetDetents([.medium])
-                .presentationDragIndicator(.visible)
-        }
-        .nagareModal(item: $eventBeingRescheduled) { event in
-            EventScheduleEditor(event: event)
-                .nagareSheetDetents([EventScheduleEditor.sheetDetent])
-                .presentationDragIndicator(.visible)
+            TodoScheduleEditor(todo: todo)
         }
         .nagareModal(item: $recurrenceTemplateBeingEdited) { template in
             RecurrenceEditor(template: template)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .nagareModal(item: $projectMoveTarget) { target in
-            ProjectMoveEditor(target: target)
-                .nagareSheetDetents([.fraction(0.25)])
-                .presentationDragIndicator(.visible)
-        }
     }
 
     @ViewBuilder
     private var itemList: some View {
-        List {
-            listRows
+        ScrollViewReader { proxy in
+            List {
+                listRows
+            }
+            .onChange(of: scrollTargetDate, initial: true) { _, date in
+                scroll(to: date, using: proxy)
+            }
+            .onChange(of: groups.map(\.date)) {
+                scroll(to: scrollTargetDate, using: proxy)
+            }
         }
     }
 
@@ -116,29 +113,42 @@ struct ReorderableItemList: View {
                 Section {
                     rows(for: group)
                 } header: {
-                    HStack {
-                        Text(
-                            group.date,
-                            format: .dateTime.weekday(.wide)
-                        )
-
-                        Spacer()
-
-                        Text(
-                            group.date,
-                            format: .dateTime
-                                .month(.wide)
-                                .day()
-                        )
-                    }
+                    Text(upcomingHeaderTitle(for: group.date))
                     .nagareDateSectionHeader(
                         isFirst: group.id == groups.first?.id
                     )
                     .fontWeight(.regular)
                 }
+                .id(group.date)
             }
         } else if let group = groups.first {
             rows(for: group)
+        }
+    }
+
+    private func upcomingHeaderTitle(for date: Date) -> String {
+        let weekday = date.formatted(.dateTime.weekday(.abbreviated))
+        let monthAndDay = date.formatted(
+            .dateTime.month(.abbreviated).day()
+        )
+        return "\(weekday) \(monthAndDay)"
+    }
+
+    private func scroll(to target: Date?, using proxy: ScrollViewProxy) {
+        guard let target else { return }
+        let calendar = Calendar.autoupdatingCurrent
+        guard let group = groups.first(where: {
+            calendar.isDate($0.date, inSameDayAs: target)
+        }) else {
+            return
+        }
+
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.snappy) {
+                proxy.scrollTo(group.date, anchor: .top)
+            }
+            scrollTargetDate = nil
         }
     }
 
@@ -152,7 +162,6 @@ struct ReorderableItemList: View {
                 onComplete: onComplete,
                 contextItems: contextItems(for: item),
                 onChangeSchedule: presentScheduleEditor,
-                onMoveProject: presentProjectMoveEditor,
                 onDelete: onDelete
             )
             .nagareItemListRow()
@@ -173,9 +182,6 @@ struct ReorderableItemList: View {
                 onOpen: { onOpenVirtual(item) },
                 onChangeRepeat: {
                     recurrenceTemplateBeingEdited = item.template
-                },
-                onMoveProject: {
-                    projectMoveTarget = .template(item.template)
                 },
                 onDelete: {
                     onDeleteTemplate(item.template)
@@ -230,18 +236,7 @@ struct ReorderableItemList: View {
             itemSelectionBeingRescheduled = ItemSelectionAction(items: items)
             return
         }
-        switch item {
-        case .todo(let todo): todoBeingRescheduled = todo
-        case .event(let event): eventBeingRescheduled = event
-        }
-    }
-
-    private func presentProjectMoveEditor(_ items: [ItemRecordSnapshot]) {
-        guard items.count == 1, let item = items.first else {
-            projectMoveTarget = .items(items)
-            return
-        }
-        projectMoveTarget = .item(item)
+        todoBeingRescheduled = item
     }
 
     private func apply(

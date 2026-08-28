@@ -10,7 +10,6 @@ struct VirtualItem: Identifiable {
     let date: Date
     let startDate: Date?
     let endDate: Date?
-    let itemType: RecurrenceItemType
     let order: String
 
     var id: VirtualItemID {
@@ -51,7 +50,6 @@ enum VirtualItemProjection {
                     date: item.date,
                     startDate: item.startDate,
                     endDate: item.endDate,
-                    itemType: item.itemType,
                     order: item.order
                 )
             },

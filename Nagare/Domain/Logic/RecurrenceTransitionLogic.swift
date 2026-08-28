@@ -2,11 +2,11 @@ import Foundation
 
 nonisolated enum RecurrenceTransitionLogic {
     enum TransitionError: Error, Equatable, Sendable {
-        case missingEventStartTime
-        case eventTimeCalculationFailed
+        case timeCalculationFailed
         case sequenceOverflow
-        case eventCrossesDateBoundary
-        case eventEndsBeforeItStarts
+        case crossesDateBoundary
+        case endsBeforeStart
+        case invalidTime
     }
 
     static func nextTodo(
@@ -15,50 +15,23 @@ nonisolated enum RecurrenceTransitionLogic {
         createdAt: Date,
         calendar: Calendar
     ) throws -> TodoOccurrenceDraft {
-        TodoOccurrenceDraft(
-            title: template.title,
-            notes: template.notes,
-            scheduledDate: try RecurrenceCalculator.nextDate(
-                after: current.scheduledDate,
-                using: template.rule,
-                calendar: calendar
-            ),
-            createdAt: createdAt,
-            order: current.order,
-            projectOrder: current.projectOrder,
-            sequence: try incrementedSequence(template.currentSequence)
-        )
-    }
-
-    static func nextEvent(
-        after current: RecurrenceOccurrenceSnapshot,
-        from template: RecurrenceTransitionTemplate,
-        createdAt: Date,
-        calendar: Calendar
-    ) throws -> EventOccurrenceDraft {
         let nextDay = try RecurrenceCalculator.nextDate(
             after: current.scheduledDate,
             using: template.rule,
             calendar: calendar
         )
-        guard let startTimeSeconds = template.startTimeSeconds else {
-            throw TransitionError.missingEventStartTime
+        let startDate = try template.startTimeSeconds.map {
+            try date(on: nextDay, wallTimeSeconds: $0, calendar: calendar)
         }
-        return EventOccurrenceDraft(
+        let endDate = try template.endTimeSeconds.map {
+            try date(on: nextDay, wallTimeSeconds: $0, calendar: calendar)
+        }
+        return TodoOccurrenceDraft(
             title: template.title,
             notes: template.notes,
-            scheduledDate: try date(
-                on: nextDay,
-                wallTimeSeconds: startTimeSeconds,
-                calendar: calendar
-            ),
-            endDate: try template.endTimeSeconds.map {
-                try date(
-                    on: nextDay,
-                    wallTimeSeconds: $0,
-                    calendar: calendar
-                )
-            },
+            scheduledDate: startDate ?? calendar.startOfDay(for: nextDay),
+            includesTime: startDate != nil,
+            endDate: endDate,
             createdAt: createdAt,
             order: current.order,
             projectOrder: current.projectOrder,
@@ -66,22 +39,18 @@ nonisolated enum RecurrenceTransitionLogic {
         )
     }
 
-    static func eventWallTimes(
+    static func wallTimes(
         scheduledDate: Date,
         endDate: Date?,
         calendar: Calendar
     ) throws -> (start: Int, end: Int?) {
         let start = wallTimeSeconds(for: scheduledDate, calendar: calendar)
-        guard let endDate else {
-            return (start, nil)
-        }
+        guard let endDate else { return (start, nil) }
         guard calendar.isDate(endDate, inSameDayAs: scheduledDate) else {
-            throw TransitionError.eventCrossesDateBoundary
+            throw TransitionError.crossesDateBoundary
         }
         let end = wallTimeSeconds(for: endDate, calendar: calendar)
-        guard end >= start else {
-            throw TransitionError.eventEndsBeforeItStarts
-        }
+        guard end >= start else { throw TransitionError.endsBeforeStart }
         return (start, end)
     }
 
@@ -103,6 +72,9 @@ nonisolated enum RecurrenceTransitionLogic {
         wallTimeSeconds: Int,
         calendar: Calendar
     ) throws -> Date {
+        guard (0..<86_400).contains(wallTimeSeconds) else {
+            throw TransitionError.invalidTime
+        }
         let hour = wallTimeSeconds / 3_600
         let minute = wallTimeSeconds % 3_600 / 60
         let second = wallTimeSeconds % 60
@@ -112,16 +84,14 @@ nonisolated enum RecurrenceTransitionLogic {
             second: second,
             of: calendar.startOfDay(for: day)
         ) else {
-            throw TransitionError.eventTimeCalculationFailed
+            throw TransitionError.timeCalculationFailed
         }
         return date
     }
 
     private static func incrementedSequence(_ sequence: Int) throws -> Int {
         let (next, overflow) = sequence.addingReportingOverflow(1)
-        guard !overflow else {
-            throw TransitionError.sequenceOverflow
-        }
+        guard !overflow else { throw TransitionError.sequenceOverflow }
         return next
     }
 }

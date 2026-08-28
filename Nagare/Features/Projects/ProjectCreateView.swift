@@ -6,8 +6,6 @@ struct ProjectCreateView: View {
 
     @State private var title = ""
     @State private var notes = ""
-    @State private var persistedProjectID: UUID?
-    @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
     @FocusState private var focusedField: NagareEditorField?
 
@@ -22,38 +20,16 @@ struct ProjectCreateView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TextField("Project Title", text: $title)
-                .font(.title.weight(.semibold))
-                .textFieldStyle(.plain)
-                .focused($focusedField, equals: .title)
-                .submitLabel(.done)
-                .onSubmit {
-                    submit()
-                }
-                .accessibilityIdentifier("Create Project Title")
-
-            NagareDocumentEditor(
-                text: $notes,
-                accessibilityIdentifier: "Create Project Notes",
-                focus: $focusedField
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        NavigationStack {
+            editorContent
+                .nagareProjectCreationChrome(
+                    isSubmitDisabled: trimmedTitle.isEmpty,
+                    onClose: close,
+                    onSubmit: submit
+                )
         }
-        .nagareComposerContentPadding()
-        .nagareComposerFrame(width: 600, height: 280)
         .task {
             focusedField = .title
-        }
-        .onChange(of: title) {
-            scheduleSave()
-        }
-        .onChange(of: notes) {
-            scheduleSave()
-        }
-        .onDisappear {
-            pendingSave?.cancel()
-            saveProject()
         }
         .alert("Project Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -64,6 +40,27 @@ struct ProjectCreateView: View {
         }
     }
 
+    private var editorContent: some View {
+        NagareDocumentComposerLayout {
+            TextField("Project Title", text: $title)
+                .font(.title.weight(.semibold))
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .title)
+                .submitLabel(.done)
+                .onSubmit {
+                    submit()
+                }
+                .accessibilityIdentifier("Create Project Title")
+        } document: {
+            NagareDocumentEditor(
+                text: $notes,
+                accessibilityIdentifier: "Create Project Notes",
+                focus: $focusedField
+            )
+        }
+        .nagareComposerFrame(width: 600, height: 280)
+    }
+
     private var isShowingError: Binding<Bool> {
         Binding(
             get: { errorMessage != nil },
@@ -71,22 +68,13 @@ struct ProjectCreateView: View {
         )
     }
 
-    private func scheduleSave() {
-        pendingSave?.cancel()
-        pendingSave = Task {
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-            } catch {
-                return
-            }
-
-            saveProject()
-        }
+    private func submit() {
+        guard saveProject() else { return }
+        close()
     }
 
-    private func submit() {
-        pendingSave?.cancel()
-        guard saveProject(allowingEmptyTitle: true) else { return }
+    private func close() {
+        focusedField = nil
         if let onDismiss {
             onDismiss()
         } else {
@@ -95,21 +83,19 @@ struct ProjectCreateView: View {
     }
 
     @discardableResult
-    private func saveProject(allowingEmptyTitle: Bool = false) -> Bool {
-        guard allowingEmptyTitle || !trimmedTitle.isEmpty else {
-            return false
-        }
+    private func saveProject() -> Bool {
+        guard !trimmedTitle.isEmpty else { return false }
 
         do {
             let savedNotes = notes.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ).isEmpty ? nil : notes
-            persistedProjectID = try dataStore.upsertProject(
+            try dataStore.upsertProject(
                 ProjectDraft(
                     title: trimmedTitle,
                     notes: savedNotes
                 ),
-                existingID: persistedProjectID
+                existingID: nil
             )
             return true
         } catch {

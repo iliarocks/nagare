@@ -26,7 +26,7 @@ enum SyncReconciliationOrchestrator {
         }
 
         do {
-            try persistence.save(at: plan.transactionDate)
+            try persistence.savePreservingMetadata()
             return plan
         } catch {
             persistence.rollback()

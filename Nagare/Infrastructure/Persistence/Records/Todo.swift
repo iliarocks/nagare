@@ -9,6 +9,9 @@ final class Todo: Note, SyncRecord {
     var title: String = ""
     var notes: String?
     var scheduledDate: Date = Date.now
+    var includesTime: Bool = false
+    var endDate: Date?
+    var calendarIdentifier: String?
     var completedAt: Date?
     var createdAt: Date = Date.now
     var modifiedAt: Date?
@@ -24,6 +27,9 @@ final class Todo: Note, SyncRecord {
         title: String,
         notes: String? = nil,
         scheduledDate: Date = .now,
+        includesTime: Bool = false,
+        endDate: Date? = nil,
+        calendarIdentifier: String? = nil,
         completedAt: Date? = nil,
         createdAt: Date = .now,
         order: String,
@@ -33,7 +39,12 @@ final class Todo: Note, SyncRecord {
         self.id = id
         self.title = title
         self.notes = notes
-        self.scheduledDate = calendar.startOfDay(for: scheduledDate)
+        self.scheduledDate = includesTime
+            ? scheduledDate
+            : calendar.startOfDay(for: scheduledDate)
+        self.includesTime = includesTime
+        self.endDate = includesTime ? endDate : nil
+        self.calendarIdentifier = calendarIdentifier
         self.completedAt = completedAt
         self.createdAt = createdAt
         self.modifiedAt = createdAt

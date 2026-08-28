@@ -10,15 +10,20 @@ final class SwiftDataNagareRepository:
     NagareDataWriting
 {
     private let modelContainer: ModelContainer
+    private let historyAuthor: String
 
-    init(modelContainer: ModelContainer) {
+    init(
+        modelContainer: ModelContainer,
+        historyAuthor: String = NagareCloud.localHistoryAuthor
+    ) {
         self.modelContainer = modelContainer
+        self.historyAuthor = historyAuthor
     }
 
     func upsertItem(
         _ plan: ItemUpsertPlan,
         at date: Date
-    ) throws -> ItemID {
+    ) throws -> UUID {
         let context = makeContext()
         do {
             try applyItemOrdering(plan.orderRepairs, in: context)
@@ -26,41 +31,29 @@ final class SwiftDataNagareRepository:
                 plan.projectOrderRepairs,
                 in: context
             )
-            let draft = plan.draft
-            let item: SwiftDataItem
+            let item: Todo
             if let existingID = plan.existingID {
-                let existing = try loadItem(for: existingID, in: context)
-                if existing.kind == draft.kind {
-                    apply(draft, to: existing)
-                    item = existing
-                } else {
-                    item = replace(
-                        existing,
-                        with: draft,
-                        order: plan.order,
-                        projectOrder: plan.projectOrder,
-                        in: context
-                    )
-                }
+                item = try requireTodo(existingID, in: context)
+                apply(plan.draft, to: item)
             } else {
                 item = create(
-                    draft,
+                    plan.draft,
                     order: plan.order,
                     projectOrder: plan.projectOrder,
                     at: date,
                     in: context
                 )
             }
-            item.applyOrder(plan.order)
+            item.order = plan.order
             try applyProject(
                 to: item,
-                projectID: draft.projectID,
+                projectID: plan.draft.projectID,
                 projectOrder: plan.projectOrder,
                 in: context
             )
             try persistRecurrence(
                 for: item,
-                draft: draft,
+                draft: plan.draft,
                 at: date,
                 in: context
             )
@@ -92,7 +85,7 @@ final class SwiftDataNagareRepository:
             let project = Project(
                 title: plan.draft.title,
                 notes: plan.draft.notes,
-                isPriority: false,
+                priority: .normal,
                 order: plan.order,
                 createdAt: date
             )
@@ -121,7 +114,7 @@ final class SwiftDataNagareRepository:
                         modifiedAt: $0.modifiedAt,
                         title: $0.title,
                         notes: $0.notes,
-                        isPriority: $0.isPriority,
+                        priority: $0.priority,
                         order: $0.order
                     )
                 },
@@ -134,24 +127,10 @@ final class SwiftDataNagareRepository:
                         title: $0.title,
                         notes: $0.notes,
                         scheduledDate: $0.scheduledDate,
-                        completedAt: $0.completedAt,
-                        order: $0.order,
-                        projectOrder: $0.projectOrder,
-                        recurrenceSequence: $0.recurrenceSequence,
-                        recurrenceTemplateID: $0.recurrenceTemplate?.id,
-                        projectID: $0.project?.id
-                    )
-                },
-                events: try context.fetch(FetchDescriptor<Event>()).map {
-                    EventRecordSnapshot(
-                        id: $0.id,
-                        syncRecordID: $0.syncRecordID,
-                        createdAt: $0.createdAt,
-                        modifiedAt: $0.modifiedAt,
-                        title: $0.title,
-                        notes: $0.notes,
-                        scheduledDate: $0.scheduledDate,
+                        includesTime: $0.includesTime,
                         endDate: $0.endDate,
+                        calendarIdentifier: $0.calendarIdentifier,
+                        completedAt: $0.completedAt,
                         order: $0.order,
                         projectOrder: $0.projectOrder,
                         recurrenceSequence: $0.recurrenceSequence,
@@ -167,7 +146,6 @@ final class SwiftDataNagareRepository:
                         syncRecordID: $0.syncRecordID,
                         createdAt: $0.createdAt,
                         modifiedAt: $0.modifiedAt,
-                        itemTypeRawValue: $0.itemTypeRawValue,
                         title: $0.title,
                         notes: $0.notes,
                         modeRawValue: $0.modeRawValue,
@@ -191,6 +169,137 @@ final class SwiftDataNagareRepository:
         }
     }
 
+    func importData(
+        _ plan: NagareDataImportPlan,
+        at date: Date
+    ) throws {
+        let context = makeContext()
+        do {
+            let existingProjects = Dictionary(
+                grouping: try context.fetch(FetchDescriptor<Project>()),
+                by: \.id
+            )
+            let existingTodos = Dictionary(
+                grouping: try context.fetch(FetchDescriptor<Todo>()),
+                by: \.id
+            )
+            let existingTemplates = Dictionary(
+                grouping: try context.fetch(
+                    FetchDescriptor<RecurrenceTemplate>()
+                ),
+                by: \.id
+            )
+
+            var projectsByID: [UUID: Project] = [:]
+            for source in plan.projects {
+                let project = try existingRecord(
+                    source.id,
+                    in: existingProjects
+                ) ?? Project(
+                    id: source.id,
+                    title: source.title,
+                    notes: source.notes,
+                    priority: source.priority,
+                    order: source.order,
+                    createdAt: source.createdAt
+                )
+                if project.modelContext == nil { context.insert(project) }
+                project.createdAt = source.createdAt
+                project.title = source.title
+                project.notes = source.notes
+                project.priority = source.priority
+                project.order = source.order
+                projectsByID[source.id] = project
+            }
+
+            var templatesByID: [UUID: RecurrenceTemplate] = [:]
+            for source in plan.recurrenceTemplates {
+                let record = source.record
+                let template = try existingRecord(
+                    record.id,
+                    in: existingTemplates
+                ) ?? RecurrenceTemplate(
+                    id: record.id,
+                    title: record.title,
+                    notes: record.notes,
+                    rule: source.rule,
+                    startTimeSeconds: record.startTimeSeconds,
+                    endTimeSeconds: record.endTimeSeconds,
+                    currentItemID: record.currentItemID,
+                    currentSequence: record.currentSequence,
+                    createdAt: record.createdAt
+                )
+                if template.modelContext == nil { context.insert(template) }
+                template.createdAt = record.createdAt
+                template.title = record.title
+                template.notes = record.notes
+                template.modeRawValue = record.modeRawValue
+                template.unitRawValue = record.unitRawValue
+                template.interval = record.interval
+                template.anchors = record.anchors
+                template.reference = record.reference
+                template.startTimeSeconds = record.startTimeSeconds
+                template.endTimeSeconds = record.endTimeSeconds
+                template.currentItemID = record.currentItemID
+                template.currentSequence = record.currentSequence
+                template.project = try importedProject(
+                    record.projectID,
+                    in: projectsByID
+                )
+                templatesByID[record.id] = template
+            }
+
+            for source in plan.todos {
+                let todo = try existingRecord(
+                    source.id,
+                    in: existingTodos
+                ) ?? Todo(
+                    id: source.id,
+                    title: source.title,
+                    notes: source.notes,
+                    scheduledDate: source.scheduledDate,
+                    includesTime: source.includesTime,
+                    endDate: source.endDate,
+                    calendarIdentifier: source.calendarIdentifier,
+                    completedAt: source.completedAt,
+                    createdAt: source.createdAt,
+                    order: source.order,
+                    projectOrder: source.projectOrder
+                )
+                if todo.modelContext == nil { context.insert(todo) }
+                todo.createdAt = source.createdAt
+                todo.title = source.title
+                todo.notes = source.notes
+                todo.scheduledDate = source.scheduledDate
+                todo.includesTime = source.includesTime
+                todo.endDate = source.includesTime ? source.endDate : nil
+                todo.calendarIdentifier = source.calendarIdentifier
+                todo.completedAt = source.completedAt
+                todo.order = source.order
+                todo.projectOrder = source.projectOrder
+                todo.recurrenceSequence = source.recurrenceSequence
+                todo.recurrenceTemplate = try importedTemplate(
+                    source.recurrenceTemplateID,
+                    in: templatesByID
+                )
+                todo.project = try importedProject(
+                    source.projectID,
+                    in: projectsByID
+                )
+            }
+
+            try SwiftDataTransaction.save(context, at: date)
+        } catch let error as NagareDataPersistenceError {
+            context.rollback()
+            throw error
+        } catch {
+            context.rollback()
+            throw NagareDataPersistenceError.saveFailed(
+                error.localizedDescription
+            )
+        }
+    }
+
     func updateNote(
         _ id: NoteRecordID,
         title: String,
@@ -203,8 +312,6 @@ final class SwiftDataNagareRepository:
             switch id {
             case .todo(let id):
                 note = try requireTodo(id, in: context)
-            case .event(let id):
-                note = try requireEvent(id, in: context)
             case .recurrenceTemplate(let id):
                 note = try requireRecurrenceTemplate(id, in: context)
             }
@@ -343,7 +450,7 @@ final class SwiftDataNagareRepository:
             }
             todo.recurrenceTemplate = nil
             todo.recurrenceSequence = nil
-            todo.scheduledDate = plan.scheduledDate
+            todo.move(to: plan.scheduledDate)
             todo.order = plan.order
             todo.projectOrder = plan.projectOrder
             todo.completedAt = nil
@@ -375,39 +482,11 @@ final class SwiftDataNagareRepository:
         }
     }
 
-    func deletePastEvents(
-        before date: Date,
-        at transactionDate: Date
-    ) throws {
-        let context = makeContext()
-        do {
-            let descriptor = FetchDescriptor<Event>(
-                predicate: #Predicate { event in
-                    event.scheduledDate < date
-                }
-            )
-            let events = try context.fetch(descriptor)
-            try RecurrencePersistence.removePastEventOccurrences(
-                events,
-                before: date,
-                at: transactionDate,
-                in: context
-            )
-        } catch let error as NagareDataPersistenceError {
-            throw error
-        } catch {
-            context.rollback()
-            throw NagareDataPersistenceError.saveFailed(
-                error.localizedDescription
-            )
-        }
-    }
-
-    func deleteItem(_ id: ItemID, at date: Date) throws {
+    func deleteItem(_ id: UUID, at date: Date) throws {
         try deleteItems([id], at: date)
     }
 
-    func deleteItems(_ ids: [ItemID], at date: Date) throws {
+    func deleteItems(_ ids: [UUID], at date: Date) throws {
         let context = makeContext()
         do {
             guard Set(ids).count == ids.count else {
@@ -415,19 +494,9 @@ final class SwiftDataNagareRepository:
                     "The item selection contains duplicates."
                 )
             }
-            var todos: [Todo] = []
-            var events: [Event] = []
-            for id in ids {
-                switch id {
-                case .todo(let id):
-                    todos.append(try requireTodo(id, in: context))
-                case .event(let id):
-                    events.append(try requireEvent(id, in: context))
-                }
-            }
-            try RecurrencePersistence.delete(
-                todos: todos,
-                events: events,
+            let todos = try ids.map { try requireTodo($0, in: context) }
+            _ = try RecurrencePersistence.delete(
+                todos,
                 at: date,
                 in: context
             )
@@ -468,15 +537,11 @@ final class SwiftDataNagareRepository:
             let project: Project? = try plan.projectID.map {
                 try requireProject($0, in: context)
             }
-            let item = try loadItem(for: plan.itemID, in: context)
-            item.applyProject(project)
-            item.applyProjectOrder(plan.projectOrder)
+            let item = try requireTodo(plan.itemID, in: context)
+            item.project = project
+            item.projectOrder = plan.projectOrder
             if let id = plan.recurrenceTemplateID {
-                let template = try requireRecurrenceTemplate(
-                    id,
-                    in: context
-                )
-                template.project = project
+                try requireRecurrenceTemplate(id, in: context).project = project
             }
             try SwiftDataTransaction.save(context, at: date)
         } catch let error as NagareDataPersistenceError {
@@ -499,15 +564,11 @@ final class SwiftDataNagareRepository:
                 try requireProject($0, in: context)
             }
             for entry in plan.entries {
-                let item = try loadItem(for: entry.itemID, in: context)
-                item.applyProject(project)
-                item.applyProjectOrder(entry.projectOrder)
+                let item = try requireTodo(entry.itemID, in: context)
+                item.project = project
+                item.projectOrder = entry.projectOrder
                 if let id = entry.recurrenceTemplateID {
-                    let template = try requireRecurrenceTemplate(
-                        id,
-                        in: context
-                    )
-                    template.project = project
+                    try requireRecurrenceTemplate(id, in: context).project = project
                 }
             }
             try SwiftDataTransaction.save(context, at: date)
@@ -524,8 +585,8 @@ final class SwiftDataNagareRepository:
     func updateRecurrenceTemplate(
         _ id: UUID,
         rule: RecurrenceRule,
-        eventStartTimeSeconds: Int?,
-        eventEndTimeSeconds: Int?,
+        startTimeSeconds: Int?,
+        endTimeSeconds: Int?,
         at date: Date
     ) throws {
         let context = makeContext()
@@ -534,8 +595,8 @@ final class SwiftDataNagareRepository:
             try RecurrencePersistence.updateTemplate(
                 template,
                 rule: rule,
-                eventStartTimeSeconds: eventStartTimeSeconds,
-                eventEndTimeSeconds: eventEndTimeSeconds,
+                startTimeSeconds: startTimeSeconds,
+                endTimeSeconds: endTimeSeconds,
                 at: date,
                 in: context
             )
@@ -551,7 +612,7 @@ final class SwiftDataNagareRepository:
     private func makeContext() -> ModelContext {
         let context = ModelContext(modelContainer)
         context.autosaveEnabled = false
-        context.author = NagareCloud.localHistoryAuthor
+        context.author = historyAuthor
         return context
     }
 
@@ -560,19 +621,20 @@ final class SwiftDataNagareRepository:
         in context: ModelContext
     ) throws {
         for change in changes {
-            switch change.id {
-            case .todo(let id):
-                let todo = try requireTodo(id, in: context)
-                if let order = change.order { todo.order = order }
-                if let scheduledDate = change.scheduledDate {
-                    todo.scheduledDate = scheduledDate
+            let todo = try requireTodo(change.id, in: context)
+            if let order = change.order { todo.order = order }
+            if let scheduledDate = change.scheduledDate {
+                todo.scheduledDate = scheduledDate
+                if let includesTime = change.includesTime {
+                    todo.includesTime = includesTime
                 }
-            case .event(let id):
-                let event = try requireEvent(id, in: context)
-                if let order = change.order { event.order = order }
-                if let scheduledDate = change.scheduledDate {
-                    event.scheduledDate = scheduledDate
-                    event.endDate = change.endDate
+                todo.endDate = todo.includesTime ? change.endDate : nil
+                if todo.recurrenceTemplate != nil, todo.includesTime {
+                    _ = try RecurrenceTransitionLogic.wallTimes(
+                        scheduledDate: scheduledDate,
+                        endDate: todo.endDate,
+                        calendar: .autoupdatingCurrent
+                    )
                 }
             }
         }
@@ -585,8 +647,8 @@ final class SwiftDataNagareRepository:
         for change in changes {
             let project = try requireProject(change.id, in: context)
             if let order = change.order { project.order = order }
-            if let isPriority = change.isPriority {
-                project.isPriority = isPriority
+            if let priority = change.priority {
+                project.priority = priority
             }
         }
     }
@@ -596,26 +658,8 @@ final class SwiftDataNagareRepository:
         in context: ModelContext
     ) throws {
         for change in changes {
-            switch change.id {
-            case .todo(let id):
-                let todo = try requireTodo(id, in: context)
-                todo.projectOrder = change.projectOrder
-            case .event(let id):
-                let event = try requireEvent(id, in: context)
-                event.projectOrder = change.projectOrder
-            }
-        }
-    }
-
-    private func loadItem(
-        for id: ItemID,
-        in context: ModelContext
-    ) throws -> SwiftDataItem {
-        switch id {
-        case .todo(let id):
-            .todo(try requireTodo(id, in: context))
-        case .event(let id):
-            .event(try requireEvent(id, in: context))
+            try requireTodo(change.id, in: context).projectOrder =
+                change.projectOrder
         }
     }
 
@@ -625,108 +669,34 @@ final class SwiftDataNagareRepository:
         projectOrder: String?,
         at date: Date,
         in context: ModelContext
-    ) -> SwiftDataItem {
-        switch draft.kind {
-        case .todo:
-            let todo = Todo(
-                title: draft.title,
-                notes: draft.notes,
-                scheduledDate: draft.scheduledDate,
-                createdAt: date,
-                order: order,
-                projectOrder: projectOrder
-            )
-            // ItemDraft dates are already canonicalized by the use case's
-            // explicit calendar. Do not reinterpret that instant using this
-            // device's current time zone.
-            todo.scheduledDate = draft.scheduledDate
-            context.insert(todo)
-            return SwiftDataItem.todo(todo)
-        case .event:
-            let event = Event(
-                title: draft.title,
-                notes: draft.notes,
-                scheduledDate: draft.scheduledDate,
-                endDate: draft.endDate,
-                createdAt: date,
-                order: order,
-                projectOrder: projectOrder
-            )
-            context.insert(event)
-            return SwiftDataItem.event(event)
-        }
+    ) -> Todo {
+        let todo = Todo(
+            title: draft.title,
+            notes: draft.notes,
+            scheduledDate: draft.scheduledDate,
+            includesTime: draft.includesTime,
+            endDate: draft.endDate,
+            createdAt: date,
+            order: order,
+            projectOrder: projectOrder
+        )
+        // The use case already canonicalized this instant with its explicit
+        // calendar; do not reinterpret it using the repository's time zone.
+        todo.scheduledDate = draft.scheduledDate
+        context.insert(todo)
+        return todo
     }
 
-    private func apply(
-        _ draft: ItemDraft,
-        to item: SwiftDataItem
-    ) {
-        switch item {
-        case .todo(let todo):
-            todo.title = draft.title
-            todo.notes = draft.notes
-            todo.scheduledDate = draft.scheduledDate
-        case .event(let event):
-            event.title = draft.title
-            event.notes = draft.notes
-            event.scheduledDate = draft.scheduledDate
-            event.endDate = draft.endDate
-        }
-    }
-
-    private func replace(
-        _ item: SwiftDataItem,
-        with draft: ItemDraft,
-        order: String,
-        projectOrder: String?,
-        in context: ModelContext
-    ) -> SwiftDataItem {
-        let createdAt = item.createdAt
-        switch item {
-        case .todo(let todo):
-            if let template = todo.recurrenceTemplate {
-                context.delete(template)
-            }
-            context.delete(todo)
-        case .event(let event):
-            if let template = event.recurrenceTemplate {
-                context.delete(template)
-            }
-            context.delete(event)
-        }
-
-        let replacement: SwiftDataItem
-        switch draft.kind {
-        case .todo:
-            let todo = Todo(
-                title: draft.title,
-                notes: draft.notes,
-                scheduledDate: draft.scheduledDate,
-                createdAt: createdAt,
-                order: order,
-                projectOrder: projectOrder
-            )
-            todo.scheduledDate = draft.scheduledDate
-            context.insert(todo)
-            replacement = .todo(todo)
-        case .event:
-            let event = Event(
-                title: draft.title,
-                notes: draft.notes,
-                scheduledDate: draft.scheduledDate,
-                endDate: draft.endDate,
-                createdAt: createdAt,
-                order: order,
-                projectOrder: projectOrder
-            )
-            context.insert(event)
-            replacement = .event(event)
-        }
-        return replacement
+    private func apply(_ draft: ItemDraft, to todo: Todo) {
+        todo.title = draft.title
+        todo.notes = draft.notes
+        todo.scheduledDate = draft.scheduledDate
+        todo.includesTime = draft.includesTime
+        todo.endDate = draft.includesTime ? draft.endDate : nil
     }
 
     private func applyProject(
-        to item: SwiftDataItem,
+        to todo: Todo,
         projectID: UUID?,
         projectOrder: String?,
         in context: ModelContext
@@ -734,99 +704,54 @@ final class SwiftDataNagareRepository:
         let project: Project? = try projectID.map {
             try requireProject($0, in: context)
         }
-        item.applyProject(project)
-        item.applyProjectOrder(projectOrder)
-        switch item {
-        case .todo(let todo):
-            todo.recurrenceTemplate?.project = project
-        case .event(let event):
-            event.recurrenceTemplate?.project = project
-        }
+        todo.project = project
+        todo.projectOrder = projectOrder
+        todo.recurrenceTemplate?.project = project
     }
 
     private func persistRecurrence(
-        for item: SwiftDataItem,
+        for todo: Todo,
         draft: ItemDraft,
         at date: Date,
         in context: ModelContext
     ) throws {
-        switch item {
-        case .todo(let todo):
-            if let template = todo.recurrenceTemplate {
-                template.title = draft.title
-                template.notes = draft.notes
-                if let rule = draft.recurrenceRule {
-                    try RecurrencePersistence.updateTemplate(
-                        template,
-                        rule: rule,
-                        at: date,
-                        in: context
-                    )
-                } else {
-                    try RecurrencePersistence.deleteTemplate(
-                        template,
-                        at: date,
-                        in: context
-                    )
-                }
-            } else if let rule = draft.recurrenceRule {
-                _ = try RecurrencePersistence.createTemplate(
-                    for: todo,
+        if let template = todo.recurrenceTemplate {
+            template.title = draft.title
+            template.notes = draft.notes
+            if let rule = draft.recurrenceRule {
+                try RecurrencePersistence.updateTemplate(
+                    template,
                     rule: rule,
+                    startTimeSeconds: draft.startTimeSeconds,
+                    endTimeSeconds: draft.endTimeSeconds,
                     at: date,
                     in: context
                 )
             } else {
-                try SwiftDataTransaction.save(context, at: date)
-            }
-        case .event(let event):
-            if let template = event.recurrenceTemplate {
-                template.title = draft.title
-                template.notes = draft.notes
-                if let rule = draft.recurrenceRule {
-                    try RecurrencePersistence.updateTemplate(
-                        template,
-                        rule: rule,
-                        eventStartTimeSeconds: draft.eventStartTimeSeconds,
-                        eventEndTimeSeconds: draft.eventEndTimeSeconds,
-                        at: date,
-                        in: context
-                    )
-                } else {
-                    try RecurrencePersistence.deleteTemplate(
-                        template,
-                        at: date,
-                        in: context
-                    )
-                }
-            } else if let rule = draft.recurrenceRule {
-                _ = try RecurrencePersistence.createTemplate(
-                    for: event,
-                    rule: rule,
+                try RecurrencePersistence.deleteTemplate(
+                    template,
                     at: date,
                     in: context
                 )
-            } else {
-                try SwiftDataTransaction.save(context, at: date)
             }
+        } else if let rule = draft.recurrenceRule {
+            _ = try RecurrencePersistence.createTemplate(
+                for: todo,
+                rule: rule,
+                at: date,
+                in: context
+            )
+        } else {
+            try SwiftDataTransaction.save(context, at: date)
         }
     }
 
     private func currentScheduledDate(
         for template: RecurrenceTemplate
     ) -> Date? {
-        switch template.itemType {
-        case .todo:
-            template.todoOccurrences.first {
-                $0.id == template.currentItemID && $0.completedAt == nil
-            }?.scheduledDate
-        case .event:
-            template.eventOccurrences.first {
-                $0.id == template.currentItemID
-            }?.scheduledDate
-        case nil:
-            nil
-        }
+        template.todoOccurrences.first {
+            $0.id == template.currentItemID && $0.completedAt == nil
+        }?.scheduledDate
     }
 
     private func requireTodo(
@@ -836,18 +761,6 @@ final class SwiftDataNagareRepository:
         let records = try context.fetch(
             FetchDescriptor<Todo>(
                 predicate: #Predicate<Todo> { $0.id == id }
-            )
-        )
-        return try requireExactlyOne(records, id: id)
-    }
-
-    private func requireEvent(
-        _ id: UUID,
-        in context: ModelContext
-    ) throws -> Event {
-        let records = try context.fetch(
-            FetchDescriptor<Event>(
-                predicate: #Predicate<Event> { $0.id == id }
             )
         )
         return try requireExactlyOne(records, id: id)
@@ -888,6 +801,46 @@ final class SwiftDataNagareRepository:
             )
         }
         return record
+    }
+
+    private func existingRecord<Record>(
+        _ id: UUID,
+        in recordsByID: [UUID: [Record]]
+    ) throws -> Record? {
+        let records = recordsByID[id] ?? []
+        guard records.count <= 1 else {
+            throw NagareDataPersistenceError.invalidIdentity(
+                id,
+                count: records.count
+            )
+        }
+        return records.first
+    }
+
+    private func importedProject(
+        _ id: UUID?,
+        in projectsByID: [UUID: Project]
+    ) throws -> Project? {
+        guard let id else { return nil }
+        guard let project = projectsByID[id] else {
+            throw NagareDataPersistenceError.invalidState(
+                "The imported project \(id.uuidString) wasn't available."
+            )
+        }
+        return project
+    }
+
+    private func importedTemplate(
+        _ id: UUID?,
+        in templatesByID: [UUID: RecurrenceTemplate]
+    ) throws -> RecurrenceTemplate? {
+        guard let id else { return nil }
+        guard let template = templatesByID[id] else {
+            throw NagareDataPersistenceError.invalidState(
+                "The imported recurrence \(id.uuidString) wasn't available."
+            )
+        }
+        return template
     }
 }
 

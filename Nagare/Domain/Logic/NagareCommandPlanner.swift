@@ -123,7 +123,7 @@ nonisolated enum NagareCommandPlanner {
         }
 
         let projects = snapshot.canonicalProjects
-            .filter { !$0.isPriority }
+            .filter { $0.priority == .normal }
             .sorted {
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.id.uuidString < $1.id.uuidString
@@ -161,12 +161,7 @@ nonisolated enum NagareCommandPlanner {
                 throw PlanningError.missingItem
             }
             assignedItem = existing
-            switch existing {
-            case .todo(let todo):
-                recurrenceTemplateID = todo.recurrenceTemplateID
-            case .event(let event):
-                recurrenceTemplateID = event.recurrenceTemplateID
-            }
+            recurrenceTemplateID = existing.recurrenceTemplateID
         case .recurrenceTemplate(let id):
             guard let template = snapshot.templatesByID[id],
                   let current = snapshot.currentItem(for: template) else {
@@ -244,14 +239,7 @@ nonisolated enum NagareCommandPlanner {
                 guard let item = item(id, in: snapshot) else {
                     throw PlanningError.missingItem
                 }
-                let templateID: UUID?
-                switch item {
-                case .todo(let todo):
-                    templateID = todo.recurrenceTemplateID
-                case .event(let event):
-                    templateID = event.recurrenceTemplateID
-                }
-                return (item, templateID)
+                return (item, item.recurrenceTemplateID)
             case .recurrenceTemplate(let id):
                 guard let template = snapshot.templatesByID[id],
                       let item = snapshot.currentItem(for: template) else {
@@ -345,7 +333,7 @@ nonisolated enum NagareCommandPlanner {
         let projectOrderPlan: OrderingPlanner.NextOrderPlan<ItemID>?
         if let projectID = todo.projectID {
             let projectItems = orderedInProject(items.filter {
-                $0.id != .todo(id)
+                $0.id != id
                     && $0.projectID == projectID
                     && !$0.isCompleted
             })
@@ -381,20 +369,14 @@ nonisolated enum NagareCommandPlanner {
     private static func allItems(
         in snapshot: NagareDataSnapshot
     ) -> [ItemRecordSnapshot] {
-        snapshot.canonicalTodos.map(ItemRecordSnapshot.todo)
-            + snapshot.canonicalEvents.map(ItemRecordSnapshot.event)
+        snapshot.canonicalTodos
     }
 
     private static func item(
         _ id: ItemID,
         in snapshot: NagareDataSnapshot
     ) -> ItemRecordSnapshot? {
-        switch id {
-        case .todo(let id):
-            snapshot.todosByID[id].map(ItemRecordSnapshot.todo)
-        case .event(let id):
-            snapshot.eventsByID[id].map(ItemRecordSnapshot.event)
-        }
+        snapshot.todosByID[id]
     }
 
     private static func ordered(

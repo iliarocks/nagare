@@ -14,6 +14,6 @@ struct QuickAddControl: ControlWidget {
             }
         }
         .displayName("Quick Add")
-        .description("Open Nagare to create a todo or event.")
+        .description("Open Nagare to create a Todo.")
     }
 }

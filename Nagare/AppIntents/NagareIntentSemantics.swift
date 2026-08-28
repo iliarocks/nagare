@@ -2,7 +2,6 @@ import Foundation
 
 enum NagareIntentError: Error, LocalizedError, Equatable {
     case emptyTitle
-    case todoCannotHaveTime
     case allDayEventUnsupported
     case eventEndBeforeStart
     case pastTodoDate
@@ -16,10 +15,8 @@ enum NagareIntentError: Error, LocalizedError, Equatable {
         switch self {
         case .emptyTitle:
             "Nagare needs a title before it can create the item. (SIRI-001)"
-        case .todoCannotHaveTime:
-            "Nagare Todos are intentionally untimed. Create an Event instead when something has a specific time. (SIRI-002)"
         case .allDayEventUnsupported:
-            "Nagare doesn't use all-day Events. Create an untimed Todo instead. (SIRI-004)"
+            "Nagare doesn't use all-day Calendar events. Create a Todo without a time instead. (SIRI-004)"
         case .eventEndBeforeStart:
             "The Event's end time must be later than its start time. (SIRI-005)"
         case .pastTodoDate:
@@ -29,13 +26,18 @@ enum NagareIntentError: Error, LocalizedError, Equatable {
         case .unsupportedReminderFeatures:
             "Nagare Todos don't currently support flags, attachments, tags, links, sections, or location triggers. (SIRI-013)"
         case .unsupportedEventFeatures:
-            "Nagare Events don't currently support locations or attendees. (SIRI-014)"
+            "Nagare's Calendar action doesn't currently support locations or attendees. (SIRI-014)"
         case .invalidNagareContainer:
-            "Nagare only has one Todo list and one Event calendar. (SIRI-015)"
+            "Nagare only has one Todo list and one Calendar destination. (SIRI-015)"
         case .repeatCreationUnsupported:
             "Nagare doesn't currently support creating repeating items through Siri. Create the repeating item in Nagare instead. (SIRI-019)"
         }
     }
+}
+
+struct NagareIntentTodoSchedule: Equatable {
+    let scheduledDate: Date
+    let includesTime: Bool
 }
 
 enum NagareIntentSemantics {
@@ -57,21 +59,22 @@ enum NagareIntentSemantics {
             : notes
     }
 
-    static func todoDate(
+    static func todoSchedule(
         from components: DateComponents?,
         now: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
-    ) throws -> Date {
+    ) throws -> NagareIntentTodoSchedule {
         guard let components else {
-            return calendar.startOfDay(for: now)
+            return NagareIntentTodoSchedule(
+                scheduledDate: calendar.startOfDay(for: now),
+                includesTime: false
+            )
         }
 
-        if components.hour != nil
+        let includesTime = components.hour != nil
             || components.minute != nil
             || components.second != nil
-            || components.nanosecond != nil {
-            throw NagareIntentError.todoCannotHaveTime
-        }
+            || components.nanosecond != nil
 
         var resolvingCalendar = components.calendar ?? calendar
         if let timeZone = components.timeZone {
@@ -85,7 +88,10 @@ enum NagareIntentSemantics {
         guard day >= resolvingCalendar.startOfDay(for: now) else {
             throw NagareIntentError.pastTodoDate
         }
-        return day
+        return NagareIntentTodoSchedule(
+            scheduledDate: includesTime ? date : day,
+            includesTime: includesTime
+        )
     }
 
     static func validateEventRange(

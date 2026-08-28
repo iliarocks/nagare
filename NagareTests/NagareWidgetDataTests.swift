@@ -8,13 +8,13 @@ struct NagareWidgetDataTests {
     )
 
     @Test
-    func topItemUsesNagareOrderAcrossTodosAndEvents() throws {
+    func topItemUsesNagareOrderAcrossDateOnlyAndTimedTodos() throws {
         let today = try #require(
             calendar.date(
                 from: DateComponents(year: 2026, month: 7, day: 27)
             )
         )
-        let eventTime = try #require(
+        let timedTodoTime = try #require(
             calendar.date(
                 from: DateComponents(
                     year: 2026,
@@ -34,10 +34,10 @@ struct NagareWidgetDataTests {
                     order: "m"
                 ),
                 item(
-                    id: "event",
+                    id: "timed-todo",
                     title: "First",
-                    kind: .event,
-                    date: eventTime,
+                    kind: .timedTodo,
+                    date: timedTodoTime,
                     order: "a"
                 )
             ]
@@ -77,7 +77,7 @@ struct NagareWidgetDataTests {
     }
 
     @Test
-    func pastAndFutureEventsAreNotShownToday() throws {
+    func pastAndFutureTimedTodosAreNotShownToday() throws {
         let today = try #require(
             calendar.date(
                 from: DateComponents(year: 2026, month: 7, day: 27)
@@ -94,14 +94,14 @@ struct NagareWidgetDataTests {
                 item(
                     id: "past",
                     title: "Past",
-                    kind: .event,
+                    kind: .timedTodo,
                     date: yesterday,
                     order: "a"
                 ),
                 item(
                     id: "future",
                     title: "Future",
-                    kind: .event,
+                    kind: .timedTodo,
                     date: tomorrow,
                     order: "b"
                 )

@@ -19,16 +19,7 @@ nonisolated struct TodoOccurrenceDraft: Equatable, Sendable {
     let title: String
     let notes: String?
     let scheduledDate: Date
-    let createdAt: Date
-    let order: String
-    let projectOrder: String?
-    let sequence: Int
-}
-
-nonisolated struct EventOccurrenceDraft: Equatable, Sendable {
-    let title: String
-    let notes: String?
-    let scheduledDate: Date
+    let includesTime: Bool
     let endDate: Date?
     let createdAt: Date
     let order: String

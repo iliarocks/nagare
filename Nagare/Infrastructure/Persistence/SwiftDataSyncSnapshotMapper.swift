@@ -15,7 +15,6 @@ enum SwiftDataSyncSnapshotMapper {
     ) -> SyncRecurrenceTemplateSnapshot {
         SyncRecurrenceTemplateSnapshot(
             metadata: templateMetadata(record),
-            itemTypeRawValue: record.itemTypeRawValue,
             currentItemID: record.currentItemID,
             currentSequence: record.currentSequence,
             projectID: record.project?.id
@@ -32,25 +31,14 @@ enum SwiftDataSyncSnapshotMapper {
         )
     }
 
-    static func event(_ record: Event) -> SyncEventSnapshot {
-        SyncEventSnapshot(
-            metadata: eventMetadata(record),
-            recurrenceSequence: record.recurrenceSequence,
-            recurrenceTemplateID: record.recurrenceTemplate?.id,
-            projectID: record.project?.id
-        )
-    }
-
     static func recurrenceProjectionInput(
         templates: [RecurrenceTemplate],
-        todos: [Todo],
-        events: [Event]
+        todos: [Todo]
     ) -> RecurrenceProjectionInput {
         RecurrenceProjectionInput(
             templates: templates.map {
                 RecurrenceProjectionTemplateSnapshot(
                     metadata: templateMetadata($0),
-                    itemTypeRawValue: $0.itemTypeRawValue,
                     modeRawValue: $0.modeRawValue,
                     unitRawValue: $0.unitRawValue,
                     interval: $0.interval,
@@ -65,19 +53,8 @@ enum SwiftDataSyncSnapshotMapper {
             occurrences: todos.map {
                 RecurrenceProjectionOccurrenceSnapshot(
                     metadata: todoMetadata($0),
-                    itemType: .todo,
                     scheduledDate: $0.scheduledDate,
                     completedAt: $0.completedAt,
-                    order: $0.order,
-                    recurrenceSequence: $0.recurrenceSequence,
-                    recurrenceTemplateID: $0.recurrenceTemplate?.id
-                )
-            } + events.map {
-                RecurrenceProjectionOccurrenceSnapshot(
-                    metadata: eventMetadata($0),
-                    itemType: .event,
-                    scheduledDate: $0.scheduledDate,
-                    completedAt: nil,
                     order: $0.order,
                     recurrenceSequence: $0.recurrenceSequence,
                     recurrenceTemplateID: $0.recurrenceTemplate?.id
@@ -105,7 +82,7 @@ enum SwiftDataSyncSnapshotMapper {
             tieBreaker: [
                 stable(record.title),
                 stable(record.notes),
-                stable(record.isPriority),
+                stable(record.priority.rawValue),
                 stable(record.order)
             ]
         )
@@ -118,7 +95,6 @@ enum SwiftDataSyncSnapshotMapper {
             for: record,
             kind: .recurrenceTemplate,
             tieBreaker: [
-                stable(record.itemTypeRawValue),
                 stable(record.title),
                 stable(record.notes),
                 stable(record.modeRawValue),
@@ -143,26 +119,10 @@ enum SwiftDataSyncSnapshotMapper {
                 stable(record.title),
                 stable(record.notes),
                 stable(record.scheduledDate),
-                stable(record.completedAt),
-                stable(record.order),
-                stable(record.projectOrder),
-                stable(record.recurrenceSequence),
-                stable(record.recurrenceTemplate?.id),
-                stable(record.project?.id)
-            ]
-        )
-    }
-
-    private static func eventMetadata(_ record: Event) -> SyncRecordMetadata {
-        metadata(
-            for: record,
-            kind: .event,
-            tieBreaker: [
-                stable(record.title),
-                stable(record.notes),
-                stable(record.scheduledDate),
+                stable(record.includesTime),
                 stable(record.endDate),
                 stable(record.calendarIdentifier),
+                stable(record.completedAt),
                 stable(record.order),
                 stable(record.projectOrder),
                 stable(record.recurrenceSequence),

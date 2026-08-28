@@ -11,10 +11,19 @@ struct ProjectTests {
         return calendar
     }()
 
-    @Test func newProjectDefaultsToBackground() {
+    @Test func newProjectDefaultsToNormalPriority() {
         let project = Project(title: "Project", order: "i")
 
-        #expect(project.isPriority == false)
+        #expect(project.priority == .normal)
+    }
+
+    @Test func prioritiesExposeOnlyAdjacentAvailableMoves() {
+        #expect(ProjectPriority.high.higher == nil)
+        #expect(ProjectPriority.high.lower == .normal)
+        #expect(ProjectPriority.normal.higher == .high)
+        #expect(ProjectPriority.normal.lower == .low)
+        #expect(ProjectPriority.low.higher == .normal)
+        #expect(ProjectPriority.low.lower == nil)
     }
 
     @Test func movingProjectBetweenTiersOnlyChangesProjectPlacement() throws {
@@ -47,7 +56,7 @@ struct ProjectTests {
 
         try ProjectOrdering.move(
             [background.id],
-            toPriority: true,
+            toPriority: .high,
             before: firstPriority.id,
             in: context
         )
@@ -83,13 +92,54 @@ struct ProjectTests {
 
         try ProjectOrdering.saveDisplayedOrder(
             [second.id, first.id],
-            isPriority: false,
+            priority: .normal,
             in: context
         )
 
         #expect(Project.ordered([first, second]).map(\.id) == [second.id, first.id])
         #expect(priority.order == "9")
         #expect(priority.isPriority)
+    }
+
+    @Test func movingProjectAcrossNormalAndLowRespectsDropPosition() throws {
+        let context = try makeContext()
+        let normal = Project(title: "Normal", order: "a")
+        let firstLow = Project(
+            title: "First low",
+            priority: .low,
+            order: "a"
+        )
+        let secondLow = Project(
+            title: "Second low",
+            priority: .low,
+            order: "b"
+        )
+        context.insert(normal)
+        context.insert(firstLow)
+        context.insert(secondLow)
+        try context.save()
+
+        try ProjectOrdering.move(
+            [normal.id],
+            toPriority: .low,
+            before: secondLow.id,
+            in: context
+        )
+
+        #expect(normal.priority == .low)
+        #expect(
+            Project.ordered([firstLow, normal, secondLow]).map(\.id)
+                == [firstLow.id, normal.id, secondLow.id]
+        )
+
+        try ProjectOrdering.move(
+            [normal.id],
+            toPriority: .normal,
+            before: nil,
+            in: context
+        )
+
+        #expect(normal.priority == .normal)
     }
 
     @Test func projectItemMoveDoesNotChangeDateOrderOrSchedule() throws {
@@ -114,8 +164,8 @@ struct ProjectTests {
         try context.save()
 
         try ProjectItemOrdering.move(
-            [.todo(second.id)],
-            before: .todo(first.id),
+            [second.id],
+            before: first.id,
             in: project,
             context: context
         )
@@ -147,9 +197,9 @@ struct ProjectTests {
         try context.save()
 
         try ItemOrdering.move(
-            [.todo(second.id)],
+            [second.id],
             to: first.scheduledDate,
-            before: .todo(first.id),
+            before: first.id,
             in: context,
             calendar: calendar
         )

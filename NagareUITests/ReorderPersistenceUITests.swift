@@ -18,6 +18,12 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Create Item Type"].exists)
         XCTAssertFalse(app.buttons["Project Picker"].exists)
+        XCTAssertTrue(app.buttons["Create Date"].exists)
+        XCTAssertFalse(app.buttons["Create Time"].exists)
+        XCTAssertTrue(app.buttons["Create Project"].exists)
+        XCTAssertTrue(app.buttons["Create Repeat"].exists)
+        XCTAssertTrue(app.buttons["Create Submit"].exists)
+        XCTAssertFalse(app.buttons["Create Details"].exists)
         XCTAssertFalse(app.buttons["Add Todo"].exists)
         XCTAssertFalse(app.buttons["Cancel"].exists)
         title.typeText("Created With Notes UI")
@@ -27,19 +33,10 @@ final class ReorderPersistenceUITests: XCTestCase {
         notes.tap()
         notes.typeText("Notes entered while creating the todo")
 
-        let details = app.buttons["Create Details"]
-        XCTAssertTrue(details.waitForExistence(timeout: 2))
-        details.tap()
-        XCTAssertFalse(app.navigationBars["Edit Details"].exists)
-        XCTAssertTrue(app.buttons["Create Item Type"].exists)
-        XCTAssertTrue(app.buttons["Project Picker"].exists)
-        let windowHeight = app.windows.firstMatch.frame.height
-        let detailsGrabber = app.buttons["Sheet Grabber"]
-        XCTAssertTrue(detailsGrabber.waitForExistence(timeout: 2))
-        XCTAssertLessThan(detailsGrabber.frame.midY, windowHeight * 0.2)
-
-        dismissFixedLargeDetailsSheet(in: app)
-        dismissCreateComposerSheet(in: app)
+        let submit = app.buttons["Create Submit"]
+        XCTAssertTrue(submit.isEnabled)
+        submit.tap()
+        XCTAssertFalse(title.waitForExistence(timeout: 2))
 
         let createdTodo = app.buttons["Created With Notes UI"]
         XCTAssertTrue(createdTodo.waitForExistence(timeout: 5))
@@ -54,7 +51,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testCreateComposerSwitchesToEventAndOpensDetails() throws {
+    func testCreateComposerCalendarOpensScheduleEditor() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -69,38 +66,35 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Create Item Type"].exists)
         let title = app.textFields["Create Title"]
         XCTAssertTrue(title.waitForExistence(timeout: 2))
-        title.typeText("Draft Event UI")
+        title.typeText("Draft Scheduled Todo UI")
 
-        let details = app.buttons["Create Details"]
-        XCTAssertTrue(details.waitForExistence(timeout: 2))
-        details.tap()
+        let calendar = app.buttons["Create Date"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 2))
+        calendar.tap()
 
-        let typeMenu = app.buttons["Create Item Type"]
-        XCTAssertTrue(typeMenu.waitForExistence(timeout: 2))
-        typeMenu.tap()
+        XCTAssertTrue(app.datePickers["Date"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.switches["Time"].exists)
+        XCTAssertTrue(app.staticTexts["No time"].exists)
 
-        let event = app.buttons["Event"]
-        XCTAssertTrue(event.waitForExistence(timeout: 2))
-        event.tap()
+        let addTime = app.buttons["Add Time"]
+        XCTAssertTrue(addTime.exists)
+        addTime.tap()
+        XCTAssertTrue(app.datePickers["Start Time"].exists)
+        XCTAssertTrue(app.buttons["Remove Time"].exists)
 
-        XCTAssertFalse(app.navigationBars["Edit Details"].exists)
-        XCTAssertFalse(app.buttons["Add Event"].exists)
+        let addEndTime = app.buttons["Add End Time"]
+        XCTAssertTrue(addEndTime.exists)
+        addEndTime.tap()
+        XCTAssertTrue(app.datePickers["End Time"].exists)
+        XCTAssertTrue(app.buttons["Remove End Time"].exists)
+        XCTAssertFalse(app.buttons["Add End Time"].exists)
+
+        app.buttons["Remove End Time"].tap()
+        XCTAssertFalse(app.datePickers["End Time"].exists)
+        app.buttons["Remove Time"].tap()
+        XCTAssertTrue(app.staticTexts["No time"].exists)
+        XCTAssertFalse(app.buttons["Add Todo"].exists)
         XCTAssertFalse(app.buttons["Cancel"].exists)
-        XCTAssertTrue(app.buttons["Project Picker"].exists)
-        XCTAssertTrue(app.staticTexts["Time"].exists)
-
-        dismissFixedLargeDetailsSheet(in: app)
-        dismissCreateComposerSheet(in: app)
-
-        let createdEvent = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Draft Event UI")
-        ).firstMatch
-        XCTAssertTrue(createdEvent.waitForExistence(timeout: 5))
-        createdEvent.tap()
-        XCTAssertTrue(
-            app.descendants(matching: .any)["Event Time"]
-                .waitForExistence(timeout: 2)
-        )
     }
 
     @MainActor
@@ -286,7 +280,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testTodaySwipeDirectionsExposeDeleteDateAndProjectActions() throws {
+    func testTodaySwipeDirectionsExposeDeleteAndDateActions() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -308,7 +302,7 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         let changeDate = app.buttons["Change Date"]
         XCTAssertTrue(changeDate.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Move Project"].exists)
+        XCTAssertFalse(app.buttons["Move Project"].exists)
         XCTAssertFalse(app.buttons["Delete"].exists)
         changeDate.tap()
 
@@ -375,7 +369,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testEventSwipeExposesAutosavingScheduleAndProjectActions() throws {
+    func testTimedTodoSwipeExposesAutosavingScheduleAction() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -383,21 +377,25 @@ final class ReorderPersistenceUITests: XCTestCase {
         ]
         app.launch()
 
-        let event = app.buttons.matching(
+        let timedTodo = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
         ).firstMatch
-        XCTAssertTrue(event.waitForExistence(timeout: 5))
-        event.swipeRight()
+        XCTAssertTrue(timedTodo.waitForExistence(timeout: 5))
+        timedTodo.swipeRight()
 
         let changeSchedule = app.buttons["Change Date and Time"]
         XCTAssertTrue(changeSchedule.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Move Project"].exists)
+        XCTAssertFalse(app.buttons["Move Project"].exists)
         changeSchedule.tap()
 
         XCTAssertTrue(
             app.descendants(matching: .any)["Schedule Date Picker"]
                 .waitForExistence(timeout: 2)
         )
+        XCTAssertFalse(app.switches["Time"].exists)
+        XCTAssertTrue(app.datePickers["Start Time"].exists)
+        XCTAssertTrue(app.datePickers["End Time"].exists)
+        XCTAssertTrue(app.buttons["Remove End Time"].exists)
         XCTAssertFalse(app.navigationBars["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Project Picker"].exists)
         XCTAssertFalse(app.buttons["Save Details"].exists)
@@ -410,7 +408,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testTodoProjectMoveAutosavesAndPersists() throws {
+    func testLongTimedTodoTitleExpandsToMultipleLines() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -418,72 +416,21 @@ final class ReorderPersistenceUITests: XCTestCase {
         ]
         app.launch()
 
-        let todo = app.buttons["Reorder First"]
-        XCTAssertTrue(todo.waitForExistence(timeout: 5))
-        todo.swipeRight()
-
-        let moveProject = app.buttons["Move Project"]
-        XCTAssertTrue(moveProject.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Change Date"].exists)
-        moveProject.tap()
-
-        let picker = app.buttons["Project Picker"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 2))
-        picker.tap()
-
-        let priorityProject = app.buttons["Priority Project UI"]
-        XCTAssertTrue(priorityProject.waitForExistence(timeout: 2))
-        priorityProject.tap()
-
-        XCTAssertFalse(app.buttons["Save Details"].exists)
-        XCTAssertFalse(app.buttons["Cancel"].exists)
-        dismissSheet(in: app)
-
-        app.terminate()
-
-        let relaunchedApp = XCUIApplication()
-        relaunchedApp.launchArguments = ["--use-reorder-ui-test-store"]
-        relaunchedApp.launch()
-        relaunchedApp.buttons["Projects"].tap()
-
-        let relaunchedPriorityProject = project(
-            named: "Priority Project UI",
-            in: relaunchedApp
-        )
-        XCTAssertTrue(
-            relaunchedPriorityProject.waitForExistence(timeout: 5)
-        )
-        relaunchedPriorityProject.tap()
-        XCTAssertTrue(
-            relaunchedApp.buttons["Reorder First"]
-                .waitForExistence(timeout: 2)
-        )
-    }
-
-    @MainActor
-    func testLongEventTitleExpandsToMultipleLines() throws {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "--use-reorder-ui-test-store",
-            "--reset-and-seed-reorder-ui-test"
-        ]
-        app.launch()
-
-        let event = app.buttons.matching(
+        let timedTodo = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
         ).firstMatch
         let singleLineTodo = app.buttons["Reorder First"]
-        XCTAssertTrue(event.waitForExistence(timeout: 5))
+        XCTAssertTrue(timedTodo.waitForExistence(timeout: 5))
         XCTAssertTrue(singleLineTodo.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(
-            event.frame.height,
+            timedTodo.frame.height,
             singleLineTodo.frame.height,
-            "A long event title should expand its row instead of truncating"
+            "A long timed Todo title should expand its row instead of truncating"
         )
     }
 
     @MainActor
-    func testEventNotesShowsDateLeftAndTimeRightAboveTitle() throws {
+    func testTimedTodoNotesUsesUnifiedScheduleToolbar() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -491,33 +438,36 @@ final class ReorderPersistenceUITests: XCTestCase {
         ]
         app.launch()
 
-        let event = app.buttons.matching(
+        let timedTodo = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Schedule UI")
         ).firstMatch
-        XCTAssertTrue(event.waitForExistence(timeout: 5))
-        event.tap()
+        XCTAssertTrue(timedTodo.waitForExistence(timeout: 5))
+        timedTodo.tap()
 
         let title = app.textFields["Item Title"]
-        let time = app.descendants(matching: .any)["Event Time"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertTrue(time.waitForExistence(timeout: 2))
         let date = app.buttons["Notes Date"]
+        let project = app.buttons["Notes Project"]
+        let repeatButton = app.buttons["Notes Repeat"]
         XCTAssertTrue(date.waitForExistence(timeout: 2))
+        XCTAssertTrue(project.waitForExistence(timeout: 2))
+        XCTAssertFalse(repeatButton.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["Todo Time"].exists)
         XCTAssertLessThan(
             date.frame.maxY,
             title.frame.minY,
-            "The date should appear above the title"
+            "The calendar should appear above the title"
         )
         XCTAssertGreaterThan(
-            time.frame.minX,
+            project.frame.minX,
             date.frame.maxX,
-            "The event time should trail the date"
+            "Project and Repeat should trail the calendar"
         )
-        XCTAssertLessThan(abs(time.frame.midY - date.frame.midY), 8)
-        XCTAssertLessThan(time.frame.maxY, title.frame.minY)
+        XCTAssertLessThan(abs(project.frame.midY - date.frame.midY), 8)
+        project.tap()
         XCTAssertFalse(app.buttons["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Edit Repeat"].exists)
-        XCTAssertFalse(app.buttons["Delete Event"].exists)
+        XCTAssertFalse(app.buttons["Delete Todo"].exists)
         XCTAssertFalse(app.buttons["Delete"].exists)
         XCTAssertFalse(app.buttons["Close"].exists)
         XCTAssertFalse(app.buttons["Item Actions"].exists)
@@ -545,7 +495,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testNotesDateOpensAutosavingCalendarWithoutToolbar() throws {
+    func testNotesScheduleOpensProgressiveAutosavingEditor() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -565,6 +515,9 @@ final class ReorderPersistenceUITests: XCTestCase {
         date.tap()
 
         XCTAssertTrue(app.datePickers["Date"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.switches["Time"].exists)
+        XCTAssertTrue(app.staticTexts["No time"].exists)
+        XCTAssertTrue(app.buttons["Add Time"].exists)
         XCTAssertFalse(app.navigationBars["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Save Details"].exists)
         XCTAssertFalse(app.buttons["Cancel"].exists)
@@ -572,7 +525,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testNotesProjectIsInlineWithTitleAndOpensItsProject() throws {
+    func testNotesProjectIsInTopToolbarAndOpensProjectMenu() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -591,16 +544,15 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(project.isHittable)
         let title = app.textFields["Item Title"]
         XCTAssertTrue(title.waitForExistence(timeout: 2))
-        XCTAssertGreaterThan(project.frame.minX, title.frame.minX)
-        XCTAssertLessThan(project.frame.minY, title.frame.maxY)
-        XCTAssertGreaterThan(project.frame.maxY, title.frame.minY)
-        XCTAssertLessThan(date.frame.maxY, project.frame.minY)
+        XCTAssertLessThan(project.frame.maxY, title.frame.minY)
+        XCTAssertGreaterThan(project.frame.minX, date.frame.maxX)
         project.tap()
 
-        let projectTitle = app.textFields["Project Title"]
-        XCTAssertTrue(projectTitle.waitForExistence(timeout: 5))
-        XCTAssertEqual(projectTitle.value as? String, "Priority Project UI")
-        XCTAssertTrue(app.buttons["Projects"].isSelected)
+        XCTAssertTrue(app.buttons["No project"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Priority Project UI"].exists)
+        XCTAssertTrue(app.buttons["Background Project UI"].exists)
+        XCTAssertTrue(app.buttons["Notes Repeat"].exists)
+        XCTAssertFalse(app.buttons["Projects"].isSelected)
     }
 
     @MainActor
@@ -621,7 +573,7 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         let changeRepeat = app.buttons["Change Repeat"]
         XCTAssertTrue(changeRepeat.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Move Project"].exists)
+        XCTAssertFalse(app.buttons["Move Project"].exists)
         changeRepeat.tap()
 
         XCTAssertTrue(app.staticTexts["Every"].waitForExistence(timeout: 2))
@@ -634,69 +586,6 @@ final class ReorderPersistenceUITests: XCTestCase {
         let grabber = app.buttons["Sheet Grabber"]
         XCTAssertTrue(grabber.waitForExistence(timeout: 2))
         XCTAssertGreaterThan(grabber.frame.midY, windowHeight * 0.35)
-    }
-
-    @MainActor
-    func testTemplateProjectMoveAutosavesAndPersists() throws {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "--use-reorder-ui-test-store",
-            "--reset-and-seed-reorder-ui-test"
-        ]
-        app.launch()
-
-        let upcomingTab = app.buttons["Upcoming"]
-        XCTAssertTrue(upcomingTab.waitForExistence(timeout: 5))
-        upcomingTab.tap()
-
-        let template = app.buttons[
-            "Recurring Future UI, future repeating item"
-        ].firstMatch
-        XCTAssertTrue(template.waitForExistence(timeout: 5))
-        template.swipeRight()
-
-        let changeRepeat = app.buttons["Change Repeat"]
-        XCTAssertTrue(changeRepeat.waitForExistence(timeout: 2))
-        let moveProject = app.buttons["Move Project"]
-        XCTAssertTrue(moveProject.exists)
-        XCTAssertFalse(app.buttons["Delete"].exists)
-        moveProject.tap()
-
-        let picker = app.buttons["Project Picker"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 2))
-        picker.tap()
-
-        let backgroundProject = app.buttons["Background Project UI"]
-        XCTAssertTrue(backgroundProject.waitForExistence(timeout: 2))
-        backgroundProject.tap()
-
-        XCTAssertFalse(app.buttons["Save Repeat"].exists)
-        XCTAssertFalse(app.buttons["Cancel"].exists)
-        dismissSheet(in: app)
-
-        app.terminate()
-
-        let relaunchedApp = XCUIApplication()
-        relaunchedApp.launchArguments = ["--use-reorder-ui-test-store"]
-        relaunchedApp.launch()
-        relaunchedApp.buttons["Projects"].tap()
-
-        let relaunchedBackgroundProject = project(
-            named: "Background Project UI",
-            in: relaunchedApp
-        )
-        XCTAssertTrue(
-            relaunchedBackgroundProject.waitForExistence(timeout: 5)
-        )
-        relaunchedBackgroundProject.tap()
-        XCTAssertTrue(
-            relaunchedApp.buttons["Recurring Current UI"]
-                .waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(
-            relaunchedApp.buttons["Recurring Future UI, repeating item"]
-                .waitForExistence(timeout: 2)
-        )
     }
 
     @MainActor
@@ -810,6 +699,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         todo.tap()
 
         XCTAssertTrue(app.textFields["Item Title"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Notes Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Delete Todo"].exists)
         XCTAssertFalse(app.buttons["Delete"].exists)
@@ -820,6 +710,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Edit Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Future Items"].exists)
         XCTAssertFalse(app.buttons["Stop Repeating"].exists)
+
     }
 
     @MainActor
@@ -836,6 +727,8 @@ final class ReorderPersistenceUITests: XCTestCase {
         currentInstance.tap()
 
         XCTAssertTrue(app.textFields["Item Title"].waitForExistence(timeout: 2))
+        let repeatButton = app.buttons["Notes Repeat"]
+        XCTAssertTrue(repeatButton.waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Delete Todo"].exists)
         XCTAssertFalse(app.buttons["Delete"].exists)
@@ -845,6 +738,17 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Edit Repeat"].exists)
         XCTAssertFalse(app.buttons["Edit Future Items"].exists)
         XCTAssertFalse(app.buttons["Stop Repeating"].exists)
+
+        repeatButton.tap()
+        XCTAssertTrue(app.buttons["Upcoming"].isSelected)
+        XCTAssertTrue(
+            app.buttons.matching(
+                NSPredicate(
+                    format: "label CONTAINS %@",
+                    "Recurring Future UI"
+                )
+            ).firstMatch.waitForExistence(timeout: 5)
+        )
     }
 
     @MainActor
@@ -881,15 +785,19 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(date.waitForExistence(timeout: 2))
         XCTAssertTrue(project.waitForExistence(timeout: 2))
         XCTAssertTrue(project.isHittable)
-        XCTAssertLessThan(date.frame.maxY, project.frame.minY)
-        XCTAssertLessThan(project.frame.minY, titleField.frame.maxY)
-        XCTAssertGreaterThan(project.frame.maxY, titleField.frame.minY)
+        let repeatButton = app.buttons["Notes Repeat"]
+        XCTAssertTrue(repeatButton.waitForExistence(timeout: 2))
+        XCTAssertGreaterThan(project.frame.minX, date.frame.maxX)
+        XCTAssertLessThan(project.frame.maxY, titleField.frame.minY)
 
         XCTAssertFalse(app.buttons["Stop Repeating"].exists)
         XCTAssertFalse(app.buttons["Delete"].exists)
         XCTAssertFalse(app.buttons["Edit Repeat"].exists)
         XCTAssertFalse(app.buttons["Close"].exists)
         XCTAssertFalse(app.buttons["Item Actions"].exists)
+
+        repeatButton.tap()
+        XCTAssertTrue(app.staticTexts["Every"].waitForExistence(timeout: 2))
 
     }
 
@@ -920,10 +828,10 @@ final class ReorderPersistenceUITests: XCTestCase {
             withNormalizedOffset: CGVector(dx: 0.25, dy: 0.1)
         ).tap()
         notes.typeText("Notes saved with a new background project")
-        title.tap()
-        let done = app.keyboards.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 2))
-        done.tap()
+        let submit = app.buttons["Create Project Submit"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 2))
+        XCTAssertTrue(submit.isEnabled)
+        submit.tap()
         XCTAssertFalse(title.waitForExistence(timeout: 2))
 
         let priority = project(named: "Priority Project UI", in: app)
@@ -947,7 +855,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testProjectTitleSubmitClosesFormAndSaves() throws {
+    func testProjectCreationCloseDiscardsAndSubmitSaves() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -965,17 +873,31 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         let title = app.textFields["Create Project Title"]
         XCTAssertTrue(title.waitForExistence(timeout: 2))
-        title.typeText("Created After Done UI")
+        XCTAssertTrue(app.buttons["Create Project Close"].exists)
+        XCTAssertFalse(app.buttons["Create Project Submit"].isEnabled)
+        title.typeText("Discarded Project UI")
+        app.buttons["Create Project Close"].tap()
 
-        let done = app.keyboards.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 2))
-        done.tap()
+        XCTAssertFalse(title.waitForExistence(timeout: 2))
+        XCTAssertFalse(project(named: "Discarded Project UI", in: app).exists)
+
+        XCTAssertTrue(newProject.waitForExistence(timeout: 2))
+        newProject.tap()
+
+        let replacementTitle = app.textFields["Create Project Title"]
+        XCTAssertTrue(replacementTitle.waitForExistence(timeout: 2))
+        replacementTitle.typeText("Created After Submit UI")
+
+        let submit = app.buttons["Create Project Submit"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 2))
+        XCTAssertTrue(submit.isEnabled)
+        submit.tap()
 
         XCTAssertFalse(app.keyboards.firstMatch.exists)
-        XCTAssertFalse(title.waitForExistence(timeout: 2))
+        XCTAssertFalse(replacementTitle.waitForExistence(timeout: 2))
 
         XCTAssertTrue(
-            project(named: "Created After Done UI", in: app)
+            project(named: "Created After Submit UI", in: app)
                 .waitForExistence(timeout: 5)
         )
     }
@@ -1020,6 +942,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         background.swipeRight()
         let prioritize = app.buttons["Prioritize"]
         XCTAssertTrue(prioritize.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Deprioritize"].exists)
         prioritize.tap()
 
         app.terminate()
@@ -1037,6 +960,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         relaunchedBackground.swipeRight()
         let deprioritize = relaunchedApp.buttons["Deprioritize"]
         XCTAssertTrue(deprioritize.waitForExistence(timeout: 2))
+        XCTAssertFalse(relaunchedApp.buttons["Prioritize"].exists)
         deprioritize.tap()
 
         let secondBackground = project(
@@ -1047,8 +971,16 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertLessThan(
             relaunchedBackground.frame.minY,
             secondBackground.frame.minY,
-            "A deprioritized project should enter at the top of the background list"
+            "A project returning to Normal should enter at the top of that level"
         )
+
+        relaunchedBackground.swipeRight()
+        XCTAssertTrue(
+            relaunchedApp.buttons["Prioritize"].waitForExistence(timeout: 2)
+        )
+        let moveToLow = relaunchedApp.buttons["Deprioritize"]
+        XCTAssertTrue(moveToLow.exists)
+        moveToLow.tap()
 
         relaunchedApp.terminate()
 
@@ -1064,6 +996,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(finalBackground.waitForExistence(timeout: 5))
         finalBackground.swipeRight()
         XCTAssertTrue(finalApp.buttons["Prioritize"].waitForExistence(timeout: 2))
+        XCTAssertFalse(finalApp.buttons["Deprioritize"].exists)
     }
 
     @MainActor
@@ -1113,7 +1046,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testProjectDragCannotChangePriorityDesignation() throws {
+    func testProjectDragChangesPriorityLevelAndPersists() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -1146,9 +1079,14 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(relaunchedPriority.waitForExistence(timeout: 5))
         XCTAssertTrue(relaunchedBackground.waitForExistence(timeout: 2))
         XCTAssertLessThan(
-            relaunchedPriority.frame.minY,
-            relaunchedBackground.frame.minY
+            relaunchedBackground.frame.minY,
+            relaunchedPriority.frame.minY
         )
+        relaunchedBackground.swipeRight()
+        XCTAssertTrue(
+            relaunchedApp.buttons["Deprioritize"].waitForExistence(timeout: 2)
+        )
+        XCTAssertFalse(relaunchedApp.buttons["Prioritize"].exists)
     }
 
     private func project(
@@ -1188,27 +1126,6 @@ final class ReorderPersistenceUITests: XCTestCase {
         )
 
         XCTAssertFalse(title.waitForExistence(timeout: 2))
-    }
-
-    @MainActor
-    private func dismissFixedLargeDetailsSheet(in app: XCUIApplication) {
-        let grabber = app.buttons["Sheet Grabber"]
-        XCTAssertTrue(grabber.waitForExistence(timeout: 2))
-
-        grabber.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
-        ).press(
-            forDuration: 0.1,
-            thenDragTo: app.windows.firstMatch.coordinate(
-                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)
-            ),
-            withVelocity: .fast,
-            thenHoldForDuration: 0
-        )
-
-        XCTAssertFalse(
-            app.buttons["Create Item Type"].waitForExistence(timeout: 2)
-        )
     }
 
     @MainActor
