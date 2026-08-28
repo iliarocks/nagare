@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fa">
+  <meta name="description" content="Nagare is a simple task manager for iPhone and Mac.">
+  <meta property="og:title" content="Nagare — 流">
+  <meta property="og:description" content="A simple task manager.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://nagare.page/">
+  <title>Nagare — 流</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --accent: #607d8b;
+      --background: #f7f8fa;
+      --surface: #ffffff;
+      --text: #151719;
+      --secondary: #676c70;
+      --border: rgba(21, 23, 25, 0.12);
+      --shadow: 0 28px 70px rgba(31, 40, 45, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    main,
+    footer {
+      width: min(940px, calc(100% - 48px));
+      margin-inline: auto;
+    }
+
+    .hero {
+      min-height: 100svh;
+      display: grid;
+      grid-template-columns: minmax(260px, 350px) minmax(300px, 1fr);
+      align-items: center;
+      justify-content: center;
+      gap: clamp(48px, 8vw, 92px);
+      padding: 48px 0;
+    }
+
+    .app-shot {
+      margin: 0;
+      height: min(74vh, 760px);
+      aspect-ratio: 1206 / 2622;
+      justify-self: center;
+      border: 1px solid var(--border);
+      border-radius: 54px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      line-height: 0;
+    }
+
+    .app-shot img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .intro h1 {
+      margin: 0;
+      font-size: clamp(3rem, 6vw, 4.7rem);
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+      font-weight: 730;
+    }
+
+    .intro p {
+      margin: 28px 0 36px;
+      color: var(--secondary);
+      font-size: clamp(1.25rem, 2.6vw, 1.75rem);
+      letter-spacing: -0.018em;
+    }
+
+    .download {
+      display: inline-flex;
+      min-height: 54px;
+      align-items: center;
+      justify-content: center;
+      padding: 13px 24px;
+      border-radius: 999px;
+      background: var(--text);
+      color: var(--surface);
+      font-weight: 650;
+      text-decoration: none;
+      transition: transform 160ms ease, opacity 160ms ease;
+    }
+
+    .download:hover {
+      transform: translateY(-1px);
+      opacity: 0.88;
+    }
+
+    .download:focus-visible,
+    footer a:focus-visible,
+    .details a:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 4px;
+    }
+
+    .details {
+      padding: 104px 0 72px;
+      border-top: 1px solid var(--border);
+    }
+
+    .details section {
+      scroll-margin-top: 32px;
+    }
+
+    .details section + section {
+      margin-top: 88px;
+    }
+
+    .details h2 {
+      margin: 0 0 18px;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+    }
+
+    .details p {
+      margin: 0;
+      color: var(--secondary);
+    }
+
+    .details p + p {
+      margin-top: 16px;
+    }
+
+    .details a,
+    footer a {
+      color: var(--accent);
+      font-weight: 600;
+      text-underline-offset: 0.18em;
+    }
+
+    footer {
+      padding: 0 0 48px;
+      color: var(--secondary);
+    }
+
+    @media (max-width: 760px) {
+      main,
+      footer {
+        width: min(100% - 36px, 520px);
+      }
+
+      .hero {
+        min-height: auto;
+        grid-template-columns: 1fr;
+        gap: 64px;
+        padding: 72px 0 88px;
+      }
+
+      .intro {
+        order: -1;
+      }
+
+      .intro h1 {
+        font-size: clamp(3.25rem, 16vw, 5rem);
+      }
+
+      .app-shot {
+        width: min(88%, 390px);
+        height: auto;
+        aspect-ratio: auto;
+        margin-inline: auto;
+        border-radius: 48px;
+      }
+
+      .details {
+        padding-top: 72px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      .download {
+        transition: none;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --accent: #86a3b3;
+        --background: #181a1b;
+        --surface: #242627;
+        --text: #f3f4f4;
+        --secondary: #afb3b6;
+        --border: rgba(255, 255, 255, 0.13);
+        --shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero" aria-labelledby="page-title">
+      <figure class="app-shot">
+        <img
+          src="assets/nagare-mobile.png"
+          width="1206"
+          height="2622"
+          alt="Nagare showing a list of today's tasks on iPhone"
+        >
+      </figure>
+
+      <div class="intro">
+        <h1 id="page-title">Nagare — 流</h1>
+        <p>A simple task manager</p>
+        <a class="download" href="https://apps.apple.com/app/id6794454482">
+          Download on the App Store
+        </a>
+      </div>
+    </section>
+
+    <div class="details">
+      <section id="privacy" aria-labelledby="privacy-title">
+        <h2 id="privacy-title">Privacy</h2>
+        <p>
+          Nagare stores your tasks, projects, notes, schedules, and repeat
+          settings on your device. If you enable iCloud sync, this data is
+          stored in your private iCloud database and synchronized by Apple.
+          Nagare does not send this data to the developer and does not use
+          advertising or analytics services.
+        </p>
+        <p>
+          You can delete your data by deleting Nagare and disabling iCloud
+          sync in Settings. If you contact support, your email address and
+          message are used only to respond to you. For privacy questions, contact
+          <a href="mailto:support@nagare.page">support@nagare.page</a>.
+        </p>
+      </section>
+
+      <section class="support" id="support" aria-labelledby="support-title">
+        <h2 id="support-title">Support</h2>
+        <p>
+          For support, feedback, or feature requests, email
+          <a href="mailto:support@nagare.page">support@nagare.page</a>.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    Made by <a href="https://ilia.page">Ilia</a>
+  </footer>
+</body>
+</html>
