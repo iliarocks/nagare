@@ -9,10 +9,10 @@ never back up:
 2. **Application** contains orchestrators and I/O port protocols. An
    orchestrator laminates snapshots, one or more pure plans, and a port into an
    atomic use case. It imports Foundation only.
-3. **Infrastructure** contains SwiftData records, shared-defaults stores, and
+3. **Infrastructure** contains SwiftData records and
    concrete port adapters. Adapters translate records to snapshots and apply
    explicit change sets; they do not decide policy.
-4. **Features/App/AppIntents/Widgets** are delivery mechanisms. They render
+4. **Features/App** are delivery mechanisms. They render
    state, collect user input, and invoke a facade or orchestrator.
 
 The application data flow is the reference vertical slice:

@@ -30,7 +30,7 @@ Completed history, the sync preference, and future privacy/import/export
 features. Enabling or disabling sync rebuilds the app's data session around
 the same local store, so the change takes effect immediately without a manual
 relaunch. During that handoff Nagare releases the outgoing history monitor,
-App Intent store, CloudKit event monitor, and model container before opening
+CloudKit event monitor, and model container before opening
 the replacement. A failed handoff reopens the prior configuration and leaves
 the saved preference unchanged. Disabling sync preserves the local database
 and stops future replication on that device, but does not claim to delete the

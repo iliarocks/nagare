@@ -18,10 +18,6 @@ enum NagareCloud {
     /// Nagare writes from framework-generated/imported transactions if needed.
     nonisolated static let localHistoryAuthor = "Nagare"
 
-    /// App Intent writes originate outside the live UI facade. A distinct
-    /// author keeps those transactions identifiable in history diagnostics.
-    nonisolated static let intentHistoryAuthor = "Nagare.Intent"
-
     /// Semantic repairs use a separate context and author so they cannot roll
     /// back an in-progress edit in the UI's context.
     nonisolated static let reconciliationHistoryAuthor = "Nagare.Reconciliation"

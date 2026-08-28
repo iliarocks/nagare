@@ -1,4 +1,3 @@
-import AppIntents
 import OSLog
 import SwiftData
 import SwiftUI
@@ -16,7 +15,6 @@ struct NagareApp: App {
         let syncMonitor: SyncIntegrityMonitor
         let cloudSyncMonitor: NagareCloudSyncMonitor
         let dataStore: NagareDataStore
-        let intentOrchestrator: NagareDataOrchestrator
         let cloudSyncEnabled: Bool
 
         func stop() {
@@ -37,7 +35,6 @@ struct NagareApp: App {
     )
 
     @State private var startupState: StartupState
-    private let intentStore: NagareIntentStore
     private let arguments: [String]
     private let isRunningUnitTests: Bool
 
@@ -50,11 +47,8 @@ struct NagareApp: App {
         let isRunningUnitTests = !arguments.contains(
             "--use-reorder-ui-test-store"
         ) && Self.isRunningUnitTests(environment: processInfo.environment)
-        let intentStore = NagareIntentStore()
-        self.intentStore = intentStore
         self.arguments = arguments
         self.isRunningUnitTests = isRunningUnitTests
-        AppDependencyManager.shared.add(dependency: intentStore)
 
         do {
 #if DEBUG
@@ -79,7 +73,6 @@ struct NagareApp: App {
                 isRunningUnitTests: isRunningUnitTests,
                 prepareDevelopmentData: true
             )
-            intentStore.connect(to: runtime.intentOrchestrator)
             _startupState = State(
                 initialValue: .ready(runtime)
             )
@@ -146,14 +139,6 @@ struct NagareApp: App {
         let dataStore = try NagareDataStore(
             orchestrator: dataOrchestrator
         )
-        let intentRepository = SwiftDataNagareRepository(
-            modelContainer: modelContainer,
-            historyAuthor: NagareCloud.intentHistoryAuthor
-        )
-        let intentOrchestrator = NagareDataOrchestrator(
-            reader: intentRepository,
-            writer: intentRepository
-        )
         let syncMonitor = SyncIntegrityMonitor(
             modelContainer: modelContainer,
             requiresReconciliation: cloudSyncEnabled,
@@ -184,7 +169,6 @@ struct NagareApp: App {
             syncMonitor: syncMonitor,
             cloudSyncMonitor: cloudSyncMonitor,
             dataStore: dataStore,
-            intentOrchestrator: intentOrchestrator,
             cloudSyncEnabled: cloudSyncEnabled
         )
     }
@@ -205,10 +189,9 @@ struct NagareApp: App {
         guard previousValue != isEnabled else { return }
 
         // A single CloudKit coordinator owns the SQLite store at a time. Drop
-        // every reference held by the UI and App Intents, yield so SwiftUI can
-        // release its environment, then open the replacement configuration.
+        // the outgoing UI runtime, yield so SwiftUI can release its
+        // environment, then open the replacement configuration.
         retiringRuntime?.stop()
-        intentStore.disconnect()
         startupState = .switching
         retiringRuntime = nil
         await Task.yield()
@@ -221,7 +204,6 @@ struct NagareApp: App {
                 isRunningUnitTests: isRunningUnitTests,
                 prepareDevelopmentData: false
             )
-            intentStore.connect(to: newRuntime.intentOrchestrator)
             UserDefaults.standard.set(
                 isEnabled,
                 forKey: NagareCloudPreferences.syncEnabledKey
@@ -235,7 +217,6 @@ struct NagareApp: App {
                     isRunningUnitTests: isRunningUnitTests,
                     prepareDevelopmentData: false
                 )
-                intentStore.connect(to: restoredRuntime.intentOrchestrator)
                 startupState = .ready(restoredRuntime)
             } catch {
                 Self.logger.fault(
@@ -283,7 +264,6 @@ struct NagareApp: App {
         switch startupState {
         case .ready(let runtime):
             RootView(
-                intentStore: intentStore,
                 syncMonitor: runtime.syncMonitor,
                 cloudSyncEnabledForCurrentLaunch: runtime.cloudSyncEnabled,
                 onSetCloudSyncEnabled: setCloudSyncEnabled

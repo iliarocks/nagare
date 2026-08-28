@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 
 struct RootView: View {
@@ -34,7 +33,6 @@ struct RootView: View {
     @State private var maintenanceAlert: MaintenanceAlert?
     @State private var lastActiveRefreshAt: Date?
 
-    let intentStore: NagareIntentStore?
     let syncMonitor: SyncIntegrityMonitor?
     let cloudSyncEnabledForCurrentLaunch: Bool
     let onSetCloudSyncEnabled: (Bool) async throws -> Void
@@ -44,12 +42,10 @@ struct RootView: View {
     }
 
     init(
-        intentStore: NagareIntentStore? = nil,
         syncMonitor: SyncIntegrityMonitor? = nil,
         cloudSyncEnabledForCurrentLaunch: Bool = false,
         onSetCloudSyncEnabled: @escaping (Bool) async throws -> Void = { _ in }
     ) {
-        self.intentStore = intentStore
         self.syncMonitor = syncMonitor
         self.cloudSyncEnabledForCurrentLaunch =
             cloudSyncEnabledForCurrentLaunch
@@ -93,19 +89,6 @@ struct RootView: View {
                 onOpenUpcomingDate: openUpcoming
             )
                 .id(destination.id)
-        }
-        .syncTodayWidget()
-        .syncNagareIntentContainers(using: intentStore)
-        .nagareOnOpenIntent { intent in
-            open(intent.target)
-        }
-        .onOpenURL { url in
-            guard let destination = NagareDeepLink.destination(
-                for: url
-            ) else {
-                return
-            }
-            open(destination)
         }
         .task { refreshForActiveScene() }
         .onChange(of: scenePhase) {
@@ -304,16 +287,6 @@ struct RootView: View {
         selectedSection = section
         if section == .projects {
             projectPath.removeAll()
-        }
-    }
-
-    private func open(_ destination: NagareAppDestination) {
-        switch destination {
-        case .today:
-            selectedSection = .today
-        case .quickAdd:
-            selectedSection = .today
-            beginManualCreate()
         }
     }
 

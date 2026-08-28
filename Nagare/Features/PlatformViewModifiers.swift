@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -949,17 +948,6 @@ extension View {
         self
 #else
         presentationDetents(detents, selection: selection)
-#endif
-    }
-
-    @ViewBuilder
-    func nagareOnOpenIntent(
-        perform action: @escaping (OpenNagareIntent) -> Void
-    ) -> some View {
-#if os(macOS)
-        self
-#else
-        onAppIntentExecution(OpenNagareIntent.self, perform: action)
 #endif
     }
 

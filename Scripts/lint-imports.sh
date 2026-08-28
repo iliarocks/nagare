@@ -96,7 +96,7 @@ lint_imports "Shared/Infrastructure" Foundation
 
 lint_forbidden_symbols \
     "Nagare/Domain" \
-    'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex|autoupdatingCurrent|Date\.now|\.now\b' \
+    'ModelContext|@Model|UserDefaults|FileManager|autoupdatingCurrent|Date\.now|\.now\b' \
     "Domain code may only use immutable values and explicit deterministic inputs"
 
 # Domain structs are values, not mutable bags shared between planners. Local
@@ -129,7 +129,7 @@ done <<< "${domain_stored_var_matches}"
 
 lint_forbidden_symbols \
     "Nagare/Application" \
-    'ModelContext|@Model|UserDefaults|FileManager|WidgetCenter|CSSearchableIndex|URLSession|NotificationCenter\.default|ProcessInfo|Bundle\.main|autoupdatingCurrent|Date\.now|\.now\b' \
+    'ModelContext|@Model|UserDefaults|FileManager|URLSession|NotificationCenter\.default|ProcessInfo|Bundle\.main|autoupdatingCurrent|Date\.now|\.now\b' \
     "Application orchestrators must perform I/O through ports"
 
 # Features render immutable snapshots and send ID-addressed commands. They may
@@ -154,11 +154,6 @@ lint_forbidden_symbols \
     "Nagare/Features" \
     'dataStore\?\.' \
     "Feature commands must not silently disappear when composition is invalid"
-lint_forbidden_symbols \
-    "Nagare/AppIntents" \
-    'import[[:space:]]+SwiftData|ModelContext|SwiftDataTransaction|(^|[^A-Za-z0-9_])(RecurrencePersistence|ProjectMembership|ProjectItemOrdering|ProjectOrdering|ItemOrdering)([^A-Za-z0-9_]|$)' \
-    "App Intents must send immutable drafts through application orchestrators"
-
 # Only the composition root, schema bootstrap, and history bridge may know
 # SwiftData in App. SwiftUI delivery views and observable stores are values-only.
 app_swiftdata_matches=""
