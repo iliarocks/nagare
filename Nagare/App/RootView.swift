@@ -63,8 +63,6 @@ struct RootView: View {
         }
         .sheet(isPresented: $isShowingSettings) {
             NagareSettingsView(
-                cloudSyncEnabledForCurrentLaunch:
-                    cloudSyncEnabledForCurrentLaunch,
                 onSetCloudSyncEnabled: onSetCloudSyncEnabled
             )
         }

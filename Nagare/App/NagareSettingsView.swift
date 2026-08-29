@@ -34,11 +34,10 @@ struct NagareSettingsView: View {
     let onSetCloudSyncEnabled: (Bool) async throws -> Void
 
     init(
-        cloudSyncEnabledForCurrentLaunch: Bool,
         onSetCloudSyncEnabled: @escaping (Bool) async throws -> Void = { _ in }
     ) {
         _syncEnabled = State(
-            initialValue: cloudSyncEnabledForCurrentLaunch
+            initialValue: NagareCloudPreferences.isSyncEnabled
         )
         self.onSetCloudSyncEnabled = onSetCloudSyncEnabled
     }
@@ -204,6 +203,10 @@ struct NagareSettingsView: View {
             await Task.yield()
             do {
                 try await onSetCloudSyncEnabled(isEnabled)
+                transferNotice = TransferNotice(
+                    title: "Restart Nagare",
+                    message: "Close and reopen Nagare to finish changing iCloud sync."
+                )
             } catch {
                 syncEnabled = !isEnabled
                 errorMessage = error.localizedDescription

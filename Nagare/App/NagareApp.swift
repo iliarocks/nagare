@@ -1,3 +1,4 @@
+import CloudKit
 import OSLog
 import SwiftData
 import SwiftUI
@@ -25,7 +26,6 @@ struct NagareApp: App {
 
     private enum StartupState {
         case ready(RuntimeState)
-        case switching
         case failed
     }
 
@@ -67,6 +67,9 @@ struct NagareApp: App {
                 && NagareCloudPreferences.shouldEnableSync(
                     arguments: arguments
                 )
+            if cloudSyncEnabled {
+                Self.prepareCloudKitRuntime()
+            }
             let runtime = try Self.makeRuntimeState(
                 arguments: arguments,
                 cloudSyncEnabled: cloudSyncEnabled,
@@ -85,8 +88,8 @@ struct NagareApp: App {
     }
 
     /// SwiftData cannot change a container's CloudKit configuration in place.
-    /// Reopening the same store with a fresh container applies the preference
-    /// immediately while preserving the single normalized local database.
+    /// A preference change therefore takes effect the next time Nagare starts,
+    /// preserving one CloudKit coordinator per store for the process lifetime.
     private static func makeRuntimeState(
         arguments: [String],
         cloudSyncEnabled: Bool,
@@ -178,54 +181,7 @@ struct NagareApp: App {
               !arguments.contains("--use-reorder-ui-test-store") else {
             return
         }
-        var retiringRuntime: RuntimeState?
-        switch startupState {
-        case .ready(let runtime):
-            retiringRuntime = runtime
-        case .switching, .failed:
-            return
-        }
-        let previousValue = retiringRuntime?.cloudSyncEnabled ?? false
-        guard previousValue != isEnabled else { return }
-
-        // A single CloudKit coordinator owns the SQLite store at a time. Drop
-        // the outgoing UI runtime, yield so SwiftUI can release its
-        // environment, then open the replacement configuration.
-        retiringRuntime?.stop()
-        startupState = .switching
-        retiringRuntime = nil
-        await Task.yield()
-        await Task.yield()
-
-        do {
-            let newRuntime = try Self.makeRuntimeState(
-                arguments: arguments,
-                cloudSyncEnabled: isEnabled,
-                isRunningUnitTests: isRunningUnitTests,
-                prepareDevelopmentData: false
-            )
-            UserDefaults.standard.set(
-                isEnabled,
-                forKey: NagareCloudPreferences.syncEnabledKey
-            )
-            startupState = .ready(newRuntime)
-        } catch {
-            do {
-                let restoredRuntime = try Self.makeRuntimeState(
-                    arguments: arguments,
-                    cloudSyncEnabled: previousValue,
-                    isRunningUnitTests: isRunningUnitTests,
-                    prepareDevelopmentData: false
-                )
-                startupState = .ready(restoredRuntime)
-            } catch {
-                Self.logger.fault(
-                    "Unable to restore Nagare's previous data session: \(error.localizedDescription, privacy: .public)"
-                )
-                startupState = .failed
-            }
-            throw error
-        }
+        NagareCloudPreferences.setSyncEnabled(isEnabled)
     }
 
     var body: some Scene {
@@ -269,8 +225,6 @@ struct NagareApp: App {
                 onSetCloudSyncEnabled: setCloudSyncEnabled
             )
                 .nagareDataStore(runtime.dataStore)
-        case .switching:
-            ProgressView("Updating iCloud…")
         case .failed:
             StoreStartupFailureView()
         }
@@ -282,12 +236,9 @@ struct NagareApp: App {
         switch startupState {
         case .ready(let runtime):
             NagareSettingsView(
-                cloudSyncEnabledForCurrentLaunch: runtime.cloudSyncEnabled,
                 onSetCloudSyncEnabled: setCloudSyncEnabled
             )
                 .nagareDataStore(runtime.dataStore)
-        case .switching:
-            ProgressView("Updating iCloud…")
         case .failed:
             StoreStartupFailureView()
         }
@@ -299,8 +250,6 @@ struct NagareApp: App {
         case .ready(let runtime):
             CompletedView()
                 .nagareDataStore(runtime.dataStore)
-        case .switching:
-            ProgressView("Updating iCloud…")
         case .failed:
             StoreStartupFailureView()
         }
@@ -368,6 +317,14 @@ struct NagareApp: App {
             for: NagareSchema.current,
             configurations: configuration
         )
+    }
+
+    /// SwiftData reaches CloudKit indirectly through Core Data. On macOS,
+    /// loading CloudKit before opening the store ensures the app sandbox gains
+    /// access to the CloudKit daemon and background activity scheduler.
+    @inline(never)
+    private static func prepareCloudKitRuntime() {
+        print(CKRecord.self)
     }
 
 #if os(iOS)

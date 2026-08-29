@@ -19,6 +19,13 @@ enum NagareCloudPreferences {
         defaults.bool(forKey: syncEnabledKey)
     }
 
+    static func setSyncEnabled(
+        _ isEnabled: Bool,
+        in defaults: UserDefaults = .standard
+    ) {
+        defaults.set(isEnabled, forKey: syncEnabledKey)
+    }
+
     static func shouldEnableSync(
         arguments: [String],
         defaults: UserDefaults = .standard

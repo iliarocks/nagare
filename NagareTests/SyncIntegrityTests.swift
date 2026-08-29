@@ -65,10 +65,7 @@ struct SyncIntegrityTests {
         defaults.removePersistentDomain(forName: suiteName)
         #expect(!NagareCloudPreferences.isSyncEnabled(in: defaults))
 
-        defaults.set(
-            true,
-            forKey: NagareCloudPreferences.syncEnabledKey
-        )
+        NagareCloudPreferences.setSyncEnabled(true, in: defaults)
         #expect(NagareCloudPreferences.isSyncEnabled(in: defaults))
         #expect(
             NagareCloudPreferences.shouldEnableSync(
