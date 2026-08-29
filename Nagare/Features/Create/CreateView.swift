@@ -67,13 +67,8 @@ struct CreateView: View {
         return ScheduleDateTime.combining(scheduledDate, with: endTime)
     }
 
-    private var isScheduleValid: Bool {
-        guard let resolvedEndDate else { return true }
-        return resolvedEndDate > resolvedScheduledDate
-    }
-
     private var isDraftStructurallyValid: Bool {
-        isScheduleValid && recurrence.isValid
+        recurrence.isValid
     }
 
     var body: some View {

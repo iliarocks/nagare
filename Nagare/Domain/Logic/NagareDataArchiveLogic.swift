@@ -190,7 +190,7 @@ nonisolated enum NagareDataArchivePlanner {
             )
         }
         if let end = template.endTimeSeconds,
-           (!(0..<86_400).contains(end) || end < start) {
+           !(0..<86_400).contains(end) {
             throw NagareDataArchiveError.invalidRecurrence(
                 template.id,
                 detail: "invalid end time"

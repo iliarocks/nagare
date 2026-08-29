@@ -686,7 +686,7 @@ struct RecurrencePersistenceTests {
         #expect(event.recurrenceTemplate == nil)
     }
 
-    @Test func rejectsTimedTodoThatEndsBeforeItStarts() throws {
+    @Test func recurringTodoCanEndBeforeItsStartTime() throws {
         let context = try makeContext()
         let event = Todo(
             title: "Backwards",
@@ -704,17 +704,25 @@ struct RecurrencePersistenceTests {
             calendar: calendar
         )
 
-        let error = capturePersistenceError {
-            _ = try RecurrencePersistence.createTemplate(
-                for: event,
-                rule: rule,
-                in: context,
-                calendar: calendar
-            )
-        }
+        let template = try RecurrencePersistence.createTemplate(
+            for: event,
+            rule: rule,
+            in: context,
+            calendar: calendar
+        )
+        let producedNext = try RecurrencePersistence.complete(
+            event,
+            at: date(2026, 7, 1, hour: 12),
+            in: context,
+            calendar: calendar
+        )
+        let next = try #require(producedNext)
+        let nextEnd = try #require(next.endDate)
 
-        #expect(error?.code == "RECURRENCE-PERSIST-014")
-        #expect(event.recurrenceTemplate == nil)
+        #expect(template.startTimeSeconds == 10 * 3_600)
+        #expect(template.endTimeSeconds == 9 * 3_600)
+        #expect(calendar.component(.hour, from: next.scheduledDate) == 10)
+        #expect(calendar.component(.hour, from: nextEnd) == 9)
     }
 
     @Test func corruptMultipleCurrentTodosFailLoudlyWithoutGeneratingAnother() throws {

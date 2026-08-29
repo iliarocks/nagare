@@ -44,19 +44,13 @@ struct TodoScheduleEditor: View {
         return ScheduleDateTime.combining(scheduledDate, with: endTime)
     }
 
-    private var isScheduleValid: Bool {
-        guard let resolvedEndDate else { return true }
-        return resolvedEndDate > resolvedScheduledDate
-    }
-
     var body: some View {
         ScheduleEditorForm(
             scheduledDate: $scheduledDate,
             includesTime: $includesTime,
             startTime: $startTime,
             includesEndTime: $includesEndTime,
-            endTime: $endTime,
-            isScheduleValid: isScheduleValid
+            endTime: $endTime
         )
         .onChange(of: scheduledDate) { save() }
         .onChange(of: includesTime) { save() }
@@ -78,7 +72,6 @@ struct TodoScheduleEditor: View {
     }
 
     private func save() {
-        guard isScheduleValid else { return }
         guard todo.scheduledDate != resolvedScheduledDate
             || todo.includesTime != includesTime
             || todo.endDate != resolvedEndDate else {

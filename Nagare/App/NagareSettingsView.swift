@@ -6,6 +6,13 @@ import AppKit
 #endif
 
 struct NagareSettingsView: View {
+    private static let privacyURL = URL(
+        string: "https://nagare.page/#privacy"
+    )!
+    private static let supportURL = URL(
+        string: "https://nagare.page/#support"
+    )!
+
     private struct TransferNotice: Identifiable {
         let id = UUID()
         let title: String
@@ -170,8 +177,16 @@ struct NagareSettingsView: View {
             }
 
             Section("About") {
-                comingSoonRow("Privacy Policy", systemImage: "hand.raised")
-                comingSoonRow("Support", systemImage: "lifepreserver")
+                externalLinkRow(
+                    "Privacy Policy",
+                    systemImage: "hand.raised",
+                    destination: Self.privacyURL
+                )
+                externalLinkRow(
+                    "Support",
+                    systemImage: "lifepreserver",
+                    destination: Self.supportURL
+                )
             }
         }
         .formStyle(.grouped)
@@ -363,17 +378,23 @@ struct NagareSettingsView: View {
         .contentShape(Rectangle())
     }
 
-    private func comingSoonRow(
+    private func externalLinkRow(
         _ title: String,
-        systemImage: String
+        systemImage: String,
+        destination: URL
     ) -> some View {
-        LabeledContent {
-            Text("Coming Soon")
-                .foregroundStyle(.secondary)
-        } label: {
-            Label(title, systemImage: systemImage)
+        Link(destination: destination) {
+            HStack(spacing: 12) {
+                Label(title, systemImage: systemImage)
+
+                Spacer()
+
+                Image(systemName: "arrow.up.forward.app")
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
     }
 
 }

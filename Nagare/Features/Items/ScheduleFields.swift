@@ -34,7 +34,7 @@ struct TimeRangeFields: View {
 
     var body: some View {
         LabeledContent {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 if includesTime {
                     DatePicker(
                         "Start Time",
@@ -65,7 +65,11 @@ struct TimeRangeFields: View {
 
                 if includesTime {
                     Button(action: removeTimeComponent) {
-                        Text(Image(systemName: "minus.circle.fill"))
+                        Label(
+                            includesEndTime ? "Remove End Time" : "Remove Time",
+                            systemImage: "minus.circle.fill"
+                        )
+                        .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.plain)
                     .font(.body)
@@ -76,7 +80,11 @@ struct TimeRangeFields: View {
 
                 if !includesTime || !includesEndTime {
                     Button(action: addTimeComponent) {
-                        Text(Image(systemName: "plus.circle"))
+                        Label(
+                            includesTime ? "Add End Time" : "Add Time",
+                            systemImage: "plus.circle"
+                        )
+                        .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.plain)
                     .font(.body)
@@ -94,13 +102,6 @@ struct TimeRangeFields: View {
 
     private func addTimeComponent() {
         if includesTime {
-            if wallTimeSeconds(endTime) <= wallTimeSeconds(startTime) {
-                endTime = Calendar.autoupdatingCurrent.date(
-                    byAdding: .hour,
-                    value: 1,
-                    to: startTime
-                ) ?? startTime
-            }
             includesEndTime = true
         } else {
             includesTime = true
@@ -115,15 +116,6 @@ struct TimeRangeFields: View {
         }
     }
 
-    private func wallTimeSeconds(_ date: Date) -> Int {
-        let components = Calendar.autoupdatingCurrent.dateComponents(
-            [.hour, .minute, .second],
-            from: date
-        )
-        return (components.hour ?? 0) * 3_600
-            + (components.minute ?? 0) * 60
-            + (components.second ?? 0)
-    }
 }
 
 struct ScheduleEditorForm: View {
@@ -133,12 +125,7 @@ struct ScheduleEditorForm: View {
     @Binding var includesEndTime: Bool
     @Binding var endTime: Date
 
-    let isScheduleValid: Bool
-
-    private var height: CGFloat {
-        if !isScheduleValid { return 250 }
-        return 200
-    }
+    private let height: CGFloat = 200
 
     var body: some View {
         Form {
@@ -150,11 +137,6 @@ struct ScheduleEditorForm: View {
                     includesEndTime: $includesEndTime,
                     endTime: $endTime
                 )
-            } footer: {
-                if !isScheduleValid {
-                    Text("The end time must be later than the start time.")
-                        .foregroundStyle(.red)
-                }
             }
         }
         .nagareDetailsForm(height: height)
@@ -162,7 +144,6 @@ struct ScheduleEditorForm: View {
         .presentationDragIndicator(.visible)
         .animation(.snappy, value: includesTime)
         .animation(.snappy, value: includesEndTime)
-        .animation(.snappy, value: isScheduleValid)
     }
 }
 

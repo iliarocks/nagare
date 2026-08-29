@@ -5,7 +5,6 @@ nonisolated enum RecurrenceTransitionLogic {
         case timeCalculationFailed
         case sequenceOverflow
         case crossesDateBoundary
-        case endsBeforeStart
         case invalidTime
     }
 
@@ -50,7 +49,6 @@ nonisolated enum RecurrenceTransitionLogic {
             throw TransitionError.crossesDateBoundary
         }
         let end = wallTimeSeconds(for: endDate, calendar: calendar)
-        guard end >= start else { throw TransitionError.endsBeforeStart }
         return (start, end)
     }
 

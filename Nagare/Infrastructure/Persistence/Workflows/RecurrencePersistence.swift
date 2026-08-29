@@ -322,9 +322,6 @@ enum RecurrencePersistence {
             guard (0..<86_400).contains(endTimeSeconds) else {
                 throw RecurrencePersistenceError.invalidTime
             }
-            guard endTimeSeconds >= startTimeSeconds else {
-                throw RecurrencePersistenceError.endsBeforeStart
-            }
         }
     }
 
@@ -352,8 +349,6 @@ enum RecurrencePersistence {
             .sequenceOverflow
         case .crossesDateBoundary:
             .crossesDateBoundary
-        case .endsBeforeStart:
-            .endsBeforeStart
         case .invalidTime:
             .invalidTime
         }
@@ -404,7 +399,6 @@ enum RecurrencePersistenceError: Error, LocalizedError {
     case invalidOrder
     case invalidTime
     case crossesDateBoundary
-    case endsBeforeStart
     case persistenceFailed(String)
     case duplicateItems
 
@@ -423,7 +417,6 @@ enum RecurrencePersistenceError: Error, LocalizedError {
         case .invalidOrder: "RECURRENCE-PERSIST-011"
         case .invalidTime: "RECURRENCE-PERSIST-012"
         case .crossesDateBoundary: "RECURRENCE-PERSIST-013"
-        case .endsBeforeStart: "RECURRENCE-PERSIST-014"
         case .persistenceFailed: "RECURRENCE-PERSIST-015"
         case .duplicateItems: "RECURRENCE-PERSIST-016"
         }
@@ -457,8 +450,6 @@ enum RecurrencePersistenceError: Error, LocalizedError {
             "A repeating Todo has an invalid time. (\(code))"
         case .crossesDateBoundary:
             "Repeating Todos must start and end on the same day. (\(code))"
-        case .endsBeforeStart:
-            "A repeating Todo cannot end before it starts. (\(code))"
         case .persistenceFailed(let message):
             "Nagare couldn't save the recurrence transition. \(message) (\(code))"
         case .duplicateItems:
