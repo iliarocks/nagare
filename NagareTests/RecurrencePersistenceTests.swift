@@ -102,6 +102,50 @@ struct RecurrencePersistenceTests {
         #expect(template.todoOccurrences.filter { $0.completedAt == nil }.count == 1)
     }
 
+    @Test func completingOccurrenceOnCutoffEndsRepeatAndKeepsHistory() throws {
+        let context = try makeContext()
+        let first = insertTodo(
+            "Finite repeat",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let rule = try RecurrenceRule.relative(
+            every: 1,
+            unit: .day,
+            repeatUntil: date(2026, 7, 2),
+            calendar: calendar
+        )
+        _ = try RecurrencePersistence.createTemplate(
+            for: first,
+            rule: rule,
+            in: context
+        )
+
+        let second = try #require(
+            try RecurrencePersistence.complete(
+                first,
+                in: context,
+                calendar: calendar
+            )
+        )
+        let next = try RecurrencePersistence.complete(
+            second,
+            in: context,
+            calendar: calendar
+        )
+
+        let todos = try context.fetch(FetchDescriptor<Todo>())
+        #expect(next == nil)
+        #expect(second.scheduledDate == date(2026, 7, 2))
+        #expect(todos.count == 2)
+        #expect(todos.allSatisfy { $0.completedAt != nil })
+        #expect(todos.allSatisfy { $0.recurrenceTemplate == nil })
+        #expect(todos.allSatisfy { $0.recurrenceSequence == nil })
+        #expect(
+            try context.fetch(FetchDescriptor<RecurrenceTemplate>()).isEmpty
+        )
+    }
+
     @Test func completingTheSameOccurrenceTwiceDoesNotCreateDuplicate() throws {
         let context = try makeContext()
         let todo = insertTodo(
@@ -360,6 +404,38 @@ struct RecurrencePersistenceTests {
         #expect(next.recurrenceSequence == 1)
         #expect(template.currentItemID == next.id)
         #expect(template.todoOccurrences.map(\.id) == [next.id])
+    }
+
+    @Test func deletingFinalOccurrenceRemovesRepeatWithoutReplacement() throws {
+        let context = try makeContext()
+        let current = insertTodo(
+            "Finite repeat",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let rule = try RecurrenceRule.relative(
+            every: 1,
+            unit: .day,
+            repeatUntil: date(2026, 7, 1),
+            calendar: calendar
+        )
+        _ = try RecurrencePersistence.createTemplate(
+            for: current,
+            rule: rule,
+            in: context
+        )
+
+        let next = try RecurrencePersistence.delete(
+            current,
+            in: context,
+            calendar: calendar
+        )
+
+        #expect(next == nil)
+        #expect(try context.fetch(FetchDescriptor<Todo>()).isEmpty)
+        #expect(
+            try context.fetch(FetchDescriptor<RecurrenceTemplate>()).isEmpty
+        )
     }
 
     @Test func deletingTemplateKeepsCurrentAndCompletedTodos() throws {

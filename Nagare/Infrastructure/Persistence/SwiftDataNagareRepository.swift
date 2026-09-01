@@ -153,6 +153,7 @@ final class SwiftDataNagareRepository:
                         interval: $0.interval,
                         anchors: $0.anchors,
                         reference: $0.reference,
+                        repeatUntil: $0.repeatUntil,
                         startTimeSeconds: $0.startTimeSeconds,
                         endTimeSeconds: $0.endTimeSeconds,
                         currentItemID: $0.currentItemID,
@@ -238,6 +239,7 @@ final class SwiftDataNagareRepository:
                 template.interval = record.interval
                 template.anchors = record.anchors
                 template.reference = record.reference
+                template.repeatUntil = record.repeatUntil
                 template.startTimeSeconds = record.startTimeSeconds
                 template.endTimeSeconds = record.endTimeSeconds
                 template.currentItemID = record.currentItemID

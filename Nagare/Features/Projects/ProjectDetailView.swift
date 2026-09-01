@@ -193,7 +193,7 @@ struct ProjectDetailView: View {
                     )
                 }
                 .reorderable(collectionID: project.id)
-                .nagareDesktopListRow()
+                .nagareDesktopItemListRows()
             } header: {
                 Text("Items")
                     .nagareContentSectionHeader()
@@ -213,7 +213,7 @@ struct ProjectDetailView: View {
                     )
                     .nagareItemListRow()
                 }
-                .nagareDesktopListRow()
+                .nagareDesktopItemListRows()
             } header: {
                 Text("Repeating")
                     .nagareContentSectionHeader()

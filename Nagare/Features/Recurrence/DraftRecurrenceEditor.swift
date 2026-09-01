@@ -16,12 +16,20 @@ struct DraftRecurrenceEditor: View {
         .scrollIndicators(.hidden)
         .animation(.snappy, value: state.mode)
         .animation(.snappy, value: state.unit)
+        .animation(.snappy, value: state.repeatUntil != nil)
     }
 
     private var editorHeight: CGFloat {
         guard state.isEnabled else { return 120 }
 
+#if os(macOS)
+        var height: CGFloat = 290
+#else
         var height: CGFloat = 230
+#endif
+        if state.repeatUntil != nil {
+            height += 100
+        }
         guard state.mode == .absolute else { return height }
 
         switch state.unit {
@@ -37,27 +45,6 @@ struct DraftRecurrenceEditor: View {
 }
 
 enum RecurrencePresentation {
-    static func summary(_ state: RecurrenceFormState) -> String {
-        guard state.isEnabled else { return "No repeat" }
-        return summary(
-            unit: state.unit,
-            interval: state.interval
-        )
-    }
-
-    static func summary(
-        _ template: RecurrenceTemplateRecordSnapshot
-    ) -> String {
-        guard RecurrenceMode(rawValue: template.modeRawValue) != nil,
-              let unit = RecurrenceUnit(rawValue: template.unitRawValue) else {
-            return "Repeat unavailable"
-        }
-        return summary(
-            unit: unit,
-            interval: template.interval
-        )
-    }
-
     static func nextDate(
         after date: Date,
         for template: RecurrenceTemplateRecordSnapshot,
@@ -73,11 +60,12 @@ enum RecurrencePresentation {
         ) else {
             return nil
         }
-        return try? RecurrenceCalculator.nextDate(
+        guard let next = try? RecurrenceCalculator.nextDate(
             after: date,
             using: rule,
             calendar: calendar
-        )
+        ) else { return nil }
+        return rule.permits(next, calendar: calendar) ? next : nil
     }
 
     static func isInUpcomingRange(
@@ -102,12 +90,4 @@ enum RecurrencePresentation {
         return day >= tomorrow && day <= horizon
     }
 
-    private static func summary(
-        unit: RecurrenceUnit,
-        interval: Int
-    ) -> String {
-        interval == 1
-            ? "Every \(unit.singularTitle)"
-            : "Every \(interval) \(unit.pluralTitle)"
-    }
 }

@@ -97,7 +97,7 @@ struct ProjectsView: View {
                                 .nagareItemListRow()
                         }
                         .reorderable(collectionID: priority)
-                        .nagareDesktopListRow()
+                        .nagareDesktopItemListRows()
                     }
                 }
             }

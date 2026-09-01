@@ -38,6 +38,7 @@ struct RecurrenceEditor: View {
         .scrollIndicators(.hidden)
         .animation(.snappy, value: form.mode)
         .animation(.snappy, value: form.unit)
+        .animation(.snappy, value: form.repeatUntil != nil)
         .alert("Repeat Couldn't Be Saved", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
@@ -60,7 +61,15 @@ struct RecurrenceEditor: View {
     }
 
     private var editorHeight: CGFloat {
+#if os(macOS)
+        var height: CGFloat = 290
+#else
         var height: CGFloat = 230
+#endif
+
+        if form.repeatUntil != nil {
+            height += 100
+        }
 
         guard form.mode == .absolute else {
             return height

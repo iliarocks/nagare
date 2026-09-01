@@ -57,6 +57,7 @@ enum RecurrencePersistence {
             template.interval = rule.interval
             template.anchors = rule.anchors
             template.reference = rule.reference
+            template.repeatUntil = rule.repeatUntil
         }
     }
 
@@ -86,6 +87,10 @@ enum RecurrencePersistence {
                 calendar: calendar
             )
             todo.completedAt = completionDate
+            guard let next else {
+                terminate(template, in: context)
+                return nil
+            }
             context.insert(next)
             next.recurrenceTemplate = template
             guard let nextSequence = next.recurrenceSequence else {
@@ -196,8 +201,8 @@ enum RecurrencePersistence {
         from template: RecurrenceTemplate,
         createdAt: Date,
         calendar: Calendar
-    ) throws -> Todo {
-        let draft: TodoOccurrenceDraft
+    ) throws -> Todo? {
+        let draft: TodoOccurrenceDraft?
         do {
             draft = try RecurrenceTransitionLogic.nextTodo(
                 after: RecurrenceOccurrenceSnapshot(
@@ -212,6 +217,7 @@ enum RecurrencePersistence {
         } catch let error as RecurrenceTransitionLogic.TransitionError {
             throw persistenceError(for: error)
         }
+        guard let draft else { return nil }
         let next = Todo(
             title: draft.title,
             notes: draft.notes,
@@ -257,6 +263,11 @@ enum RecurrencePersistence {
             createdAt: transitionDate,
             calendar: calendar
         )
+        guard let next else {
+            terminate(template, in: context)
+            context.delete(todo)
+            return nil
+        }
         context.insert(next)
         next.recurrenceTemplate = template
         guard let nextSequence = next.recurrenceSequence else {
@@ -266,6 +277,17 @@ enum RecurrencePersistence {
         template.currentSequence = nextSequence
         context.delete(todo)
         return next
+    }
+
+    private static func terminate(
+        _ template: RecurrenceTemplate,
+        in context: ModelContext
+    ) {
+        for occurrence in template.todoOccurrences {
+            occurrence.recurrenceTemplate = nil
+            occurrence.recurrenceSequence = nil
+        }
+        context.delete(template)
     }
 
     private static func validateCurrent(

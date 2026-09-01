@@ -15,6 +15,7 @@ final class RecurrenceTemplate: Note, SyncRecord {
     var interval: Int = 1
     var anchors: [Int] = []
     var reference: Date?
+    var repeatUntil: Date?
     var startTimeSeconds: Int?
     var endTimeSeconds: Int?
     var currentItemID: UUID = UUID()
@@ -61,6 +62,7 @@ final class RecurrenceTemplate: Note, SyncRecord {
         self.interval = rule.interval
         self.anchors = rule.anchors
         self.reference = rule.reference
+        self.repeatUntil = rule.repeatUntil
         self.startTimeSeconds = startTimeSeconds
         self.endTimeSeconds = endTimeSeconds
         self.currentItemID = currentItemID
@@ -87,7 +89,9 @@ final class RecurrenceTemplate: Note, SyncRecord {
         case .relative:
             return try RecurrenceRule.relative(
                 every: interval,
-                unit: unit
+                unit: unit,
+                repeatUntil: repeatUntil,
+                calendar: calendar
             )
         case .absolute:
             guard let reference else {
@@ -98,6 +102,7 @@ final class RecurrenceTemplate: Note, SyncRecord {
                 unit: unit,
                 anchors: anchors,
                 reference: reference,
+                repeatUntil: repeatUntil,
                 calendar: calendar
             )
         }

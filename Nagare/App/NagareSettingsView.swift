@@ -12,6 +12,9 @@ struct NagareSettingsView: View {
     private static let supportURL = URL(
         string: "https://nagare.page/#support"
     )!
+    private static let appVersion = Bundle.main.object(
+        forInfoDictionaryKey: "CFBundleShortVersionString"
+    ) as? String ?? "—"
 
     private struct TransferNotice: Identifiable {
         let id = UUID()
@@ -176,7 +179,7 @@ struct NagareSettingsView: View {
                 Text("Data")
             }
 
-            Section("About") {
+            Section {
                 externalLinkRow(
                     "Privacy Policy",
                     systemImage: "hand.raised",
@@ -187,6 +190,10 @@ struct NagareSettingsView: View {
                     systemImage: "lifepreserver",
                     destination: Self.supportURL
                 )
+            } header: {
+                Text("About")
+            } footer: {
+                Text("Version \(Self.appVersion)")
             }
         }
         .formStyle(.grouped)

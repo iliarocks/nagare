@@ -18,19 +18,22 @@ nonisolated struct RecurrenceRule: Equatable, Sendable {
     let interval: Int
     let anchors: [Int]
     let reference: Date?
+    let repeatUntil: Date?
 
     private init(
         mode: RecurrenceMode,
         unit: RecurrenceUnit,
         interval: Int,
         anchors: [Int],
-        reference: Date?
+        reference: Date?,
+        repeatUntil: Date?
     ) {
         self.mode = mode
         self.unit = unit
         self.interval = interval
         self.anchors = anchors
         self.reference = reference
+        self.repeatUntil = repeatUntil
     }
 
     static func relative(
@@ -46,7 +49,28 @@ nonisolated struct RecurrenceRule: Equatable, Sendable {
             unit: unit,
             interval: interval,
             anchors: [],
-            reference: nil
+            reference: nil,
+            repeatUntil: nil
+        )
+    }
+
+    static func relative(
+        every interval: Int,
+        unit: RecurrenceUnit,
+        repeatUntil: Date?,
+        calendar: Calendar
+    ) throws -> RecurrenceRule {
+        guard interval > 0 else {
+            throw RecurrenceError.invalidInterval(interval)
+        }
+
+        return RecurrenceRule(
+            mode: .relative,
+            unit: unit,
+            interval: interval,
+            anchors: [],
+            reference: nil,
+            repeatUntil: repeatUntil.map(calendar.startOfDay(for:))
         )
     }
 
@@ -55,6 +79,7 @@ nonisolated struct RecurrenceRule: Equatable, Sendable {
         unit: RecurrenceUnit,
         anchors: [Int] = [],
         reference: Date,
+        repeatUntil: Date? = nil,
         calendar: Calendar
     ) throws -> RecurrenceRule {
         guard interval > 0 else {
@@ -93,8 +118,14 @@ nonisolated struct RecurrenceRule: Equatable, Sendable {
                 reference,
                 for: unit,
                 calendar: calendar
-            )
+            ),
+            repeatUntil: repeatUntil.map(calendar.startOfDay(for:))
         )
+    }
+
+    func permits(_ date: Date, calendar: Calendar) -> Bool {
+        guard let repeatUntil else { return true }
+        return calendar.startOfDay(for: date) <= repeatUntil
     }
 
     private static func validate(
@@ -214,6 +245,9 @@ nonisolated enum RecurrenceCalculator {
             using: rule,
             calendar: calendar
         )
+        guard rule.permits(first, calendar: calendar) else {
+            return []
+        }
 
         if rule.mode == .relative {
             return [first]
@@ -227,7 +261,8 @@ nonisolated enum RecurrenceCalculator {
         var dates: [Date] = []
         var candidate = first
 
-        while candidate <= horizon {
+        while candidate <= horizon
+            && rule.permits(candidate, calendar: calendar) {
             guard dates.count < maximumCount else {
                 throw RecurrenceError.projectionLimitExceeded(maximumCount)
             }

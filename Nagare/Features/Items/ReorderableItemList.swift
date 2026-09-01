@@ -174,7 +174,7 @@ struct ReorderableItemList: View {
             )
         }
         .reorderable(collectionID: group.date)
-        .nagareDesktopListRow()
+        .nagareDesktopItemListRows()
 
         ForEach(group.virtualItems) { item in
             VirtualItemRow(
@@ -189,7 +189,7 @@ struct ReorderableItemList: View {
             )
             .nagareItemListRow()
         }
-        .nagareDesktopListRow()
+        .nagareDesktopItemListRows()
     }
 
     private var availableItemIDs: Set<ItemID> {

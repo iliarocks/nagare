@@ -7,6 +7,7 @@ nonisolated struct RecurrenceProjectionTemplateSnapshot: Equatable, Sendable {
     let interval: Int
     let anchors: [Int]
     let reference: Date?
+    let repeatUntil: Date?
     let startTimeSeconds: Int?
     let endTimeSeconds: Int?
     let currentItemID: UUID

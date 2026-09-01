@@ -129,6 +129,7 @@ struct RecurrenceUIModelTests {
             unit: .week,
             anchors: [0, 3, 6],
             reference: todo.scheduledDate,
+            repeatUntil: date(2026, 9, 1),
             calendar: calendar
         )
         let template = try RecurrencePersistence.createTemplate(
@@ -174,6 +175,46 @@ struct RecurrenceUIModelTests {
                 calendar: calendar
             ) == nil
         )
+    }
+
+    @Test func repeatUntilDefaultsOneMonthAheadAndTracksLaterStartDate() throws {
+        var state = RecurrenceFormState.enabled(
+            referenceDate: date(2026, 7, 1),
+            calendar: calendar
+        )
+
+        state.setRepeatUntilEnabled(
+            true,
+            referenceDate: date(2026, 7, 1),
+            calendar: calendar
+        )
+        #expect(state.repeatUntil == date(2026, 8, 1))
+
+        state.setRepeatUntil(
+            date(2026, 7, 10),
+            referenceDate: date(2026, 7, 1),
+            calendar: calendar
+        )
+        state.rebaseReference(
+            to: date(2026, 7, 15),
+            calendar: calendar
+        )
+
+        let rule = try #require(
+            try state.rule(
+                referenceDate: date(2026, 7, 15),
+                calendar: calendar
+            )
+        )
+        #expect(state.repeatUntil == date(2026, 7, 15))
+        #expect(rule.repeatUntil == date(2026, 7, 15))
+
+        state.setRepeatUntilEnabled(
+            false,
+            referenceDate: date(2026, 7, 15),
+            calendar: calendar
+        )
+        #expect(state.repeatUntil == nil)
     }
 
     @Test func creationFormRebasesAbsoluteCadenceWhenDateChanges() throws {
@@ -260,6 +301,39 @@ struct RecurrenceUIModelTests {
             date(2026, 7, 15)
         ])
         #expect(Set(items.map(\.id)).count == 3)
+    }
+
+    @Test func repeatUntilStopsVirtualProjectionAfterInclusiveDate() throws {
+        let context = try makeContext()
+        let todo = insertTodo(
+            "Finite repeat",
+            day: date(2026, 7, 1),
+            into: context
+        )
+        let rule = try RecurrenceRule.absolute(
+            every: 1,
+            unit: .day,
+            reference: todo.scheduledDate,
+            repeatUntil: date(2026, 7, 3),
+            calendar: calendar
+        )
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: rule,
+            in: context
+        )
+
+        let items = try project(
+            template,
+            in: context,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 10)
+        ).items
+
+        #expect(items.map(\.date) == [
+            date(2026, 7, 2),
+            date(2026, 7, 3)
+        ])
     }
 
     @Test func virtualTimedTodoCopiesTemplateWallTimes() throws {

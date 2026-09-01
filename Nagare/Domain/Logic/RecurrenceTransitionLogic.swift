@@ -13,12 +13,15 @@ nonisolated enum RecurrenceTransitionLogic {
         from template: RecurrenceTransitionTemplate,
         createdAt: Date,
         calendar: Calendar
-    ) throws -> TodoOccurrenceDraft {
+    ) throws -> TodoOccurrenceDraft? {
         let nextDay = try RecurrenceCalculator.nextDate(
             after: current.scheduledDate,
             using: template.rule,
             calendar: calendar
         )
+        guard template.rule.permits(nextDay, calendar: calendar) else {
+            return nil
+        }
         let startDate = try template.startTimeSeconds.map {
             try date(on: nextDay, wallTimeSeconds: $0, calendar: calendar)
         }

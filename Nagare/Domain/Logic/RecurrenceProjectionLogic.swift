@@ -150,7 +150,9 @@ nonisolated enum RecurrenceProjectionLogic {
         case .relative:
             return try RecurrenceRule.relative(
                 every: template.interval,
-                unit: unit
+                unit: unit,
+                repeatUntil: template.repeatUntil,
+                calendar: calendar
             )
         case .absolute:
             guard let reference = template.reference else {
@@ -161,6 +163,7 @@ nonisolated enum RecurrenceProjectionLogic {
                 unit: unit,
                 anchors: template.anchors,
                 reference: reference,
+                repeatUntil: template.repeatUntil,
                 calendar: calendar
             )
         }

@@ -168,6 +168,7 @@ nonisolated struct RecurrenceTemplateRecordSnapshot:
     let interval: Int
     let anchors: [Int]
     let reference: Date?
+    let repeatUntil: Date?
     let startTimeSeconds: Int?
     let endTimeSeconds: Int?
     let currentItemID: UUID
@@ -262,6 +263,7 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
                     interval: $0.interval,
                     anchors: $0.anchors,
                     reference: $0.reference,
+                    repeatUntil: $0.repeatUntil,
                     startTimeSeconds: $0.startTimeSeconds,
                     endTimeSeconds: $0.endTimeSeconds,
                     currentItemID: $0.currentItemID,
@@ -437,6 +439,7 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
             SyncStableValue.encode(template.interval),
             SyncStableValue.encode(template.anchors),
             SyncStableValue.encode(template.reference),
+            SyncStableValue.encode(template.repeatUntil),
             SyncStableValue.encode(template.startTimeSeconds),
             SyncStableValue.encode(template.endTimeSeconds),
             SyncStableValue.encode(template.currentItemID),

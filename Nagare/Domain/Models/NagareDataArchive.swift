@@ -159,6 +159,7 @@ nonisolated struct NagareArchiveRecurrenceTemplate:
     let interval: Int
     let anchors: [Int]
     let reference: Date?
+    let repeatUntil: Date?
     let startTimeSeconds: Int?
     let endTimeSeconds: Int?
     let currentItemID: UUID
@@ -175,6 +176,7 @@ nonisolated struct NagareArchiveRecurrenceTemplate:
         interval = template.interval
         anchors = template.anchors
         reference = template.reference
+        repeatUntil = template.repeatUntil
         startTimeSeconds = template.startTimeSeconds
         endTimeSeconds = template.endTimeSeconds
         currentItemID = template.currentItemID
@@ -192,6 +194,7 @@ nonisolated struct NagareArchiveRecurrenceTemplate:
         interval: Int,
         anchors: [Int],
         reference: Date?,
+        repeatUntil: Date? = nil,
         startTimeSeconds: Int?,
         endTimeSeconds: Int?,
         currentItemID: UUID,
@@ -207,6 +210,7 @@ nonisolated struct NagareArchiveRecurrenceTemplate:
         self.interval = interval
         self.anchors = anchors
         self.reference = reference
+        self.repeatUntil = repeatUntil
         self.startTimeSeconds = startTimeSeconds
         self.endTimeSeconds = endTimeSeconds
         self.currentItemID = currentItemID

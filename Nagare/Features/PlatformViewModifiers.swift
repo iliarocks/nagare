@@ -743,6 +743,27 @@ extension View {
 #endif
     }
 
+    /// Item rows keep an eight-point internal gutter while extending their
+    /// outer bounds by the same amount, aligning their content with section
+    /// headers without moving the headers themselves.
+    @ViewBuilder
+    func nagareDesktopItemListRows() -> some View {
+#if os(macOS)
+        listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(
+                EdgeInsets(
+                    top: 0,
+                    leading: -8,
+                    bottom: 0,
+                    trailing: -8
+                )
+            )
+#else
+        self
+#endif
+    }
+
     /// The single outer contract for every item-like list row. Keeping the
     /// hit target, visual inset, and minimum height together prevents row
     /// families from drifting apart as their inner content evolves.

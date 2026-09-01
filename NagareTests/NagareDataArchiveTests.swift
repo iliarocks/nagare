@@ -74,6 +74,7 @@ struct NagareDataArchiveTests {
                     interval: 2,
                     anchors: [],
                     reference: nil,
+                    repeatUntil: day,
                     startTimeSeconds: nil,
                     endTimeSeconds: nil,
                     currentItemID: todoID,
@@ -95,7 +96,37 @@ struct NagareDataArchiveTests {
         #expect(!json.contains("syncRecordID"))
         #expect(!json.contains("modifiedAt"))
         #expect(json.contains("calendar-event-id"))
+        #expect(json.contains("repeatUntil"))
         #expect(decoded.projects.first?.priority == .low)
+    }
+
+    @Test func decoderTreatsMissingRepeatUntilAsIndefinite() throws {
+        let templateID = UUID()
+        let json = """
+        {
+          "formatVersion": 2,
+          "exportedAt": "2027-01-01T00:00:00Z",
+          "projects": [],
+          "todos": [],
+          "recurrenceTemplates": [
+            {
+              "id": "\(templateID.uuidString)",
+              "createdAt": "2027-01-01T00:00:00Z",
+              "title": "Legacy repeat",
+              "modeRawValue": "relative",
+              "unitRawValue": "day",
+              "interval": 1,
+              "anchors": [],
+              "currentItemID": "\(UUID().uuidString)",
+              "currentSequence": 0
+            }
+          ]
+        }
+        """
+
+        let archive = try NagareDataArchiveCodec.decode(Data(json.utf8))
+
+        #expect(archive.recurrenceTemplates.first?.repeatUntil == nil)
     }
 
     @Test func decoderRejectsUnsupportedVersionsBeforeReadingPayload() {

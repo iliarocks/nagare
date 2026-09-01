@@ -212,7 +212,12 @@ nonisolated enum NagareDataArchivePlanner {
         do {
             switch mode {
             case .relative:
-                return try .relative(every: template.interval, unit: unit)
+                return try .relative(
+                    every: template.interval,
+                    unit: unit,
+                    repeatUntil: template.repeatUntil,
+                    calendar: calendar
+                )
             case .absolute:
                 guard let reference = template.reference else {
                     throw NagareDataArchiveError.invalidRecurrence(
@@ -225,6 +230,7 @@ nonisolated enum NagareDataArchivePlanner {
                     unit: unit,
                     anchors: template.anchors,
                     reference: reference,
+                    repeatUntil: template.repeatUntil,
                     calendar: calendar
                 )
             }

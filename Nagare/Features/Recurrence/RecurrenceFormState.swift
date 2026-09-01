@@ -7,6 +7,7 @@ struct RecurrenceFormState: Equatable {
     var interval: Int
     var anchors: Set<Int>
     var reference: Date?
+    var repeatUntil: Date?
 
     static let disabled = RecurrenceFormState(
         isEnabled: false,
@@ -14,7 +15,8 @@ struct RecurrenceFormState: Equatable {
         unit: .day,
         interval: 1,
         anchors: [],
-        reference: nil
+        reference: nil,
+        repeatUntil: nil
     )
 
     static func enabled(
@@ -27,7 +29,8 @@ struct RecurrenceFormState: Equatable {
             unit: .day,
             interval: 1,
             anchors: [],
-            reference: calendar.startOfDay(for: referenceDate)
+            reference: calendar.startOfDay(for: referenceDate),
+            repeatUntil: nil
         )
     }
 
@@ -50,7 +53,9 @@ struct RecurrenceFormState: Equatable {
         case .relative:
             rule = try RecurrenceRule.relative(
                 every: template.interval,
-                unit: unit
+                unit: unit,
+                repeatUntil: template.repeatUntil,
+                calendar: calendar
             )
         case .absolute:
             guard let reference = template.reference else {
@@ -61,6 +66,7 @@ struct RecurrenceFormState: Equatable {
                 unit: unit,
                 anchors: template.anchors,
                 reference: reference,
+                repeatUntil: template.repeatUntil,
                 calendar: calendar
             )
         }
@@ -70,7 +76,8 @@ struct RecurrenceFormState: Equatable {
             unit: rule.unit,
             interval: rule.interval,
             anchors: Set(rule.anchors),
-            reference: rule.reference
+            reference: rule.reference,
+            repeatUntil: rule.repeatUntil
         )
     }
 
@@ -162,6 +169,34 @@ struct RecurrenceFormState: Equatable {
         }
     }
 
+    mutating func setRepeatUntilEnabled(
+        _ enabled: Bool,
+        referenceDate: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) {
+        guard enabled else {
+            repeatUntil = nil
+            return
+        }
+        guard repeatUntil == nil else { return }
+
+        let start = calendar.startOfDay(for: referenceDate)
+        repeatUntil = calendar.date(
+            byAdding: .month,
+            value: 1,
+            to: start
+        ) ?? start
+    }
+
+    mutating func setRepeatUntil(
+        _ date: Date,
+        referenceDate: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) {
+        let minimum = calendar.startOfDay(for: referenceDate)
+        repeatUntil = max(calendar.startOfDay(for: date), minimum)
+    }
+
     /// Creation forms call this when their item's date changes. Existing
     /// templates deliberately do not: their normalized reference defines the
     /// established absolute cadence.
@@ -170,9 +205,17 @@ struct RecurrenceFormState: Equatable {
         calendar: Calendar = .autoupdatingCurrent
     ) {
         guard isEnabled && mode == .absolute else {
+            clampRepeatUntil(
+                to: referenceDate,
+                calendar: calendar
+            )
             return
         }
         reference = calendar.startOfDay(for: referenceDate)
+        clampRepeatUntil(
+            to: referenceDate,
+            calendar: calendar
+        )
     }
 
     func rule(
@@ -187,7 +230,9 @@ struct RecurrenceFormState: Equatable {
         case .relative:
             return try RecurrenceRule.relative(
                 every: interval,
-                unit: unit
+                unit: unit,
+                repeatUntil: repeatUntil,
+                calendar: calendar
             )
         case .absolute:
             return try RecurrenceRule.absolute(
@@ -195,8 +240,20 @@ struct RecurrenceFormState: Equatable {
                 unit: unit,
                 anchors: anchors.sorted(),
                 reference: reference ?? referenceDate,
+                repeatUntil: repeatUntil,
                 calendar: calendar
             )
+        }
+    }
+
+    private mutating func clampRepeatUntil(
+        to referenceDate: Date,
+        calendar: Calendar
+    ) {
+        guard let repeatUntil else { return }
+        let minimum = calendar.startOfDay(for: referenceDate)
+        if repeatUntil < minimum {
+            self.repeatUntil = minimum
         }
     }
 

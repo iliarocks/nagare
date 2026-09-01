@@ -95,6 +95,25 @@ struct RecurrenceTests {
         #expect(dates == [date(2026, 1, 11)])
     }
 
+    @Test func relativeRecurrenceStopsBeforeDateAfterInclusiveCutoff() throws {
+        let rule = try RecurrenceRule.relative(
+            every: 2,
+            unit: .day,
+            repeatUntil: date(2026, 1, 2, hour: 18),
+            calendar: calendar
+        )
+
+        let dates = try RecurrenceCalculator.virtualDates(
+            after: date(2026, 1, 1),
+            using: rule,
+            absoluteThrough: date(2026, 2, 1),
+            calendar: calendar
+        )
+
+        #expect(rule.repeatUntil == date(2026, 1, 2))
+        #expect(dates.isEmpty)
+    }
+
     @Test func absoluteDayReferenceIsNormalizedToStartOfDay() throws {
         let rule = try RecurrenceRule.absolute(
             every: 3,
@@ -418,6 +437,25 @@ struct RecurrenceTests {
                 date(2026, 1, 10)
             ]
         )
+    }
+
+    @Test func absoluteProjectionIncludesCutoffDateAndNothingAfterIt() throws {
+        let rule = try RecurrenceRule.absolute(
+            every: 3,
+            unit: .day,
+            reference: date(2026, 1, 1),
+            repeatUntil: date(2026, 1, 7),
+            calendar: calendar
+        )
+
+        let dates = try RecurrenceCalculator.virtualDates(
+            after: date(2026, 1, 1),
+            using: rule,
+            absoluteThrough: date(2026, 1, 31),
+            calendar: calendar
+        )
+
+        #expect(dates == [date(2026, 1, 4), date(2026, 1, 7)])
     }
 
     @Test func absoluteProjectionCanRepresentSixMonthUpcomingWindow() throws {

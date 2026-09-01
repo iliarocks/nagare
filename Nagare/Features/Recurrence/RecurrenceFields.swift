@@ -77,6 +77,46 @@ struct RecurrenceFields: View {
                 if state.mode == .absolute && state.unit == .month {
                     monthlyAnchors
                 }
+
+                Toggle(
+                    "Repeat Until",
+                    isOn: Binding(
+                        get: { state.repeatUntil != nil },
+                        set: { enabled in
+                            state.setRepeatUntilEnabled(
+                                enabled,
+                                referenceDate: referenceDate
+                            )
+                        }
+                    )
+                )
+
+                if state.repeatUntil != nil {
+                    DatePicker(
+                        "Until",
+                        selection: Binding(
+                            get: {
+                                state.repeatUntil
+                                    ?? Calendar.autoupdatingCurrent.startOfDay(
+                                        for: referenceDate
+                                    )
+                            },
+                            set: { date in
+                                state.setRepeatUntil(
+                                    date,
+                                    referenceDate: referenceDate
+                                )
+                            }
+                        ),
+                        in: Calendar.autoupdatingCurrent.startOfDay(
+                            for: referenceDate
+                        )...,
+                        displayedComponents: .date
+                    )
+#if os(macOS)
+                    .datePickerStyle(.field)
+#endif
+                }
             }
         }
     }
