@@ -213,12 +213,12 @@
     @media (prefers-color-scheme: dark) {
       :root {
         --accent: #86a3b3;
-        --background: #181a1b;
-        --surface: #242627;
-        --text: #f3f4f4;
-        --secondary: #afb3b6;
+        --background: #080808;
+        --surface: #1c1c1c;
+        --text: #f5f5f5;
+        --secondary: #b0b0b0;
         --border: rgba(255, 255, 255, 0.13);
-        --shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
+        --shadow: 0 0 64px rgba(255, 255, 255, 0.045), 0 28px 70px rgba(0, 0, 0, 0.4);
       }
     }
   </style>
@@ -227,12 +227,15 @@
   <main>
     <section class="hero" aria-labelledby="page-title">
       <figure class="app-shot">
-        <img
-          src="assets/nagare-mobile.png"
-          width="1206"
-          height="2622"
-          alt="Nagare showing a list of today's tasks on iPhone"
-        >
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/nagare-mobile-dark.png">
+          <img
+            src="assets/nagare-mobile.png"
+            width="1320"
+            height="2868"
+            alt="Nagare showing a list of today's tasks on iPhone"
+          >
+        </picture>
       </figure>
 
       <div class="intro">
