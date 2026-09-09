@@ -164,7 +164,6 @@ struct ReorderableItemList: View {
                 onChangeSchedule: presentScheduleEditor,
                 onDelete: onDelete
             )
-            .nagareItemListRow()
             .nagareCommandSelection(
                 position: selectionPosition(
                     for: item.id,
@@ -187,7 +186,6 @@ struct ReorderableItemList: View {
                     onDeleteTemplate(item.template)
                 }
             )
-            .nagareItemListRow()
         }
         .nagareDesktopItemListRows()
     }

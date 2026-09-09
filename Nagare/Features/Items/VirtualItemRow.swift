@@ -29,13 +29,13 @@ struct VirtualItemRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityLabel("\(item.template.title), future repeating item")
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .nagareMobileSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
             }
             .accessibilityLabel("Delete")
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        .nagareMobileSwipeActions(edge: .leading, allowsFullSwipe: false) {
             Button(action: onChangeRepeat) {
                 Image(systemName: "repeat")
             }
@@ -48,6 +48,7 @@ struct VirtualItemRow: View {
         .accessibilityAction(named: "Delete") {
             onDelete()
         }
+        .nagareItemListRow()
         .nagareDesktopContextMenu {
             Button(action: onChangeRepeat) {
                 Label("Change Repeat", systemImage: "repeat")

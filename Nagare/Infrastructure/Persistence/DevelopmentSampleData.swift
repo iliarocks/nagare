@@ -97,7 +97,46 @@ enum DevelopmentSampleData {
             Todo(
                 id: id("203"),
                 title: "Write a thoughtful release note that is long enough to wrap onto a second line",
-                notes: "Mention the new Today ordering, project priorities, and recurrence improvements.",
+                notes: """
+                Release notes draft
+
+                This deliberately long sample lets you scroll and edit with the keyboard open.
+
+                Today
+                - Review the onboarding flow.
+                - Buy oat milk.
+                - Capture ideas as they arrive.
+                - Move unfinished work to another day.
+
+                Projects
+                - Open Ship Nagare 1.0.
+                - Go back to Projects.
+                - Open the same project again.
+                - Try another project and return.
+
+                Desktop actions
+                - Right-click an item to see its actions.
+                - Dismiss the menu and open the item.
+                - Command-click adjacent items.
+                - Right-click the selected group.
+
+                Mobile actions
+                - Swipe left to reveal Delete.
+                - Swipe right to change the date.
+                - Open this note at either sheet height.
+                - Tap here to show the keyboard.
+
+                Scrolling
+                - Scroll back to the beginning.
+                - Scroll down to this section again.
+                - Keep the keyboard open as you scroll.
+                - Check that the final line can move above the bottom fade.
+
+                Final paragraph
+                Add a sentence below this line. It should stay visible while you type.
+
+                End of long note — ready to edit.
+                """,
                 scheduledDate: today,
                 createdAt: try day(-2, after: now, calendar: calendar),
                 order: "r",

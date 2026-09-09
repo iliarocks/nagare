@@ -43,6 +43,111 @@ enum NagareSelectionPosition: Equatable {
     }
 }
 
+#if os(macOS)
+private struct NagareSelectionPositionKey: EnvironmentKey {
+    static let defaultValue = NagareSelectionPosition.none
+}
+
+private extension EnvironmentValues {
+    var nagareSelectionPosition: NagareSelectionPosition {
+        get { self[NagareSelectionPositionKey.self] }
+        set { self[NagareSelectionPositionKey.self] = newValue }
+    }
+}
+
+private struct NagareSelectionBackground: View {
+    let position: NagareSelectionPosition
+
+    var body: some View {
+        if position != .none {
+            UnevenRoundedRectangle(
+                topLeadingRadius: position == .single
+                    || position == .first ? 8 : 0,
+                bottomLeadingRadius: position == .single
+                    || position == .last ? 8 : 0,
+                bottomTrailingRadius: position == .single
+                    || position == .last ? 8 : 0,
+                topTrailingRadius: position == .single
+                    || position == .first ? 8 : 0,
+                style: .continuous
+            )
+            .fill(Color.primary.opacity(0.1))
+            .padding(.top, position == .middle || position == .last ? -7 : 0)
+            .padding(.bottom, position == .first || position == .middle ? -7 : 0)
+        }
+    }
+}
+
+private struct NagareDesktopContextMenu<MenuItems: View>: ViewModifier {
+    @Environment(\.nagareSelectionPosition) private var selectionPosition
+    @State private var isPresented = false
+    let menuItems: MenuItems
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                // Existing selections already supply the grouped highlight.
+                if isPresented && selectionPosition == .none {
+                    NagareSelectionBackground(position: .single)
+                }
+            }
+            .overlay {
+                NagareContextMenuTarget(
+                    menuItems: menuItems,
+                    isPresented: $isPresented
+                )
+                .accessibilityHidden(true)
+            }
+    }
+}
+
+/// Present a native menu without SwiftUI's contextual row outline. Only
+/// secondary clicks are intercepted; row clicks, controls, and drags pass through.
+private struct NagareContextMenuTarget<MenuItems: View>: NSViewRepresentable {
+    let menuItems: MenuItems
+    @Binding var isPresented: Bool
+
+    func makeNSView(context: Context) -> MenuTargetView {
+        MenuTargetView()
+    }
+
+    func updateNSView(_ nsView: MenuTargetView, context: Context) {
+        nsView.presentMenu = { [weak nsView] event in
+            isPresented = true
+            // Allow the SwiftUI highlight to render before menu tracking starts.
+            DispatchQueue.main.async {
+                defer { isPresented = false }
+                guard let nsView, nsView.window != nil else { return }
+                let menu = NSHostingMenu(rootView: menuItems)
+                NSMenu.popUpContextMenu(menu, with: event, for: nsView)
+            }
+        }
+    }
+
+    final class MenuTargetView: NSView {
+        var presentMenu: ((NSEvent) -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let event = NSApp.currentEvent,
+                  event.type == .rightMouseDown
+                    || (event.type == .leftMouseDown
+                        && event.modifierFlags.contains(.control)) else {
+                return nil
+            }
+            return super.hitTest(point)
+        }
+
+        override func rightMouseDown(with event: NSEvent) {
+            presentMenu?(event)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            presentMenu?(event)
+        }
+    }
+}
+#endif
+
 struct NagareModalDismissAction {
     private let action: () -> Void
 
@@ -787,29 +892,9 @@ extension View {
     ) -> some View {
 #if os(macOS)
         background {
-                if position != .none {
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: position == .single
-                            || position == .first ? 8 : 0,
-                        bottomLeadingRadius: position == .single
-                            || position == .last ? 8 : 0,
-                        bottomTrailingRadius: position == .single
-                            || position == .last ? 8 : 0,
-                        topTrailingRadius: position == .single
-                            || position == .first ? 8 : 0,
-                        style: .continuous
-                    )
-                    .fill(Color.primary.opacity(0.1))
-                    .padding(
-                        .top,
-                        position == .middle || position == .last ? -7 : 0
-                    )
-                    .padding(
-                        .bottom,
-                        position == .first || position == .middle ? -7 : 0
-                    )
-                }
+                NagareSelectionBackground(position: position)
             }
+            .environment(\.nagareSelectionPosition, position)
             .accessibilityValue(position == .none ? "" : "Selected")
             .accessibilityAction(named: "Toggle Selection", toggle)
 #else
@@ -839,7 +924,20 @@ extension View {
         @ViewBuilder menuItems: () -> MenuItems
     ) -> some View {
 #if os(macOS)
-        contextMenu(menuItems: menuItems)
+        modifier(NagareDesktopContextMenu(menuItems: menuItems()))
+#else
+        self
+#endif
+    }
+
+    @ViewBuilder
+    func nagareMobileSwipeActions<Actions: View>(
+        edge: HorizontalEdge,
+        allowsFullSwipe: Bool,
+        @ViewBuilder content: () -> Actions
+    ) -> some View {
+#if os(iOS)
+        swipeActions(edge: edge, allowsFullSwipe: allowsFullSwipe, content: content)
 #else
         self
 #endif
@@ -889,7 +987,7 @@ extension View {
     }
 
     func nagareDocumentBottomFade() -> some View {
-        ignoresSafeArea(edges: .bottom)
+        ignoresSafeArea(.container, edges: .bottom)
             .mask {
                 VStack(spacing: 0) {
                     Color.black

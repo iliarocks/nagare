@@ -186,7 +186,6 @@ struct ProjectDetailView: View {
                         onChangeSchedule: presentScheduleEditor,
                         onDelete: delete
                     )
-                    .nagareItemListRow()
                     .nagareCommandSelection(
                         position: selectionPosition(for: item.id),
                         toggle: { toggleSelection(of: item.id) }
@@ -211,7 +210,6 @@ struct ProjectDetailView: View {
                         },
                         onDelete: { deleteTemplate(template) }
                     )
-                    .nagareItemListRow()
                 }
                 .nagareDesktopItemListRows()
             } header: {

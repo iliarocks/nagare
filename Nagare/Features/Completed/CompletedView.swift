@@ -133,7 +133,7 @@ struct CompletedView: View {
         .accessibilityAction(named: "Delete") {
             delete(todo)
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .nagareMobileSwipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 reinstate(todo)
             } label: {
@@ -141,7 +141,7 @@ struct CompletedView: View {
             }
             .accessibilityLabel("Reinstate")
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .nagareMobileSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 delete(todo)
             } label: {

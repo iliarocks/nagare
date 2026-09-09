@@ -24,13 +24,13 @@ struct ProjectRepeatRow: View {
         .buttonStyle(.plain)
         .padding(.vertical, 4)
         .accessibilityLabel("\(template.title), repeating item")
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .nagareMobileSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
             }
             .accessibilityLabel("Stop Repeat")
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        .nagareMobileSwipeActions(edge: .leading, allowsFullSwipe: false) {
             Button(action: onChangeRepeat) {
                 Image(systemName: "repeat")
             }
@@ -39,6 +39,7 @@ struct ProjectRepeatRow: View {
         }
         .accessibilityAction(named: "Change Repeat", onChangeRepeat)
         .accessibilityAction(named: "Stop Repeat", onDelete)
+        .nagareItemListRow()
         .nagareDesktopContextMenu {
             Button(action: onChangeRepeat) {
                 Label("Change Repeat", systemImage: "repeat")

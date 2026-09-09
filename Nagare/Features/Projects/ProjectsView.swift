@@ -11,15 +11,21 @@ struct ProjectsView: View {
     @State private var errorMessage: String?
     @State private var displayedProjectIDsByPriority:
         [ProjectPriority: [UUID]] = [:]
+    @State private var selectedProjectIDs: Set<UUID> = []
 
     let onOpenSettings: () -> Void
+    let onOpenProject: (UUID) -> Void
 
     private var projects: [ProjectRecordSnapshot] {
         dataStore.projects
     }
 
-    init(onOpenSettings: @escaping () -> Void = {}) {
+    init(
+        onOpenSettings: @escaping () -> Void = {},
+        onOpenProject: @escaping (UUID) -> Void
+    ) {
         self.onOpenSettings = onOpenSettings
+        self.onOpenProject = onOpenProject
     }
 
     private var persistedProjectProjection: PersistedProjectProjection {
@@ -76,6 +82,9 @@ struct ProjectsView: View {
         .onChange(of: persistedProjectProjection, initial: true) {
             _, projection in
             displayedProjectIDsByPriority = projection.idsByPriority
+            selectedProjectIDs.formIntersection(
+                projection.idsByPriority.values.flatMap { $0 }
+            )
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -94,7 +103,14 @@ struct ProjectsView: View {
                     Section {
                         ForEach(tierProjects) { project in
                             projectRow(project)
-                                .nagareItemListRow()
+                                .nagareCommandSelection(
+                                    position: NagareSelectionPosition.resolve(
+                                        id: project.id,
+                                        orderedIDs: tierProjects.map(\.id),
+                                        selectedIDs: selectedProjectIDs
+                                    ),
+                                    toggle: { toggleSelection(of: project.id) }
+                                )
                         }
                         .reorderable(collectionID: priority)
                         .nagareDesktopItemListRows()
@@ -111,14 +127,9 @@ struct ProjectsView: View {
     }
 
     private func projectRow(_ project: ProjectRecordSnapshot) -> some View {
-        NavigationLink(value: project.id) {
-            Text(project.title)
-                .nagareItemTitleFont()
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 4)
-        }
+        projectRowAction(project)
         .accessibilityIdentifier("Project \(project.title)")
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        .nagareMobileSwipeActions(edge: .leading, allowsFullSwipe: false) {
             if let higher = project.priority.higher {
                 Button {
                     changePriority(of: project, to: higher)
@@ -138,7 +149,7 @@ struct ProjectsView: View {
                 .accessibilityLabel("Deprioritize")
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .nagareMobileSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 delete(project)
             } label: {
@@ -146,6 +157,7 @@ struct ProjectsView: View {
             }
             .accessibilityLabel("Delete")
         }
+        .nagareItemListRow()
         .nagareDesktopContextMenu {
             if let higher = project.priority.higher {
                 Button {
@@ -170,6 +182,38 @@ struct ProjectsView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func projectRowAction(_ project: ProjectRecordSnapshot) -> some View {
+#if os(macOS)
+        NagarePrimaryRowAction(
+            action: { onOpenProject(project.id) },
+            commandAction: { toggleSelection(of: project.id) }
+        ) {
+            projectLabel(project)
+        }
+#else
+        NavigationLink(value: project.id) {
+            projectLabel(project)
+        }
+#endif
+    }
+
+    private func projectLabel(_ project: ProjectRecordSnapshot) -> some View {
+        Text(project.title)
+            .nagareItemTitleFont()
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+    }
+
+    private func toggleSelection(of id: UUID) {
+        if selectedProjectIDs.contains(id) {
+            selectedProjectIDs.remove(id)
+        } else {
+            selectedProjectIDs.insert(id)
         }
     }
 

@@ -1,6 +1,49 @@
+#if os(iOS)
 import XCTest
 
 final class ReorderPersistenceUITests: XCTestCase {
+    @MainActor
+    func testLongNotesStayScrollableAboveKeyboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--use-reorder-ui-test-store",
+            "--reset-and-seed-reorder-ui-test"
+        ]
+        app.launch()
+
+        let todo = app.buttons["Reorder First"]
+        XCTAssertTrue(todo.waitForExistence(timeout: 5))
+        todo.tap()
+
+        let notes = app.textViews["Item Notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        notes.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+
+        let longNote = (1...40).map { "Line \($0)" }.joined(separator: "\n")
+        notes.typeText(longNote)
+        XCTAssertEqual(notes.value as? String, longNote)
+        XCTAssertLessThanOrEqual(
+            notes.frame.maxY,
+            keyboard.frame.minY + 1,
+            "The editor's scroll viewport must end above the keyboard"
+        )
+
+        notes.swipeDown()
+        notes.swipeUp()
+        notes.typeText("\nLast line remains editable")
+        XCTAssertTrue(
+            (notes.value as? String)?.hasSuffix("Last line remains editable") == true
+        )
+        XCTAssertLessThanOrEqual(notes.frame.maxY, keyboard.frame.minY + 1)
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Long notes scrolled above keyboard"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     @MainActor
     func testCreateTodoPersistsNotes() throws {
         let app = XCUIApplication()
@@ -295,18 +338,18 @@ final class ReorderPersistenceUITests: XCTestCase {
         deleteTodo.swipeLeft()
 
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 2))
-        XCTAssertFalse(app.buttons["Change Date"].exists)
+        XCTAssertFalse(app.buttons["Change Date and Time"].exists)
         XCTAssertFalse(app.buttons["Move Project"].exists)
 
         editTodo.swipeRight()
 
-        let changeDate = app.buttons["Change Date"]
+        let changeDate = app.buttons["Change Date and Time"]
         XCTAssertTrue(changeDate.waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Move Project"].exists)
         XCTAssertFalse(app.buttons["Delete"].exists)
         changeDate.tap()
 
-        XCTAssertTrue(app.datePickers["Date"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.datePickers["Schedule Date Picker"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.navigationBars["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Project Picker"].exists)
         XCTAssertFalse(app.buttons["Save Details"].exists)
@@ -1156,3 +1199,4 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
 }
+#endif

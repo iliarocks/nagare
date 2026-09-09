@@ -145,7 +145,10 @@ struct RootView: View {
 
             Tab(value: NavigationSection.projects) {
                 NavigationStack(path: $projectPath) {
-                    ProjectsView(onOpenSettings: openSettings)
+                    ProjectsView(
+                        onOpenSettings: openSettings,
+                        onOpenProject: { projectPath.append($0) }
+                    )
                         .navigationDestination(for: UUID.self) { projectID in
                             if let project = projects.first(where: {
                                 $0.id == projectID
@@ -205,7 +208,10 @@ struct RootView: View {
                     }
                 case .projects:
                     NavigationStack(path: $projectPath) {
-                        ProjectsView(onOpenSettings: openSettings)
+                        ProjectsView(
+                            onOpenSettings: openSettings,
+                            onOpenProject: { projectPath.append($0) }
+                        )
                             .navigationDestination(for: UUID.self) { projectID in
                                 projectDestination(for: projectID)
                             }

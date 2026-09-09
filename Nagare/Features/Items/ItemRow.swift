@@ -18,7 +18,7 @@ struct ItemRow: View {
             onChangeDate: { onChangeSchedule([item]) },
             onDelete: { onDelete([item]) }
         )
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .nagareMobileSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 onDelete([item])
             } label: {
@@ -26,7 +26,7 @@ struct ItemRow: View {
             }
             .accessibilityLabel("Delete")
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        .nagareMobileSwipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
                 onChangeSchedule([item])
             } label: {
@@ -35,6 +35,7 @@ struct ItemRow: View {
             .accessibilityLabel(scheduleActionTitle)
 
         }
+        .nagareItemListRow()
         .nagareDesktopContextMenu {
             Button {
                 onChangeSchedule(contextItems)
