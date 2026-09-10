@@ -67,7 +67,7 @@ enum ProjectMembership {
         }
 
         let order = try project.map {
-            try ProjectItemOrdering.nextOrder(in: $0, context: context)
+            try SwiftDataOrderAllocation.nextProjectItemOrder(in: $0, context: context)
         }
         item.applyProject(project)
         item.applyProjectOrder(order)

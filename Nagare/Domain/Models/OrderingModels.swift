@@ -17,12 +17,6 @@ nonisolated struct ItemSnapshot: Equatable, Sendable {
     var isCompleted: Bool { completedAt != nil }
 }
 
-nonisolated struct ProjectSnapshot: Equatable, Sendable {
-    let id: UUID
-    let priority: ProjectPriority
-    let order: String
-}
-
 nonisolated struct ItemOrderingChange: Equatable, Sendable {
     let id: UUID
     let order: String?

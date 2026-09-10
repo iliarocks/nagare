@@ -11,7 +11,8 @@ final class DesktopInteractionUITests: XCTestCase {
         let project = app.buttons["Project Priority Project UI"]
         XCTAssertTrue(project.waitForExistence(timeout: 5))
         for _ in 0..<3 {
-            project.click()
+            XCTAssertTrue(project.wait(for: \.isHittable, toEqual: true, timeout: 5))
+            project.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
             let title = app.textFields["Project Title"]
             XCTAssertTrue(title.waitForExistence(timeout: 5))
             XCTAssertEqual(title.value as? String, "Priority Project UI")
@@ -48,9 +49,9 @@ final class DesktopInteractionUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
 
         // A horizontal trackpad gesture must not expose mobile row actions.
-        third.scroll(byDeltaX: -160, deltaY: 0)
+        app.windows.firstMatch.scroll(byDeltaX: -160, deltaY: 0)
         XCTAssertFalse(app.buttons["Delete"].exists)
-        third.scroll(byDeltaX: 160, deltaY: 0)
+        app.windows.firstMatch.scroll(byDeltaX: 160, deltaY: 0)
         XCTAssertFalse(app.buttons["Change Date and Time"].exists)
         attachWindow(app, name: "Context-menu highlight dismissed")
 

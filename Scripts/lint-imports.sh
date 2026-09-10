@@ -17,7 +17,7 @@ lint_imports() {
     local allowed_modules=" $* "
     local source_files
 
-    [[ -d "${directory}" ]] || return
+    [[ -d "${directory}" ]] || return 0
 
     if ! source_files="$(find "${directory}" -type f -name '*.swift' -print)"; then
         report_failure \
@@ -64,7 +64,7 @@ lint_forbidden_symbols() {
     local matches
     local grep_status=0
 
-    [[ -d "${directory}" ]] || return
+    [[ -d "${directory}" ]] || return 0
 
     matches="$(
         grep -RInE \
@@ -91,8 +91,6 @@ lint_forbidden_symbols() {
 lint_imports "Nagare/Domain" Foundation
 lint_imports "Nagare/Application" Foundation
 lint_imports "Nagare/Infrastructure/Persistence" Foundation SwiftData
-lint_imports "Shared/Domain" Foundation
-lint_imports "Shared/Infrastructure" Foundation
 
 lint_forbidden_symbols \
     "Nagare/Domain" \
@@ -140,7 +138,7 @@ lint_forbidden_symbols \
     "Features may only consume immutable snapshots and application commands"
 lint_forbidden_symbols \
     "Nagare/Features" \
-    '(^|[^A-Za-z0-9_])(RecurrencePersistence|ProjectMembership|ProjectItemOrdering|ProjectOrdering|ItemOrdering)([^A-Za-z0-9_]|$)' \
+    '(^|[^A-Za-z0-9_])(RecurrencePersistence|ProjectMembership|SwiftDataOrderAllocation)([^A-Za-z0-9_]|$)' \
     "Persistence workflows belong behind application ports"
 lint_forbidden_symbols \
     "Nagare/Features" \

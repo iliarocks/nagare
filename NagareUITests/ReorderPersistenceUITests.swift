@@ -115,7 +115,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(calendar.waitForExistence(timeout: 2))
         calendar.tap()
 
-        XCTAssertTrue(app.datePickers["Date"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.datePickers["Schedule Date Picker"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.switches["Time"].exists)
         XCTAssertTrue(app.staticTexts["No time"].exists)
 
@@ -557,7 +557,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertLessThan(date.frame.maxY, title.frame.minY)
         date.tap()
 
-        XCTAssertTrue(app.datePickers["Date"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.datePickers["Schedule Date Picker"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.switches["Time"].exists)
         XCTAssertTrue(app.staticTexts["No time"].exists)
         XCTAssertTrue(app.buttons["Add Time"].exists)

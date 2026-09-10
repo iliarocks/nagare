@@ -115,9 +115,9 @@ enum RecurrencePersistence {
             guard todo.completedAt != nil else {
                 throw RecurrencePersistenceError.todoNotCompleted
             }
-            let order = try ItemOrdering.nextOrder(in: context)
+            let order = try SwiftDataOrderAllocation.nextItemOrder(in: context)
             let projectOrder = try todo.project.map {
-                try ProjectItemOrdering.nextOrder(in: $0, context: context)
+                try SwiftDataOrderAllocation.nextProjectItemOrder(in: $0, context: context)
             }
             todo.recurrenceTemplate = nil
             todo.recurrenceSequence = nil

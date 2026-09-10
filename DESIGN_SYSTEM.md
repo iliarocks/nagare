@@ -41,9 +41,9 @@ not change with the device.
   owned by the root scene lifecycle, never by whichever page happens to mount.
 - Autosave is the default. UI copy and dismissal behavior must not imply that a
   separate Save action is required.
-- iCloud preference changes apply immediately by rebuilding the data session
-  around the same local store. “Sync Now” reconciles changes already delivered
+- iCloud preference changes take effect at the next launch, keeping one data
+  session alive for the process lifetime. “Sync Now” reconciles changes already delivered
   to the device; network delivery remains controlled by iCloud.
 
-New UI should reuse the primitives in `PlatformViewModifiers.swift` before
+New UI should reuse the primitives in `Nagare/Features/Shared/` before
 adding screen-specific styling or presentation behavior.

@@ -22,8 +22,6 @@ for name in filter(None, tracked):
 shutil.copy2(design / "CaptureScreenshots.swift", stage / f"{app}UITests/AppStoreCaptureTests.swift")
 
 if app == "Nagare":
-    for folder in ["Shared/Domain", "Shared/Infrastructure"]:
-        (stage / folder).mkdir(parents=True, exist_ok=True)
     source = stage / "Nagare/App/NagareApp.swift"
     contents = source.read_text()
     marker = '        guard arguments.contains("--reset-and-seed-reorder-ui-test") else {'

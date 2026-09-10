@@ -19,15 +19,14 @@ struct ItemOrderingTests {
         let third = insertTodo("Third", order: "r", day: day, into: context)
         try context.save()
 
-        let outcome = try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [third.id],
             to: day,
             before: first.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
-        #expect(outcome == .saved)
         #expect(try orderedTodoTitles(on: day, in: context) == ["Third", "First", "Second"])
 
         let verificationContext = ModelContext(context.container)
@@ -45,12 +44,12 @@ struct ItemOrderingTests {
         _ = insertTodo("Third", order: "r", day: day, into: context)
         try context.save()
 
-        try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [first.id],
             to: day,
             before: nil,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
         #expect(try orderedTodoTitles(on: day, in: context) == ["Second", "Third", "First"])
@@ -65,12 +64,12 @@ struct ItemOrderingTests {
         _ = insertTodo("Fourth", order: "v", day: day, into: context)
         try context.save()
 
-        try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [third.id, first.id],
             to: day,
             before: second.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
         #expect(
@@ -82,24 +81,23 @@ struct ItemOrderingTests {
     @Test func rebalancesDestinationWhenNoFractionalKeyExists() throws {
         let context = try makeContext()
         let day = date(day: 1)
-        let first = insertTodo("First", order: "a", day: day, into: context)
+        _ = insertTodo("First", order: "a", day: day, into: context)
         let second = insertTodo("Second", order: "a0", day: day, into: context)
         let third = insertTodo("Third", order: "z", day: day, into: context)
         try context.save()
 
-        try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [third.id],
             to: day,
             before: second.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
         let ordered = try orderedTodos(on: day, in: context)
         #expect(ordered.map(\.title) == ["First", "Third", "Second"])
         #expect(ordered.allSatisfy { $0.order.count == 12 })
         #expect(ordered.map(\.order) == ordered.map(\.order).sorted())
-        #expect(first.order < third.order && third.order < second.order)
     }
 
     @Test func movesItemAcrossDaysAndPersistsItsDate() throws {
@@ -111,16 +109,17 @@ struct ItemOrderingTests {
         let moving = insertTodo("Moving", order: "r", day: secondDay, into: context)
         try context.save()
 
-        try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [moving.id],
             to: firstDay,
             before: second.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
         #expect(try orderedTodoTitles(on: firstDay, in: context) == ["First", "Moving", "Second"])
-        #expect(calendar.isDate(moving.scheduledDate, inSameDayAs: firstDay))
+        let moved = try #require(try orderingRepository(in: context).load().todosByID[moving.id])
+        #expect(calendar.isDate(moved.scheduledDate, inSameDayAs: firstDay))
     }
 
     @Test func movesTimedTodoAcrossDaysWithoutChangingItsTimeOrDuration() throws {
@@ -152,23 +151,24 @@ struct ItemOrderingTests {
         context.insert(moving)
         try context.save()
 
-        try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [moving.id],
             to: firstDay,
             before: destination.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
-        #expect(calendar.isDate(moving.scheduledDate, inSameDayAs: firstDay))
+        let moved = try #require(try orderingRepository(in: context).load().todosByID[moving.id])
+        #expect(calendar.isDate(moved.scheduledDate, inSameDayAs: firstDay))
         #expect(
             calendar.dateComponents(
                 [.hour, .minute],
-                from: moving.scheduledDate
+                from: moved.scheduledDate
             ) == DateComponents(hour: 9, minute: 30)
         )
         #expect(
-            moving.endDate?.timeIntervalSince(moving.scheduledDate)
+            moved.endDate?.timeIntervalSince(moved.scheduledDate)
                 == TimeInterval(90 * 60)
         )
 
@@ -195,16 +195,16 @@ struct ItemOrderingTests {
         try context.save()
 
         let error = captureMoveError {
-            try ItemOrdering.move(
+            try orderingCommands(in: context).moveItems(
                 [todo.id, todo.id],
                 to: day,
                 before: nil,
-                in: context,
-                calendar: calendar
+                calendar: calendar,
+                at: date(day: 1)
             )
         }
 
-        #expect(error?.code == "ORDER-001")
+        #expect(error == .duplicateSource)
     }
 
     @Test func reportsMissingSourceInsteadOfSilentlyReturning() throws {
@@ -212,16 +212,16 @@ struct ItemOrderingTests {
         let day = date(day: 1)
 
         let error = captureMoveError {
-            try ItemOrdering.move(
+            try orderingCommands(in: context).moveItems(
                 [UUID()],
                 to: day,
                 before: nil,
-                in: context,
-                calendar: calendar
+                calendar: calendar,
+                at: date(day: 1)
             )
         }
 
-        #expect(error?.code == "ORDER-002")
+        #expect(error == .missingSource)
     }
 
     @Test func reportsMissingDestinationInsteadOfAppending() throws {
@@ -231,16 +231,16 @@ struct ItemOrderingTests {
         try context.save()
 
         let error = captureMoveError {
-            try ItemOrdering.move(
+            try orderingCommands(in: context).moveItems(
                 [todo.id],
                 to: day,
                 before: UUID(),
-                in: context,
-                calendar: calendar
+                calendar: calendar,
+                at: date(day: 1)
             )
         }
 
-        #expect(error?.code == "ORDER-003")
+        #expect(error == .missingDestination)
     }
 
     @Test func reportsDestinationThatOverlapsMovingItems() throws {
@@ -250,36 +250,29 @@ struct ItemOrderingTests {
         try context.save()
 
         let error = captureMoveError {
-            try ItemOrdering.move(
+            try orderingCommands(in: context).moveItems(
                 [todo.id],
                 to: day,
                 before: todo.id,
-                in: context,
-                calendar: calendar
+                calendar: calendar,
+                at: date(day: 1)
             )
         }
 
-        #expect(error?.code == "ORDER-004")
-        #expect(error?.localizedDescription.contains("ORDER-004") == true)
+        #expect(error == .destinationIsMovingValue)
     }
 
-    @Test func reportsInvalidStoredKeyBeforeApplyingMove() throws {
+    @Test func repairsInvalidStoredKeyWhenMoving() throws {
         let context = try makeContext()
         let day = date(day: 1)
         let invalid = insertTodo("Invalid", order: "UPPERCASE", day: day, into: context)
         try context.save()
-
-        let error = captureMoveError {
-            try ItemOrdering.move(
-                [invalid.id],
-                to: day,
-                before: nil,
-                in: context,
-                calendar: calendar
-            )
-        }
-
-        #expect(error?.code == "ORDER-005")
+        let snapshot = try orderingCommands(in: context).moveItems(
+            [invalid.id], to: day, before: nil, calendar: calendar, at: day
+        )
+        let moved = try #require(snapshot.todosByID[invalid.id])
+        #expect(FractionalIndex.isValid(moved.order))
+        #expect(moved.title == "Invalid")
     }
 
     @Test func unrelatedInvalidKeyDoesNotBlockDestinationCollection() throws {
@@ -291,15 +284,14 @@ struct ItemOrderingTests {
         _ = insertTodo("Unrelated", order: "INVALID", day: secondDay, into: context)
         try context.save()
 
-        let outcome = try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [second.id],
             to: firstDay,
             before: first.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
-        #expect(outcome == .saved)
         #expect(try orderedTodoTitles(on: firstDay, in: context) == ["Second", "First"])
     }
 
@@ -311,15 +303,14 @@ struct ItemOrderingTests {
         let third = insertTodo("Third", order: "r", day: day, into: context)
         try context.save()
 
-        let outcome = try ItemOrdering.move(
+        _ = try orderingCommands(in: context).moveItems(
             [second.id],
             to: day,
             before: third.id,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(day: 1)
         )
 
-        #expect(outcome == .noChange)
         #expect(try orderedTodoTitles(on: day, in: context) == ["First", "Second", "Third"])
     }
 
@@ -331,11 +322,13 @@ struct ItemOrderingTests {
         let third = insertTodo("Third", order: "r", day: day, into: context)
         try context.save()
 
-        try ItemOrdering.saveDisplayedOrder(
+        let current = try orderingRepository(in: context).load()
+        let plan = try OrderingPlanner.displayedOrder(
             [third.id, first.id, second.id],
-            on: day,
-            in: context,
-            calendar: calendar
+            contains: current.canonicalTodos.map { OrderingPlanner.Entry(id: $0.id, order: $0.order) }
+        )
+        _ = try orderingCommands(in: context).saveItemOrdering(
+            plan.assignments.map { ItemOrderingChange(id: $0.id, order: $0.order) }, at: day
         )
 
         let verificationContext = ModelContext(context.container)
@@ -383,7 +376,7 @@ struct ItemOrderingTests {
         on day: Date,
         in context: ModelContext
     ) throws -> [Todo] {
-        let todos = try context.fetch(FetchDescriptor<Todo>()).filter {
+        let todos = try ModelContext(context.container).fetch(FetchDescriptor<Todo>()).filter {
             calendar.isDate($0.scheduledDate, inSameDayAs: day)
         }
         return Todo.ordered(todos)
@@ -396,13 +389,13 @@ struct ItemOrderingTests {
     }
 
     private func captureMoveError(
-        _ operation: () throws -> ItemOrdering.MoveOutcome
-    ) -> ItemOrdering.MoveError? {
+        _ operation: () throws -> NagareDataSnapshot
+    ) -> OrderingPlanner.PlanningError? {
         do {
             _ = try operation()
             Issue.record("Expected the move to throw")
             return nil
-        } catch let error as ItemOrdering.MoveError {
+        } catch let error as OrderingPlanner.PlanningError {
             return error
         } catch {
             Issue.record("Unexpected error type: \(error)")

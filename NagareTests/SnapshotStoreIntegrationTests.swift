@@ -6,6 +6,26 @@ import Testing
 
 @MainActor
 struct SnapshotStoreIntegrationTests {
+    @Test func failedOrderingTransactionDoesNotPersistPartialChanges() throws {
+        let url = temporaryStoreURL()
+        defer { removeStoreFiles(at: url) }
+        let container = try makeContainer(at: url)
+        let context = ModelContext(container)
+        let todo = Todo(title: "Keep original order", order: "a")
+        context.insert(todo)
+        try context.save()
+        let repository = SwiftDataNagareRepository(modelContainer: container)
+        #expect(throws: NagareDataPersistenceError.self) {
+            try repository.saveItemOrdering([
+                ItemOrderingChange(id: todo.id, order: "z"),
+                ItemOrderingChange(id: UUID(), order: "b")
+            ], at: Date(timeIntervalSinceReferenceDate: 800_000_000))
+        }
+        #expect(try repository.load().todosByID[todo.id]?.order == "a")
+        let reopened = SwiftDataNagareRepository(modelContainer: try makeContainer(at: url))
+        #expect(try reopened.load().todosByID[todo.id]?.order == "a")
+    }
+
     @Test func foregroundActivationRecoversHistoryObservation() throws {
         let storeURL = temporaryStoreURL()
         defer { removeStoreFiles(at: storeURL) }

@@ -28,185 +28,84 @@ struct ProjectTests {
 
     @Test func movingProjectBetweenTiersOnlyChangesProjectPlacement() throws {
         let context = try makeContext()
-        let firstPriority = Project(
-            title: "First priority",
-            isPriority: true,
-            order: "9"
-        )
-        let secondPriority = Project(
-            title: "Second priority",
-            isPriority: true,
-            order: "i"
-        )
+        let priority = Project(title: "Priority", isPriority: true, order: "i")
         let background = Project(title: "Background", order: "9")
-        context.insert(firstPriority)
-        context.insert(secondPriority)
-        context.insert(background)
-
-        let todo = Todo(
-            title: "Todo",
-            scheduledDate: date(day: 1),
-            order: "r",
-            projectOrder: "f"
-        )
-        todo.project = background
-        context.insert(todo)
+        context.insert(priority); context.insert(background)
+        let todo = insertTodo("Todo", order: "r", projectOrder: "f", project: background, into: context)
         try context.save()
-        let originalScheduledDate = todo.scheduledDate
-
-        try ProjectOrdering.move(
-            [background.id],
-            toPriority: .high,
-            before: firstPriority.id,
-            in: context
+        let originalDate = todo.scheduledDate
+        let snapshot = try orderingCommands(in: context).moveProjects(
+            [background.id], toPriority: .high, before: priority.id, at: date(day: 1)
         )
-
-        #expect(background.isPriority)
-        #expect(
-            Project.ordered([firstPriority, secondPriority, background])
-                .filter(\.isPriority)
-                .map(\.title) == [
-                    "Background",
-                    "First priority",
-                    "Second priority"
-                ]
-        )
-        #expect(todo.order == "r")
-        #expect(todo.projectOrder == "f")
-        #expect(todo.scheduledDate == originalScheduledDate)
+        let moved = try #require(snapshot.projectsByID[background.id])
+        #expect(moved.priority == .high)
+        #expect(moved.order < snapshot.projectsByID[priority.id]!.order)
+        #expect(snapshot.todosByID[todo.id]?.order == "r")
+        #expect(snapshot.todosByID[todo.id]?.projectOrder == "f")
+        #expect(snapshot.todosByID[todo.id]?.scheduledDate == originalDate)
     }
 
     @Test func displayedProjectOrderSavesWithinOneTier() throws {
         let context = try makeContext()
-        let priority = Project(
-            title: "Priority",
-            isPriority: true,
-            order: "9"
-        )
+        let priority = Project(title: "Priority", isPriority: true, order: "9")
         let first = Project(title: "First", order: "9")
         let second = Project(title: "Second", order: "i")
-        context.insert(priority)
-        context.insert(first)
-        context.insert(second)
+        [priority, first, second].forEach { context.insert($0) }
         try context.save()
-
-        try ProjectOrdering.saveDisplayedOrder(
-            [second.id, first.id],
-            priority: .normal,
-            in: context
+        let snapshot = try orderingCommands(in: context).reorderProjects(
+            [second.id, first.id], priority: .normal, at: date(day: 1)
         )
-
-        #expect(Project.ordered([first, second]).map(\.id) == [second.id, first.id])
-        #expect(priority.order == "9")
-        #expect(priority.isPriority)
+        #expect(snapshot.projectsByID[second.id]!.order < snapshot.projectsByID[first.id]!.order)
+        #expect(snapshot.projectsByID[priority.id]?.order == "9")
+        #expect(snapshot.projectsByID[priority.id]?.priority == .high)
     }
 
     @Test func movingProjectAcrossNormalAndLowRespectsDropPosition() throws {
         let context = try makeContext()
         let normal = Project(title: "Normal", order: "a")
-        let firstLow = Project(
-            title: "First low",
-            priority: .low,
-            order: "a"
-        )
-        let secondLow = Project(
-            title: "Second low",
-            priority: .low,
-            order: "b"
-        )
-        context.insert(normal)
-        context.insert(firstLow)
-        context.insert(secondLow)
+        let firstLow = Project(title: "First low", priority: .low, order: "a")
+        let secondLow = Project(title: "Second low", priority: .low, order: "b")
+        [normal, firstLow, secondLow].forEach { context.insert($0) }
         try context.save()
-
-        try ProjectOrdering.move(
-            [normal.id],
-            toPriority: .low,
-            before: secondLow.id,
-            in: context
-        )
-
-        #expect(normal.priority == .low)
-        #expect(
-            Project.ordered([firstLow, normal, secondLow]).map(\.id)
-                == [firstLow.id, normal.id, secondLow.id]
-        )
-
-        try ProjectOrdering.move(
-            [normal.id],
-            toPriority: .normal,
-            before: nil,
-            in: context
-        )
-
-        #expect(normal.priority == .normal)
+        let commands = orderingCommands(in: context)
+        let low = try commands.moveProjects([normal.id], toPriority: .low, before: secondLow.id, at: date(day: 1))
+        #expect(low.projectsByID[normal.id]?.priority == .low)
+        #expect(low.projectsByID[firstLow.id]!.order < low.projectsByID[normal.id]!.order)
+        #expect(low.projectsByID[normal.id]!.order < low.projectsByID[secondLow.id]!.order)
+        let restored = try commands.moveProjects([normal.id], toPriority: .normal, before: nil, at: date(day: 1))
+        #expect(restored.projectsByID[normal.id]?.priority == .normal)
     }
 
     @Test func projectItemMoveDoesNotChangeDateOrderOrSchedule() throws {
         let context = try makeContext()
         let project = Project(title: "Project", order: "i")
         context.insert(project)
-        let first = insertTodo(
-            "First",
-            order: "9",
-            projectOrder: "9",
-            project: project,
-            into: context
-        )
-        let second = insertTodo(
-            "Second",
-            order: "i",
-            projectOrder: "i",
-            project: project,
-            into: context
-        )
+        let first = insertTodo("First", order: "9", projectOrder: "9", project: project, into: context)
+        let second = insertTodo("Second", order: "i", projectOrder: "i", project: project, into: context)
         let originalDate = second.scheduledDate
         try context.save()
-
-        try ProjectItemOrdering.move(
-            [second.id],
-            before: first.id,
-            in: project,
-            context: context
+        let snapshot = try orderingCommands(in: context).moveProjectItems(
+            [second.id], before: first.id, projectID: project.id, at: date(day: 1)
         )
-
-        #expect(second.projectOrder! < first.projectOrder!)
-        #expect(first.order == "9")
-        #expect(second.order == "i")
-        #expect(second.scheduledDate == originalDate)
+        #expect(snapshot.todosByID[second.id]!.projectOrder! < snapshot.todosByID[first.id]!.projectOrder!)
+        #expect(snapshot.todosByID[first.id]?.order == "9")
+        #expect(snapshot.todosByID[second.id]?.order == "i")
+        #expect(snapshot.todosByID[second.id]?.scheduledDate == originalDate)
     }
 
     @Test func dateMoveDoesNotChangeProjectOrder() throws {
         let context = try makeContext()
         let project = Project(title: "Project", order: "i")
         context.insert(project)
-        let first = insertTodo(
-            "First",
-            order: "9",
-            projectOrder: "9",
-            project: project,
-            into: context
-        )
-        let second = insertTodo(
-            "Second",
-            order: "i",
-            projectOrder: "i",
-            project: project,
-            into: context
-        )
+        let first = insertTodo("First", order: "9", projectOrder: "9", project: project, into: context)
+        let second = insertTodo("Second", order: "i", projectOrder: "i", project: project, into: context)
         try context.save()
-
-        try ItemOrdering.move(
-            [second.id],
-            to: first.scheduledDate,
-            before: first.id,
-            in: context,
-            calendar: calendar
+        let snapshot = try orderingCommands(in: context).moveItems(
+            [second.id], to: first.scheduledDate, before: first.id, calendar: calendar, at: date(day: 1)
         )
-
-        #expect(second.order < first.order)
-        #expect(first.projectOrder == "9")
-        #expect(second.projectOrder == "i")
+        #expect(snapshot.todosByID[second.id]!.order < snapshot.todosByID[first.id]!.order)
+        #expect(snapshot.todosByID[first.id]?.projectOrder == "9")
+        #expect(snapshot.todosByID[second.id]?.projectOrder == "i")
     }
 
     @Test func recurrenceAssignmentAndAdvancementStayInProject() throws {
