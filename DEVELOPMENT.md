@@ -2,8 +2,8 @@
 
 Use **Xcode 27 RC, build 27A266a**. Select it in Xcode's Locations settings or
 with `sudo xcode-select --switch /Applications/Xcode.app`. Run Xcode's first-launch
-setup and install the iOS 27 simulator runtime. The scripts report a toolchain
-mismatch; set `EXPECTED_XCODE_BUILD` only when intentionally checking another
+setup. Install the iOS 27 runtime only for simulator tests. The scripts report a
+toolchain mismatch; set `EXPECTED_XCODE_BUILD` only when intentionally checking another
 reviewed Xcode version.
 
 ## Builds and tests
@@ -21,6 +21,7 @@ Scripts/check.sh macos ui
 The second argument accepts `unit`, `ui`, `all`, or `build`. iOS tests default to
 an iPhone 17 simulator. Set `TEST_DESTINATION` to a complete Xcode destination
 (e.g. `platform=iOS Simulator,id=...`) when selecting a particular device/runtime.
+Use `TEST_DESTINATION='platform=iOS,id=<device-UDID>'` for a connected iPhone.
 Run UI tests with the desktop available for automation. Stop a run if an Apple
 simulator service repeatedly crashes; do not hide global crash reports.
 
@@ -35,7 +36,8 @@ Development builds on iPhone and Mac use the same CloudKit development container
 they do not sync with the production App Store database. Enable iCloud sync in
 both apps and restart them after changing that setting.
 
-Hosted unit tests use in-memory stores. UI tests use a dedicated regression store.
+The hosted test app starts with an in-memory store. Integration tests create
+temporary stores; UI tests use a dedicated regression store.
 Upgrade tests copy a frozen synthetic fixture before opening it; never use a
 personal database as a committed fixture. `NagareTests/Fixtures/README.md` records
 its provenance.
