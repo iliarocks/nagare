@@ -1,0 +1,42 @@
+{
+  "app": "Nagare",
+  "background": "#607D8B",
+  "phone": {
+    "width": 1320,
+    "height": 2868,
+    "frame": {
+      "asset": "Assets/Apple/iPhone 17 - White - Portrait.png",
+      "screenX": 72,
+      "screenY": 69,
+      "screenWidth": 1206,
+      "screenHeight": 2622
+    },
+    "deviceWidth": 0.89
+  },
+  "sets": [
+    {
+      "platform": "iPhone",
+      "pages": [
+        "01-today",
+        "02-upcoming",
+        "03-project",
+        "04-task-notes"
+      ]
+    },
+    {
+      "platform": "Mac",
+      "pages": [
+        "01-today",
+        "02-upcoming",
+        "03-project",
+        "04-task-notes"
+      ]
+    }
+  ],
+  "mac": {
+    "width": 2880,
+    "height": 1800,
+    "maxWindowWidth": 0.85,
+    "maxWindowHeight": 0.85
+  }
+}

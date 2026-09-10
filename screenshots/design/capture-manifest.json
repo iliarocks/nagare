@@ -1,0 +1,173 @@
+{
+  "captured_date": "2026-09-09",
+  "source_commit": "229352ddf367ba2caed377f7dad5549f019dcb49",
+  "source_note": "Current working-tree files staged in .build/ScreenshotCaptureSource; production sources unchanged by capture preparation.",
+  "iphone_device": "iPhone 17 simulator",
+  "iphone_status": "9:41; full Wi-Fi and cellular; full battery, discharging; standard Large content size; light App Store captures, light/dark website heroes",
+  "mac_window_points": [
+    800,
+    584
+  ],
+  "font": "Native app typography only; no marketing captions",
+  "files": [
+    {
+      "path": "app-store/Mac/01-today.png",
+      "width": 2880,
+      "height": 1800,
+      "mode": "RGB",
+      "bytes": 203480,
+      "sha256": "cb57f9a916e8223658c2fa47d744fdfc9a8f0336ebb745ba4caf4d641aac45a8"
+    },
+    {
+      "path": "app-store/Mac/02-upcoming.png",
+      "width": 2880,
+      "height": 1800,
+      "mode": "RGB",
+      "bytes": 228124,
+      "sha256": "64f4d7fd35ed4925911e6516f802c8f8079279a3fd2e7e739494576e353c0ddd"
+    },
+    {
+      "path": "app-store/Mac/03-project.png",
+      "width": 2880,
+      "height": 1800,
+      "mode": "RGB",
+      "bytes": 236470,
+      "sha256": "5f054c206432196bf003ef358796034aaaef2dc6330770e01f49513855761aed"
+    },
+    {
+      "path": "app-store/Mac/04-task-notes.png",
+      "width": 2880,
+      "height": 1800,
+      "mode": "RGB",
+      "bytes": 509992,
+      "sha256": "0511af4e862af538a328035a452fddf100b8fec65b14476a81d2ed2fd30d9fb7"
+    },
+    {
+      "path": "app-store/iPhone/01-today.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 494961,
+      "sha256": "2791b8d3fe7fd42bd9e09613fcdb679e13c3c92e1dd0892885f6c43f4c4cd69e"
+    },
+    {
+      "path": "app-store/iPhone/02-upcoming.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 522215,
+      "sha256": "4796bf43f53fa61ee9f92b0381a84b9ff7638b9ef81ed8fc2ebb737720e4d6ac"
+    },
+    {
+      "path": "app-store/iPhone/03-project.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 525656,
+      "sha256": "843f1d5cff2726813eb32e97b618483fcb93fd018d60c578419c281c3a1f8a14"
+    },
+    {
+      "path": "app-store/iPhone/04-task-notes.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 670190,
+      "sha256": "5aa9e93ba767e8ba215b80d0f9b83ffaf7275ad6e82aea0c83f071320cef65a8"
+    },
+    {
+      "path": "originals/Mac/01-today.png",
+      "width": 1600,
+      "height": 1168,
+      "mode": "RGBA",
+      "bytes": 109470,
+      "sha256": "7a7e24e0014c9ace2ea1382782f7c7d73f4c74ee6b296010ed3c72173fcf321e"
+    },
+    {
+      "path": "originals/Mac/02-upcoming.png",
+      "width": 1600,
+      "height": 1168,
+      "mode": "RGBA",
+      "bytes": 124278,
+      "sha256": "b1d4da14c7ad9e460d16c63e5f46011edde1cb5abfeb48c33156523b849b36a9"
+    },
+    {
+      "path": "originals/Mac/03-project.png",
+      "width": 1600,
+      "height": 1168,
+      "mode": "RGBA",
+      "bytes": 127590,
+      "sha256": "17d96614621e53668a71173917118289b7016c90168335d51911ea015264aa81"
+    },
+    {
+      "path": "originals/Mac/04-task-notes.png",
+      "width": 1600,
+      "height": 1168,
+      "mode": "RGBA",
+      "bytes": 318112,
+      "sha256": "eb61559c37600c4090df8ec076eae6e9f2e2d0ffbc6dc874c14ea08f14e0b503"
+    },
+    {
+      "path": "originals/Website/hero-dark.png",
+      "width": 1206,
+      "height": 2622,
+      "mode": "RGBA",
+      "bytes": 144437,
+      "sha256": "652a192f1a6e827d7df22618c80cd0d5720b2ea530bd842cbf45fb7bc31f662d"
+    },
+    {
+      "path": "originals/Website/hero-light.png",
+      "width": 1206,
+      "height": 2622,
+      "mode": "RGB",
+      "bytes": 145551,
+      "sha256": "1600130b6b3311a94eb81c4812e628e8f71a554263e88b160b0895644034ffc0"
+    },
+    {
+      "path": "originals/iPhone/01-today.png",
+      "width": 1206,
+      "height": 2622,
+      "mode": "RGB",
+      "bytes": 145551,
+      "sha256": "1600130b6b3311a94eb81c4812e628e8f71a554263e88b160b0895644034ffc0"
+    },
+    {
+      "path": "originals/iPhone/02-upcoming.png",
+      "width": 1206,
+      "height": 2622,
+      "mode": "RGB",
+      "bytes": 163208,
+      "sha256": "fb49c0b3a9b63526a7b444bab0c0d5af163c20c8b6410ce8f3fccd72846a0e94"
+    },
+    {
+      "path": "originals/iPhone/03-project.png",
+      "width": 1206,
+      "height": 2622,
+      "mode": "RGB",
+      "bytes": 166917,
+      "sha256": "420fad741a7af04ba399e34a4e1addeeb8b2a6c1c576554e5559be9c1a64de36"
+    },
+    {
+      "path": "originals/iPhone/04-task-notes.png",
+      "width": 1206,
+      "height": 2622,
+      "mode": "RGB",
+      "bytes": 341814,
+      "sha256": "79cc54c58fb2a56009261332e59eb6a0715ea0b59fbf66b0b9dc87bd4b74f1fe"
+    }
+  ],
+  "iphone_frame": {
+    "source": "Apple Design Resources",
+    "model": "iPhone 17",
+    "finish": "White",
+    "asset": "design/Assets/Apple/iPhone 17 - White - Portrait.png",
+    "screen_rect": [
+      72,
+      69,
+      1206,
+      2622
+    ],
+    "sha256": "fb93a0b6e95e8c3c5ad923a8437e598746f5d4fa63ea971650172cb93727006a"
+  },
+  "layout": "All four pages use the same centered screenshot size within each platform; no opening caption.",
+  "publication_status": "Approved for publication"
+}

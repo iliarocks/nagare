@@ -1,1 +1,5 @@
 .build/
+
+# Generated screenshot review files
+screenshots/design/Previews/
+screenshots/design/*.html
