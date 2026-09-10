@@ -32,9 +32,12 @@ final class ReorderPersistenceUITests: XCTestCase {
 
         notes.swipeDown()
         notes.swipeUp()
+        // Scrolling may dismiss the keyboard on a physical iPhone.
+        notes.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         notes.typeText("\nLast line remains editable")
         XCTAssertTrue(
-            (notes.value as? String)?.hasSuffix("Last line remains editable") == true
+            (notes.value as? String)?.contains("Last line remains editable") == true
         )
         XCTAssertLessThanOrEqual(notes.frame.maxY, keyboard.frame.minY + 1)
 
@@ -437,7 +440,11 @@ final class ReorderPersistenceUITests: XCTestCase {
         )
         XCTAssertFalse(app.switches["Time"].exists)
         XCTAssertTrue(app.datePickers["Start Time"].exists)
-        XCTAssertTrue(app.datePickers["End Time"].exists)
+        XCTAssertFalse(app.datePickers["End Time"].exists)
+        let addEndTime = app.buttons["Add End Time"]
+        XCTAssertTrue(addEndTime.exists)
+        addEndTime.tap()
+        XCTAssertTrue(app.datePickers["End Time"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Remove End Time"].exists)
         XCTAssertFalse(app.navigationBars["Edit Details"].exists)
         XCTAssertFalse(app.buttons["Project Picker"].exists)

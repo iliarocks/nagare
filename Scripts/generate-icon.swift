@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 
 guard CommandLine.arguments.count == 4 else {
-    fputs("Usage: kanji_to_svg <font-name> <fill-color> <output-path>\n", stderr)
+    fputs("Usage: swift Scripts/generate-icon.swift <font-name> <fill-color> <output-path>\n", stderr)
     exit(2)
 }
 
