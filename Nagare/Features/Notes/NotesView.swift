@@ -47,6 +47,10 @@ struct NotesView: View {
             pendingSave?.cancel()
             save()
         }
+        .nagareOnAppTermination {
+            pendingSave?.cancel()
+            save()
+        }
         .nagareModal(item: $itemScheduleBeingEdited) { todo in
             TodoScheduleEditor(todo: todo)
         }

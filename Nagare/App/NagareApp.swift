@@ -188,6 +188,7 @@ struct NagareApp: App {
 #if os(macOS)
         WindowGroup {
             startupContent
+                .background(NagareMainWindowLifecycle())
                 .windowFullScreenBehavior(.disabled)
         }
         .defaultSize(width: 800, height: 480)

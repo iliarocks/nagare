@@ -131,6 +131,10 @@ struct ProjectDetailView: View {
             pendingSave?.cancel()
             saveProject()
         }
+        .nagareOnAppTermination {
+            pendingSave?.cancel()
+            saveProject()
+        }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
                 errorMessage = nil

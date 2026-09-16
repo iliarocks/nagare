@@ -58,6 +58,10 @@ struct RecurrenceEditor: View {
             pendingSave?.cancel()
             save()
         }
+        .nagareOnAppTermination {
+            pendingSave?.cancel()
+            save()
+        }
     }
 
     private var editorHeight: CGFloat {

@@ -8,6 +8,7 @@ struct TodoRow: View {
     let onChangeDate: () -> Void
     let onDelete: () -> Void
     @State private var isCompleting = false
+    @State private var pendingCompletion: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -49,6 +50,12 @@ struct TodoRow: View {
             .accessibilityLabel("Complete \(todo.title)")
         }
         .padding(.vertical, 4)
+        .nagareOnAppTermination {
+            guard isCompleting else { return }
+            pendingCompletion?.cancel()
+            isCompleting = false
+            onComplete()
+        }
     }
 
     private func complete() {
@@ -56,7 +63,7 @@ struct TodoRow: View {
             isCompleting = true
         }
 
-        Task {
+        pendingCompletion = Task {
             do {
                 try await Task.sleep(for: .milliseconds(300))
             } catch {
