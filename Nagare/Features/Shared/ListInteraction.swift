@@ -184,7 +184,7 @@ private struct NagarePriorityGlow: ViewModifier {
 
     private var glow: Color {
         let opacity: Double = contrast == .increased
-            ? 0.8 : (colorScheme == .dark ? 0.55 : 0.4)
+            ? 0.8 : (colorScheme == .dark ? 0.6 : 0.45)
         return Color.accentColor.opacity(isPrioritized ? opacity : 0)
     }
 
