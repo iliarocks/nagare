@@ -6,10 +6,7 @@ struct ProjectDetailView: View {
     let project: ProjectRecordSnapshot
 
     @State private var isCreatingItem = false
-    @State private var title: String
-    @State private var notes: String
-    @State private var lastLoadedProject: ProjectRecordSnapshot?
-    @State private var pendingSave: Task<Void, Never>?
+    @State private var draft: TextEditorDraft
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
     @State private var todoBeingRescheduled: TodoRecordSnapshot?
@@ -32,9 +29,7 @@ struct ProjectDetailView: View {
 
     init(project: ProjectRecordSnapshot) {
         self.project = project
-        _title = State(initialValue: project.title)
-        _notes = State(initialValue: project.notes ?? "")
-        _lastLoadedProject = State(initialValue: project)
+        _draft = State(initialValue: TextEditorDraft(title: project.title, notes: project.notes))
     }
 
     private var actualItems: [ItemRecordSnapshot] {
@@ -104,27 +99,14 @@ struct ProjectDetailView: View {
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .onChange(of: title) {
-            scheduleProjectSave()
-        }
-        .onChange(of: notes) {
-            scheduleProjectSave()
-        }
+        .nagareAutosave(draft, save: saveProject)
         .onChange(of: currentProject, initial: true) { _, project in
-            load(project)
+            draft.receive(title: project.title, notes: project.notes)
         }
         .onChange(of: Set(actualItems.map(\.id))) { _, availableIDs in
 #if os(macOS)
             selectedItemIDs.formIntersection(availableIDs)
 #endif
-        }
-        .onDisappear {
-            pendingSave?.cancel()
-            saveProject()
-        }
-        .nagareOnAppTermination {
-            pendingSave?.cancel()
-            saveProject()
         }
         .alert("Nagare Couldn't Save", isPresented: isShowingError) {
             Button("OK", role: .cancel) {
@@ -219,7 +201,7 @@ struct ProjectDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 NagareEditableTitle(
                     placeholder: "Project Title",
-                    text: $title
+                    text: $draft.title
                 )
                     .font(.title.weight(.semibold))
                     .textFieldStyle(.plain)
@@ -227,7 +209,7 @@ struct ProjectDetailView: View {
                     .accessibilityIdentifier("Project Title")
 
                 NagareDocumentEditor(
-                    text: $notes,
+                    text: $draft.notes,
                     accessibilityIdentifier: "Project Notes"
                 )
                 .frame(minHeight: 88)
@@ -247,63 +229,17 @@ struct ProjectDetailView: View {
         )
     }
 
-    private func scheduleProjectSave() {
-        pendingSave?.cancel()
-        pendingSave = Task {
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-            } catch {
-                return
-            }
-
-            saveProject()
-        }
-    }
-
     private func saveProject() {
-        let trimmedTitle = title.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard !trimmedTitle.isEmpty else {
-            return
-        }
-
-        let savedNotes = notes.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ).isEmpty ? nil : notes
-        guard currentProject.title != trimmedTitle
-                || currentProject.notes != savedNotes else {
-            return
-        }
-
+        // An empty title remains a local draft; it must not block notes saves.
+        let changes = draft.changes(allowsEmptyTitle: false)
+        guard !changes.isEmpty else { return }
         do {
-            try dataStore.updateProject(
-                project.id,
-                title: trimmedTitle,
-                notes: savedNotes
-            )
-            lastLoadedProject = nil
-            load(currentProject)
+            try dataStore.updateProject(project.id, changes: changes)
+            draft.didSave(changes)
+            draft.receive(title: currentProject.title, notes: currentProject.notes)
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func load(_ project: ProjectRecordSnapshot) {
-        guard project != lastLoadedProject else { return }
-        let hasUnsavedChanges = lastLoadedProject.map {
-            title != $0.title || normalizedNotes != $0.notes
-        } ?? false
-        guard !hasUnsavedChanges else { return }
-        title = project.title
-        notes = project.notes ?? ""
-        lastLoadedProject = project
-    }
-
-    private var normalizedNotes: String? {
-        notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : notes
     }
 
     private func apply(_ difference: ReorderDifference<ItemID, UUID>) {

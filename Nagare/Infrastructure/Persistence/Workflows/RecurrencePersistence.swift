@@ -102,32 +102,6 @@ enum RecurrencePersistence {
         }
     }
 
-    /// Returns a completed Todo to Today while preserving its optional time.
-    /// Completed recurring occurrences are detached from the active series.
-    static func reinstate(
-        _ todo: Todo,
-        on date: Date = .now,
-        at modificationDate: Date = .now,
-        in context: ModelContext,
-        calendar: Calendar = .autoupdatingCurrent
-    ) throws {
-        try perform(in: context, at: modificationDate) {
-            guard todo.completedAt != nil else {
-                throw RecurrencePersistenceError.todoNotCompleted
-            }
-            let order = try SwiftDataOrderAllocation.nextItemOrder(in: context)
-            let projectOrder = try todo.project.map {
-                try SwiftDataOrderAllocation.nextProjectItemOrder(in: $0, context: context)
-            }
-            todo.recurrenceTemplate = nil
-            todo.recurrenceSequence = nil
-            todo.move(to: date, calendar: calendar)
-            todo.order = order
-            todo.projectOrder = projectOrder
-            todo.completedAt = nil
-        }
-    }
-
     static func deleteCompleted(
         _ todo: Todo,
         at modificationDate: Date = .now,

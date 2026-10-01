@@ -5,13 +5,10 @@ struct NotesView: View {
 
     let destination: NotesDestination
 
-    @State private var title = ""
-    @State private var notes = ""
-    @State private var lastLoadedRecord: NoteRecordSnapshot?
+    @State private var draft = TextEditorDraft()
     @State private var itemScheduleBeingEdited: TodoRecordSnapshot?
     @State private var recurrenceTemplateBeingEdited:
         RecurrenceTemplateRecordSnapshot?
-    @State private var pendingSave: Task<Void, Never>?
     @State private var errorMessage: String?
     @FocusState private var focusedField: NagareEditorField?
 
@@ -30,18 +27,10 @@ struct NotesView: View {
                 )
             }
         }
-        .task { load(record) }
-        .onChange(of: record) { _, record in
-            load(record)
+        .onChange(of: record, initial: true) { _, record in
+            if let record { draft.receive(title: record.title, notes: record.notes) }
         }
-        .onDisappear {
-            pendingSave?.cancel()
-            save()
-        }
-        .nagareOnAppTermination {
-            pendingSave?.cancel()
-            save()
-        }
+        .nagareAutosave(draft, save: save)
         .nagareModal(item: $itemScheduleBeingEdited) { todo in
             TodoScheduleEditor(todo: todo)
         }
@@ -77,14 +66,14 @@ struct NotesView: View {
 
     private func editorContent(_ record: NoteRecordSnapshot) -> some View {
         NagareDocumentComposerLayout(bottomPadding: 0) {
-            NagareEditableTitle(placeholder: "Title", text: $title)
+            NagareEditableTitle(placeholder: "Title", text: $draft.title)
                 .font(.title.weight(.semibold))
                 .textFieldStyle(.plain)
                 .focused($focusedField, equals: .title)
                 .accessibilityIdentifier("Item Title")
         } document: {
             NagareDocumentEditor(
-                text: $notes,
+                text: $draft.notes,
                 accessibilityIdentifier: "Item Notes",
                 focus: $focusedField,
                 bottomScrollContentMargin:
@@ -93,8 +82,6 @@ struct NotesView: View {
         }
         .nagareDocumentBottomFade()
         .nagareAvoidsInitialFocus()
-        .onChange(of: title) { scheduleSave() }
-        .onChange(of: notes) { scheduleSave() }
     }
 
     private func hasRepeat(_ record: NoteRecordSnapshot) -> Bool {
@@ -172,47 +159,13 @@ struct NotesView: View {
         }
     }
 
-    private func load(_ record: NoteRecordSnapshot?) {
-        guard let record, record != lastLoadedRecord else { return }
-        let hasUnsavedChanges = lastLoadedRecord.map {
-            title != $0.title || normalizedNotes != $0.notes
-        } ?? false
-        guard !hasUnsavedChanges else { return }
-        title = record.title
-        notes = record.notes ?? ""
-        lastLoadedRecord = record
-    }
-
-    private var normalizedNotes: String? {
-        notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : notes
-    }
-
-    private func scheduleSave() {
-        pendingSave?.cancel()
-        pendingSave = Task {
-            do { try await Task.sleep(for: .milliseconds(500)) }
-            catch { return }
-            save()
-        }
-    }
-
     private func save() {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let record,
-              record.title != trimmedTitle || record.notes != normalizedNotes else {
-            return
-        }
-
+        let changes = draft.changes()
+        guard record != nil, !changes.isEmpty else { return }
         do {
-            try dataStore.updateNote(
-                destination.recordID,
-                title: trimmedTitle,
-                notes: normalizedNotes
-            )
-            lastLoadedRecord = nil
-            load(dataStore.snapshot.note(for: destination.recordID))
+            try dataStore.updateNote(destination.recordID, changes: changes)
+            draft.didSave(changes)
+            if let record { draft.receive(title: record.title, notes: record.notes) }
         } catch {
             errorMessage = error.localizedDescription
         }

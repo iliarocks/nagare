@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct RootView: View {
@@ -23,18 +24,14 @@ struct RootView: View {
     @State private var selectedSection = NavigationSection.today
     @State private var isCreatingItem = false
     @State private var isShowingSettings = false
-#if !os(macOS)
-    @State private var isShowingCompleted = false
-#endif
     @State private var notesDestination: NotesDestination?
     @State private var notesDetent: PresentationDetent = .medium
-    @State private var upcomingTargetDate: Date?
     @State private var projectPath: [UUID] = []
     @State private var maintenanceAlert: MaintenanceAlert?
-    @State private var lastActiveRefreshAt: Date?
+    @State private var calendarDay = NagareCalendarDay(now: .now, calendar: .current)
+    @State private var dayBoundaryTask: Task<Void, Never>?
 
     let syncMonitor: SyncIntegrityMonitor?
-    let cloudSyncEnabledForCurrentLaunch: Bool
     let onSetCloudSyncEnabled: (Bool) async throws -> Void
 
     private var projects: [ProjectRecordSnapshot] {
@@ -43,12 +40,9 @@ struct RootView: View {
 
     init(
         syncMonitor: SyncIntegrityMonitor? = nil,
-        cloudSyncEnabledForCurrentLaunch: Bool = false,
         onSetCloudSyncEnabled: @escaping (Bool) async throws -> Void = { _ in }
     ) {
         self.syncMonitor = syncMonitor
-        self.cloudSyncEnabledForCurrentLaunch =
-            cloudSyncEnabledForCurrentLaunch
         self.onSetCloudSyncEnabled = onSetCloudSyncEnabled
     }
 
@@ -66,17 +60,6 @@ struct RootView: View {
                 onSetCloudSyncEnabled: onSetCloudSyncEnabled
             )
         }
-        #if !os(macOS)
-        .sheet(isPresented: $isShowingCompleted) {
-            NavigationStack {
-                CompletedView()
-                    .navigationTitle("Completed")
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-            .nagareSheetDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-        #endif
         .nagareModal(
             item: $notesDestination,
             onDismiss: resetNotesSheet
@@ -87,12 +70,26 @@ struct RootView: View {
             )
                 .id(destination.id)
         }
-        .task { refreshForActiveScene() }
-        .onChange(of: scenePhase) {
+        .onChange(of: scenePhase, initial: true) {
             if scenePhase == .active {
                 refreshForActiveScene()
+            } else {
+                dayBoundaryTask?.cancel()
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+                .merge(
+                    with: NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange),
+                    NotificationCenter.default.publisher(for: .NSSystemClockDidChange)
+                )
+                .receive(on: RunLoop.main)
+        ) { _ in
+            if scenePhase == .active {
+                refreshCalendar()
+            }
+        }
+        .onDisappear { dayBoundaryTask?.cancel() }
         .alert(item: $maintenanceAlert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -117,7 +114,7 @@ struct RootView: View {
         TabView(selection: $selectedSection) {
             Tab(value: NavigationSection.today) {
                 NavigationStack {
-                    TodayView(onOpenNotes: openNotes)
+                    TodayView(calendarDay: calendarDay, onOpenNotes: openNotes)
                         .toolbar {
                             itemToolbar
                         }
@@ -130,8 +127,8 @@ struct RootView: View {
             Tab(value: NavigationSection.upcoming) {
                 NavigationStack {
                     UpcomingView(
-                        onOpenNotes: openNotes,
-                        scrollTargetDate: $upcomingTargetDate
+                        calendarDay: calendarDay,
+                        onOpenNotes: openNotes
                     )
                         .toolbar {
                             itemToolbar
@@ -149,16 +146,7 @@ struct RootView: View {
                         onOpenProject: { projectPath.append($0) }
                     )
                         .navigationDestination(for: UUID.self) { projectID in
-                            if let project = projects.first(where: {
-                                $0.id == projectID
-                            }) {
-                                ProjectDetailView(project: project)
-                            } else {
-                                ContentUnavailableView(
-                                    "Project Not Found",
-                                    systemImage: "folder.badge.questionmark"
-                                )
-                            }
+                            projectDestination(for: projectID)
                         }
                 }
             } label: {
@@ -191,14 +179,14 @@ struct RootView: View {
                 switch selectedSection {
                 case .today:
                     NavigationStack {
-                        TodayView(onOpenNotes: openNotes)
+                        TodayView(calendarDay: calendarDay, onOpenNotes: openNotes)
                             .toolbar { itemToolbar }
                     }
                 case .upcoming:
                     NavigationStack {
                         UpcomingView(
-                            onOpenNotes: openNotes,
-                            scrollTargetDate: $upcomingTargetDate
+                            calendarDay: calendarDay,
+                            onOpenNotes: openNotes
                         )
                             .toolbar { itemToolbar }
                     }
@@ -301,21 +289,37 @@ struct RootView: View {
     }
 
     private func refreshForActiveScene() {
-        let now = Date.now
-        if let lastActiveRefreshAt,
-           now.timeIntervalSince(lastActiveRefreshAt) < 0.5 {
-            return
-        }
-        self.lastActiveRefreshAt = now
-        do {
-            try dataStore.performMaintenance(at: now)
-        } catch {
-            maintenanceAlert = MaintenanceAlert(
-                title: "Nagare Couldn't Update Today",
-                message: error.localizedDescription
-            )
-        }
+        refreshCalendar(forceMaintenance: true)
         syncMonitor?.applicationDidBecomeActive()
+    }
+
+    private func refreshCalendar(forceMaintenance: Bool = false) {
+        let now = Date.now
+        let updatedDay = NagareCalendarDay(now: now, calendar: .current)
+        if forceMaintenance || updatedDay != calendarDay {
+            do {
+                try dataStore.performMaintenance(at: now, calendar: updatedDay.calendar)
+            } catch {
+                maintenanceAlert = MaintenanceAlert(
+                    title: "Nagare Couldn't Update Today",
+                    message: error.localizedDescription
+                )
+            }
+        }
+        calendarDay = updatedDay
+
+        // Reschedule even for a clock change within the same day: sleeping uses
+        // elapsed time, while the next midnight follows the system clock.
+        dayBoundaryTask?.cancel()
+        guard scenePhase == .active, let nextStart = calendarDay.nextStart else { return }
+        dayBoundaryTask = Task {
+            do {
+                try await Task.sleep(for: .seconds(max(0, nextStart.timeIntervalSinceNow)))
+            } catch {
+                return
+            }
+            refreshCalendar()
+        }
     }
 }
 

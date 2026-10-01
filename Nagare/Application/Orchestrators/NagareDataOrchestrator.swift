@@ -86,21 +86,19 @@ final class NagareDataOrchestrator {
 
     func updateNote(
         _ id: NoteRecordID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date
     ) throws -> NagareDataSnapshot {
-        try writer.updateNote(id, title: title, notes: notes, at: date)
+        try writer.updateNote(id, changes: changes, at: date)
         return try reader.load()
     }
 
     func updateProject(
         _ id: UUID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date
     ) throws -> NagareDataSnapshot {
-        try writer.updateProject(id, title: title, notes: notes, at: date)
+        try writer.updateProject(id, changes: changes, at: date)
         return try reader.load()
     }
 
@@ -478,18 +476,14 @@ final class NagareDataOrchestrator {
         return try reader.load()
     }
 
-    func updateRecurrenceTemplate(
+    func updateRecurrenceRule(
         _ id: UUID,
         rule: RecurrenceRule,
-        startTimeSeconds: Int?,
-        endTimeSeconds: Int?,
         at date: Date
     ) throws -> NagareDataSnapshot {
-        try writer.updateRecurrenceTemplate(
+        try writer.updateRecurrenceRule(
             id,
             rule: rule,
-            startTimeSeconds: startTimeSeconds,
-            endTimeSeconds: endTimeSeconds,
             at: date
         )
         return try reader.load()

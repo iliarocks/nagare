@@ -251,35 +251,67 @@ struct ProjectTests {
             in: context
         )
 
-        try ProjectMembership.assign(
-            template,
-            to: firstProject,
+        let commands = orderingCommands(in: context)
+        let firstAssignment = try commands.assign(
+            .recurrenceTemplate(template.id),
+            to: firstProject.id,
+            at: date(day: 1)
+        )
+        #expect(firstAssignment.todosByID[todo.id]?.projectID == firstProject.id)
+        #expect(firstAssignment.templatesByID[template.id]?.projectID == firstProject.id)
+        #expect(firstAssignment.todosByID[todo.id]?.projectOrder != nil)
+
+        let secondAssignment = try commands.assign(
+            .item(todo.id),
+            to: secondProject.id,
+            at: date(day: 1)
+        )
+        #expect(secondAssignment.todosByID[todo.id]?.projectID == secondProject.id)
+        #expect(secondAssignment.templatesByID[template.id]?.projectID == secondProject.id)
+
+        let advanced = try commands.completeTodo(todo.id, at: date(day: 2))
+        let series = try #require(advanced.templatesByID[template.id])
+        let next = try #require(advanced.todosByID[series.currentItemID])
+        #expect(next.projectID == secondProject.id)
+        #expect(next.projectOrder == secondAssignment.todosByID[todo.id]?.projectOrder)
+        #expect(series.projectID == secondProject.id)
+    }
+
+    @Test(arguments: [false, true])
+    func assigningRecurringHistoryDoesNotMoveTheSeries(batch: Bool) throws {
+        let context = try makeContext()
+        let firstProject = Project(title: "Series project", order: "9")
+        let secondProject = Project(title: "Historical project", order: "i")
+        context.insert(firstProject)
+        context.insert(secondProject)
+        let todo = insertTodo(
+            "Repeat",
+            order: "9",
+            projectOrder: "i",
+            project: firstProject,
+            into: context
+        )
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: RecurrenceRule.relative(every: 1, unit: .day),
             in: context
         )
-        let firstProjectOrder = todo.projectOrder
-        #expect(todo.project?.id == firstProject.id)
-        #expect(template.project?.id == firstProject.id)
-        #expect(firstProjectOrder != nil)
+        let commands = orderingCommands(in: context)
+        let completed = try commands.completeTodo(todo.id, at: date(day: 2))
+        let currentID = try #require(completed.templatesByID[template.id]?.currentItemID)
+        let assigned = try batch
+            ? commands.assign([.item(todo.id)], to: secondProject.id, at: date(day: 3))
+            : commands.assign(.item(todo.id), to: secondProject.id, at: date(day: 3))
 
-        try ProjectMembership.assign(
-            template,
-            to: secondProject,
-            in: context
-        )
-        #expect(todo.project?.id == secondProject.id)
-        #expect(template.project?.id == secondProject.id)
+        #expect(assigned.todosByID[todo.id]?.projectID == secondProject.id)
+        #expect(assigned.todosByID[todo.id]?.completedAt == completed.todosByID[todo.id]?.completedAt)
+        #expect(assigned.todosByID[currentID] == completed.todosByID[currentID])
+        #expect(assigned.templatesByID[template.id] == completed.templatesByID[template.id])
 
-        let next = try #require(
-            try RecurrencePersistence.complete(
-                todo,
-                at: date(day: 2),
-                in: context,
-                calendar: calendar
-            )
-        )
-        #expect(next.project?.id == secondProject.id)
-        #expect(next.projectOrder == todo.projectOrder)
-        #expect(template.project?.id == secondProject.id)
+        let advanced = try commands.completeTodo(currentID, at: date(day: 4))
+        let nextID = try #require(advanced.templatesByID[template.id]?.currentItemID)
+        #expect(advanced.todosByID[nextID]?.projectID == firstProject.id)
+        #expect(advanced.todosByID[todo.id]?.projectID == secondProject.id)
     }
 
     @Test func deletingProjectDetachesButPreservesItemsAndRepeat() throws {

@@ -314,10 +314,10 @@ final class SwiftDataNagareRepository:
 
     func updateNote(
         _ id: NoteRecordID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date
     ) throws {
+        guard !changes.isEmpty else { return }
         let context = makeContext()
         do {
             let note: any Note
@@ -327,8 +327,14 @@ final class SwiftDataNagareRepository:
             case .recurrenceTemplate(let id):
                 note = try requireRecurrenceTemplate(id, in: context)
             }
-            note.title = title
-            note.notes = notes
+            for change in changes {
+                switch change {
+                case .title(let title):
+                    note.title = title
+                case .notes(let notes):
+                    note.notes = notes
+                }
+            }
             try SwiftDataTransaction.save(context, at: date)
         } catch let error as NagareDataPersistenceError {
             throw error
@@ -341,15 +347,21 @@ final class SwiftDataNagareRepository:
 
     func updateProject(
         _ id: UUID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date
     ) throws {
+        guard !changes.isEmpty else { return }
         let context = makeContext()
         do {
             let project = try requireProject(id, in: context)
-            project.title = title
-            project.notes = notes
+            for change in changes {
+                switch change {
+                case .title(let title):
+                    project.title = title
+                case .notes(let notes):
+                    project.notes = notes
+                }
+            }
             try SwiftDataTransaction.save(context, at: date)
         } catch let error as NagareDataPersistenceError {
             throw error
@@ -462,7 +474,8 @@ final class SwiftDataNagareRepository:
             }
             todo.recurrenceTemplate = nil
             todo.recurrenceSequence = nil
-            todo.move(to: plan.scheduledDate)
+            todo.scheduledDate = plan.scheduledDate
+            todo.endDate = plan.endDate
             todo.order = plan.order
             todo.projectOrder = plan.projectOrder
             todo.completedAt = nil
@@ -594,11 +607,9 @@ final class SwiftDataNagareRepository:
         }
     }
 
-    func updateRecurrenceTemplate(
+    func updateRecurrenceRule(
         _ id: UUID,
         rule: RecurrenceRule,
-        startTimeSeconds: Int?,
-        endTimeSeconds: Int?,
         at date: Date
     ) throws {
         let context = makeContext()
@@ -607,8 +618,8 @@ final class SwiftDataNagareRepository:
             try RecurrencePersistence.updateTemplate(
                 template,
                 rule: rule,
-                startTimeSeconds: startTimeSeconds,
-                endTimeSeconds: endTimeSeconds,
+                startTimeSeconds: template.startTimeSeconds,
+                endTimeSeconds: template.endTimeSeconds,
                 at: date,
                 in: context
             )

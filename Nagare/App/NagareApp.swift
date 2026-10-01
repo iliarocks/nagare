@@ -18,12 +18,6 @@ struct NagareApp: App {
         let syncMonitor: SyncIntegrityMonitor
         let cloudSyncMonitor: NagareCloudSyncMonitor
         let dataStore: NagareDataStore
-        let cloudSyncEnabled: Bool
-
-        func stop() {
-            syncMonitor.stop()
-            cloudSyncMonitor.stop()
-        }
     }
 
     private enum StartupState {
@@ -82,8 +76,7 @@ struct NagareApp: App {
             let runtime = try Self.makeRuntimeState(
                 arguments: arguments,
                 cloudSyncEnabled: cloudSyncEnabled,
-                isRunningUnitTests: isRunningUnitTests,
-                prepareDevelopmentData: true
+                isRunningUnitTests: isRunningUnitTests
             )
             _startupState = State(
                 initialValue: .ready(runtime)
@@ -102,8 +95,7 @@ struct NagareApp: App {
     private static func makeRuntimeState(
         arguments: [String],
         cloudSyncEnabled: Bool,
-        isRunningUnitTests: Bool,
-        prepareDevelopmentData: Bool
+        isRunningUnitTests: Bool
     ) throws -> RuntimeState {
         let cloudSyncMonitor = NagareCloudSyncMonitor(
             isEnabled: cloudSyncEnabled
@@ -121,24 +113,22 @@ struct NagareApp: App {
         }
         modelContainer.mainContext.autosaveEnabled = false
         modelContainer.mainContext.author = NagareCloud.localHistoryAuthor
-        if prepareDevelopmentData {
-            try prepareReorderRegressionTestDataIfRequested(
+        try prepareReorderRegressionTestDataIfRequested(
+            in: modelContainer.mainContext,
+            arguments: arguments
+        )
+#if DEBUG
+        do {
+            try DevelopmentSampleData.seedIfNeeded(
                 in: modelContainer.mainContext,
                 arguments: arguments
             )
-#if DEBUG
-            do {
-                try DevelopmentSampleData.seedIfNeeded(
-                    in: modelContainer.mainContext,
-                    arguments: arguments
-                )
-            } catch {
-                logger.error(
-                    "Unable to add development sample data: \(error.localizedDescription, privacy: .public)"
-                )
-            }
-#endif
+        } catch {
+            logger.error(
+                "Unable to add development sample data: \(error.localizedDescription, privacy: .public)"
+            )
         }
+#endif
         _ = try SyncIntegrityRepair.repair(in: modelContainer.mainContext)
 
         let applicationRepository = SwiftDataNagareRepository(
@@ -180,8 +170,7 @@ struct NagareApp: App {
         return RuntimeState(
             syncMonitor: syncMonitor,
             cloudSyncMonitor: cloudSyncMonitor,
-            dataStore: dataStore,
-            cloudSyncEnabled: cloudSyncEnabled
+            dataStore: dataStore
         )
     }
 
@@ -243,7 +232,6 @@ struct NagareApp: App {
         case .ready(let runtime):
             RootView(
                 syncMonitor: runtime.syncMonitor,
-                cloudSyncEnabledForCurrentLaunch: runtime.cloudSyncEnabled,
                 onSetCloudSyncEnabled: setCloudSyncEnabled
             )
                 .nagareDataStore(runtime.dataStore)

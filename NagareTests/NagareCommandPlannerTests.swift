@@ -172,6 +172,35 @@ struct NagareCommandPlannerTests {
         )
     }
 
+    @Test(arguments: [false, true])
+    func itemAssignmentOnlyMovesTheActiveSeries(completed: Bool) throws {
+        let projectID = UUID()
+        let templateID = UUID()
+        let occurrence = todo(
+            id: UUID(),
+            order: "a",
+            completedAt: completed ? day : nil,
+            recurrenceTemplateID: templateID
+        )
+        let graph = snapshot(
+            projects: [project(id: projectID)],
+            todos: [occurrence]
+        )
+        let single = try NagareCommandPlanner.assign(
+            .item(occurrence.id),
+            to: projectID,
+            in: graph
+        )
+        let batch = try NagareCommandPlanner.assign(
+            [.item(occurrence.id)],
+            to: projectID,
+            in: graph
+        )
+
+        #expect(single.recurrenceTemplateID == (completed ? nil : templateID))
+        #expect(batch.entries.first?.recurrenceTemplateID == single.recurrenceTemplateID)
+    }
+
     @Test func batchAssignmentPlansOneCoherentProjectOrder() throws {
         let projectID = UUID(
             uuidString: "00000000-0000-0000-0000-000000000010"
@@ -329,7 +358,8 @@ struct NagareCommandPlannerTests {
         order: String,
         projectOrder: String? = nil,
         projectID: UUID? = nil,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        recurrenceTemplateID: UUID? = nil
     ) -> TodoRecordSnapshot {
         TodoRecordSnapshot(
             id: id,
@@ -346,7 +376,7 @@ struct NagareCommandPlannerTests {
             order: order,
             projectOrder: projectOrder,
             recurrenceSequence: nil,
-            recurrenceTemplateID: nil,
+            recurrenceTemplateID: recurrenceTemplateID,
             projectID: projectID
         )
     }

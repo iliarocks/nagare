@@ -580,6 +580,7 @@ nonisolated struct ProjectAssignmentBatchPlan: Sendable {
 nonisolated struct TodoReinstatementPlan: Sendable {
     let id: UUID
     let scheduledDate: Date
+    let endDate: Date?
     let order: String
     let orderRepairs: [ItemOrderingChange]
     let projectOrder: String?

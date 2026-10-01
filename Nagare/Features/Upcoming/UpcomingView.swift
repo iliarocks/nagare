@@ -7,23 +7,14 @@ struct UpcomingView: View {
         let message: String
     }
 
-    @Environment(\.scenePhase) private var scenePhase
     @NagareDataStoreEnvironment private var dataStore
 
     @State private var presentedFailure: PresentedFailure?
     @State private var displayedItemIDsByDate: [Date: [ItemID]] = [:]
     @State private var virtualItems: [VirtualItem] = []
 
+    let calendarDay: NagareCalendarDay
     let onOpenNotes: (NotesDestination) -> Void
-    @Binding var scrollTargetDate: Date?
-
-    init(
-        onOpenNotes: @escaping (NotesDestination) -> Void,
-        scrollTargetDate: Binding<Date?> = .constant(nil)
-    ) {
-        self.onOpenNotes = onOpenNotes
-        _scrollTargetDate = scrollTargetDate
-    }
 
     private var todos: [TodoRecordSnapshot] {
         dataStore.todos
@@ -39,12 +30,8 @@ struct UpcomingView: View {
     }
 
     private var persistedItemGroups: [ReorderableItemGroup] {
-        let calendar = Calendar.autoupdatingCurrent
-        guard let tomorrow = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: .now)
-        ) else {
+        let calendar = calendarDay.calendar
+        guard let tomorrow = calendarDay.nextStart else {
             return []
         }
 
@@ -52,18 +39,15 @@ struct UpcomingView: View {
             todo.completedAt == nil && todo.scheduledDate >= tomorrow
         }
 
-        let populatedDates = Set(
-            upcomingTodos.map { calendar.startOfDay(for: $0.scheduledDate) }
-                + virtualItems.map { calendar.startOfDay(for: $0.date) }
-        )
-        return populatedDates.map { date in
-            let todosForDate = upcomingTodos.filter {
-                calendar.isDate($0.scheduledDate, inSameDayAs: date)
-            }
-            let virtualItemsForDate = virtualItems.filter {
-                calendar.isDate($0.date, inSameDayAs: date)
-            }
-            .sorted {
+        let todosByDate = Dictionary(grouping: upcomingTodos) {
+            calendar.startOfDay(for: $0.scheduledDate)
+        }
+        let virtualItemsByDate = Dictionary(grouping: virtualItems.filter { $0.date >= tomorrow }) {
+            calendar.startOfDay(for: $0.date)
+        }
+        let populatedDates = Set(todosByDate.keys).union(virtualItemsByDate.keys)
+        return populatedDates.sorted().map { date in
+            let virtualItemsForDate = (virtualItemsByDate[date] ?? []).sorted {
                 if $0.order != $1.order {
                     return $0.order < $1.order
                 }
@@ -73,19 +57,19 @@ struct UpcomingView: View {
 
             return ReorderableItemGroup(
                 date: date,
-                items: TodoRecordSnapshot.ordered(todosForDate),
+                items: TodoRecordSnapshot.ordered(todosByDate[date] ?? []),
                 virtualItems: virtualItemsForDate
             )
         }
-        .sorted { $0.date < $1.date }
     }
 
     private var itemGroups: [ReorderableItemGroup] {
+        let persistedGroups = persistedItemGroups
         let persistedGroupsByDate = Dictionary(
-            uniqueKeysWithValues: persistedItemGroups.map { ($0.date, $0) }
+            uniqueKeysWithValues: persistedGroups.map { ($0.date, $0) }
         )
         let itemsByID = Dictionary(
-            uniqueKeysWithValues: persistedItemGroups
+            uniqueKeysWithValues: persistedGroups
                 .flatMap(\.items)
                 .map { ($0.id, $0) }
         )
@@ -120,17 +104,17 @@ struct UpcomingView: View {
     }
 
     var body: some View {
+        let groups = itemGroups
         Group {
-            if itemGroups.isEmpty {
+            if groups.isEmpty {
                 ContentUnavailableView(
                     "Nothing upcoming",
                     systemImage: "calendar"
                 )
             } else {
                 ReorderableItemList(
-                    groups: itemGroups,
+                    groups: groups,
                     showsDateHeaders: true,
-                    scrollTargetDate: $scrollTargetDate,
                     onOpen: { onOpenNotes(NotesDestination($0)) },
                     onOpenVirtual: {
                         onOpenNotes(NotesDestination($0))
@@ -152,19 +136,14 @@ struct UpcomingView: View {
         ) {
             refreshVirtualItems()
         }
-        .onChange(of: scrollTargetDate) {
+        .onChange(of: calendarDay) {
             refreshVirtualItems()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                refreshVirtualItems()
-            }
         }
         .overlay(alignment: .topLeading) {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--use-reorder-ui-test-store") {
                 Button("Test reorder upcoming last before first") {
-                    guard let group = itemGroups.first,
+                    guard let group = groups.first,
                           group.items.count > 1 else {
                         presentSaveFailure(
                             message: "Nagare couldn't prepare the upcoming reorder regression action. (ORDER-UI-009)"
@@ -220,17 +199,12 @@ struct UpcomingView: View {
     }
 
     private func refreshVirtualItems() {
-        let calendar = Calendar.autoupdatingCurrent
-        let today = calendar.startOfDay(for: .now)
-        guard let tomorrow = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: today
-        ),
-        let defaultHorizon = calendar.date(
+        let calendar = calendarDay.calendar
+        guard let tomorrow = calendarDay.nextStart,
+        let horizon = calendar.date(
             byAdding: .month,
             value: 2,
-            to: today
+            to: calendarDay.start
         ) else {
             virtualItems = []
             presentProjectionFailure(
@@ -239,11 +213,6 @@ struct UpcomingView: View {
             )
             return
         }
-        let requestedHorizon = scrollTargetDate.map {
-            calendar.startOfDay(for: $0)
-        }
-        let horizon = max(defaultHorizon, requestedHorizon ?? defaultHorizon)
-
         let result = VirtualItemProjection.generate(
             from: recurrenceProjectionInput,
             templates: recurrenceTemplates,

@@ -112,26 +112,22 @@ struct SnapshotStoreIntegrationTests {
         let repository = SwiftDataNagareRepository(modelContainer: container)
         try repository.updateNote(
             .todo(todo.id),
-            title: "Edited Todo",
-            notes: "Todo notes",
+            changes: [.title("Edited Todo"), .notes("Todo notes")],
             at: transactionDate
         )
         try repository.updateNote(
             .todo(timedTodo.id),
-            title: "Edited Timed Todo",
-            notes: "Timed Todo notes",
+            changes: [.title("Edited Timed Todo"), .notes("Timed Todo notes")],
             at: transactionDate
         )
         try repository.updateNote(
             .recurrenceTemplate(template.id),
-            title: "Edited Template",
-            notes: "Template notes",
+            changes: [.title("Edited Template"), .notes("Template notes")],
             at: transactionDate
         )
         try repository.updateProject(
             project.id,
-            title: "Edited Project",
-            notes: "Project notes",
+            changes: [.title("Edited Project"), .notes("Project notes")],
             at: transactionDate
         )
         try repository.saveItemOrdering(
@@ -313,8 +309,7 @@ struct SnapshotStoreIntegrationTests {
         let store = try makeStore(in: container)
         try store.updateNote(
             .todo(oldObject.id),
-            title: "New",
-            notes: nil
+            changes: [.title("New"), .notes(nil)]
         )
 
         #expect(oldObject.title == "Old")
@@ -357,8 +352,7 @@ struct SnapshotStoreIntegrationTests {
 
         try store.updateNote(
             .todo(todoID),
-            title: "Updated",
-            notes: nil,
+            changes: [.title("Updated"), .notes(nil)],
             at: updatedAt
         )
         #expect(store.snapshot.todosByID[todoID]?.modifiedAt == updatedAt)

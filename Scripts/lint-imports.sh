@@ -138,7 +138,7 @@ lint_forbidden_symbols \
     "Features may only consume immutable snapshots and application commands"
 lint_forbidden_symbols \
     "Nagare/Features" \
-    '(^|[^A-Za-z0-9_])(RecurrencePersistence|ProjectMembership|SwiftDataOrderAllocation)([^A-Za-z0-9_]|$)' \
+    '(^|[^A-Za-z0-9_])RecurrencePersistence([^A-Za-z0-9_]|$)' \
     "Persistence workflows belong behind application ports"
 lint_forbidden_symbols \
     "Nagare/Features" \

@@ -241,6 +241,8 @@ struct RecurrencePersistenceTests {
     @Test func reinstatingTodoMovesItToEndOfToday() throws {
         let context = try makeContext()
         let today = date(2026, 7, 10)
+        let project = Project(title: "Restore here", order: "i")
+        context.insert(project)
         let existing = Todo(
             title: "Already Today",
             scheduledDate: today,
@@ -255,25 +257,75 @@ struct RecurrencePersistenceTests {
             order: "9",
             calendar: calendar
         )
+        existing.project = project
+        completed.project = project
         context.insert(existing)
         context.insert(completed)
         try context.save()
 
-        try RecurrencePersistence.reinstate(
-            completed,
+        let snapshot = try orderingCommands(in: context).reinstateTodo(
+            completed.id,
             on: today,
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: today
         )
 
-        #expect(completed.completedAt == nil)
-        #expect(completed.scheduledDate == today)
-        #expect(completed.notes == "Keep these notes")
-        #expect(completed.order > existing.order)
+        let reinstated = try #require(snapshot.todosByID[completed.id])
+        #expect(reinstated.completedAt == nil)
+        #expect(reinstated.scheduledDate == today)
+        #expect(reinstated.notes == "Keep these notes")
+        #expect(reinstated.order > existing.order)
+        let activeProjectOrder = try #require(snapshot.todosByID[existing.id]?.projectOrder)
+        let restoredProjectOrder = try #require(reinstated.projectOrder)
+        #expect(FractionalIndex.isValid(activeProjectOrder))
+        #expect(FractionalIndex.isValid(restoredProjectOrder))
+        #expect(restoredProjectOrder > activeProjectOrder)
         #expect(
-            Todo.ordered([completed, existing]).map(\.title)
+            TodoRecordSnapshot.ordered(snapshot.todos).map(\.title)
                 == ["Already Today", "Completed Early"]
         )
+    }
+
+    @Test(arguments: [false, true])
+    func reinstatementUsesTheRequestedCalendar(includesTime: Bool) throws {
+        let context = try makeContext()
+        var requestedCalendar = calendar
+        // Deliberately differ from the device calendar: persistence must apply
+        // the planned instant without interpreting the requested day again.
+        let offset = TimeZone.autoupdatingCurrent.secondsFromGMT() == 14 * 3_600
+            ? -12 * 3_600 : 14 * 3_600
+        requestedCalendar.timeZone = try #require(TimeZone(secondsFromGMT: offset))
+        let sourceDate = try #require(requestedCalendar.date(from: DateComponents(
+            year: 2026, month: 7, day: 1, hour: includesTime ? 9 : 0
+        )))
+        let requestedDate = try #require(requestedCalendar.date(from: DateComponents(
+            year: 2026, month: 7, day: 10, hour: 12
+        )))
+        let expectedDate = try #require(requestedCalendar.date(from: DateComponents(
+            year: 2026, month: 7, day: 10, hour: includesTime ? 9 : 0
+        )))
+        let todo = Todo(
+            title: "Restore in the requested calendar",
+            scheduledDate: sourceDate,
+            includesTime: includesTime,
+            endDate: includesTime ? sourceDate.addingTimeInterval(3_600) : nil,
+            completedAt: sourceDate,
+            order: "i",
+            calendar: requestedCalendar
+        )
+        context.insert(todo)
+        try context.save()
+
+        let snapshot = try orderingCommands(in: context).reinstateTodo(
+            todo.id,
+            on: requestedDate,
+            calendar: requestedCalendar,
+            at: requestedDate
+        )
+        let restored = try #require(snapshot.todosByID[todo.id])
+        #expect(restored.scheduledDate == expectedDate)
+        #expect(restored.includesTime == includesTime)
+        #expect(restored.endDate == (includesTime ? expectedDate.addingTimeInterval(3_600) : nil))
     }
 
     @Test func reinstatingRecurringHistoryDetachesOnlyThatOccurrence() throws {
@@ -298,23 +350,28 @@ struct RecurrencePersistenceTests {
         )
         let current = try #require(producedCurrent)
 
-        try RecurrencePersistence.reinstate(
-            first,
+        let snapshot = try orderingCommands(in: context).reinstateTodo(
+            first.id,
             on: date(2026, 7, 10),
-            in: context,
-            calendar: calendar
+            calendar: calendar,
+            at: date(2026, 7, 10)
         )
 
-        #expect(first.completedAt == nil)
-        #expect(first.scheduledDate == date(2026, 7, 10))
-        #expect(first.recurrenceTemplate == nil)
-        #expect(first.recurrenceSequence == nil)
-        #expect(first.notes == "Historical notes")
-        #expect(current.recurrenceTemplate?.id == template.id)
-        #expect(current.recurrenceSequence == 1)
-        #expect(template.currentItemID == current.id)
-        #expect(template.currentSequence == 1)
-        #expect(template.todoOccurrences.map(\.id) == [current.id])
+        let reinstated = try #require(snapshot.todosByID[first.id])
+        let active = try #require(snapshot.todosByID[current.id])
+        let series = try #require(snapshot.templatesByID[template.id])
+        #expect(reinstated.completedAt == nil)
+        #expect(reinstated.scheduledDate == date(2026, 7, 10))
+        #expect(reinstated.recurrenceTemplateID == nil)
+        #expect(reinstated.recurrenceSequence == nil)
+        #expect(reinstated.notes == "Historical notes")
+        #expect(active.recurrenceTemplateID == template.id)
+        #expect(active.recurrenceSequence == 1)
+        #expect(series.currentItemID == current.id)
+        #expect(series.currentSequence == 1)
+        #expect(snapshot.todos.filter {
+            $0.recurrenceTemplateID == template.id
+        }.map(\.id) == [current.id])
     }
 
     @Test func deletingRecurringHistoryPreservesCurrentOccurrence() throws {
@@ -360,18 +417,19 @@ struct RecurrencePersistenceTests {
             into: context
         )
 
-        let error = capturePersistenceError {
-            try RecurrencePersistence.reinstate(
-                active,
+        try context.save()
+        let commands = orderingCommands(in: context)
+        let before = try commands.load()
+        #expect(throws: NagareCommandPlanner.PlanningError.missingItem) {
+            try commands.reinstateTodo(
+                active.id,
                 on: date(2026, 7, 10),
-                in: context,
-                calendar: calendar
+                calendar: calendar,
+                at: date(2026, 7, 10)
             )
         }
 
-        #expect(error?.code == "RECURRENCE-PERSIST-005")
-        #expect(active.completedAt == nil)
-        #expect(active.scheduledDate == date(2026, 7, 1))
+        #expect(try commands.load() == before)
     }
 
     @Test func deletingCurrentRecurringTodoSkipsItAndCreatesNext() throws {

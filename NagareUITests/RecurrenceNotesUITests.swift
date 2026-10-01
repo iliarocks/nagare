@@ -1,6 +1,60 @@
 import XCTest
+#if os(macOS)
+import AppKit
+#endif
 
 final class RecurrenceNotesUITests: XCTestCase {
+    @MainActor
+    func testAddingThenRemovingTimePersistsAfterRelaunch() async throws {
+        let app = launchApp()
+        let item = app.buttons["Reorder First"]
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        activate(item)
+        let date = app.buttons["Notes Date"]
+        XCTAssertTrue(date.waitForExistence(timeout: 5))
+        activate(date)
+        let addTime = app.buttons["Add Time"]
+        XCTAssertTrue(addTime.waitForExistence(timeout: 5))
+        activate(addTime)
+        let removeTime = app.buttons["Remove Time"]
+        XCTAssertTrue(removeTime.waitForExistence(timeout: 5))
+        activate(removeTime)
+        XCTAssertTrue(app.staticTexts["No time"].waitForExistence(timeout: 5))
+
+        try await relaunch(app)
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        activate(item)
+        XCTAssertTrue(date.waitForExistence(timeout: 5))
+        activate(date)
+        XCTAssertTrue(app.staticTexts["No time"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Add Time"].exists)
+        XCTAssertFalse(app.buttons["Remove Time"].exists)
+    }
+
+#if os(iOS)
+    @MainActor
+    func testNotesPersistAfterBackgroundingAndRelaunch() async throws {
+        let app = launchApp()
+        let item = app.buttons["Reorder First"]
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        item.tap()
+        let notes = app.textViews["Item Notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        notes.tap()
+        let savedNotes = "Saved when the app leaves the foreground."
+        notes.typeText(savedNotes)
+        // Leave directly from the editor, without dismissing it or waiting for
+        // the debounce interval. The normal development store is never used.
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+        try await relaunch(app)
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        item.tap()
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        XCTAssertEqual(notes.value as? String, savedNotes)
+    }
+#endif
+
     @MainActor
     func testRealizedNotesOpenRepeatEditor() throws {
         let app = launchApp()
@@ -73,6 +127,25 @@ final class RecurrenceNotesUITests: XCTestCase {
         app.activate()
 #endif
         return app
+    }
+
+    @MainActor
+    private func relaunch(_ app: XCUIApplication) async throws {
+        app.terminate()
+        app.launchArguments = ["--use-reorder-ui-test-store"]
+        app.launch()
+#if os(macOS)
+        let productsURL = Bundle.main.bundleURL.deletingLastPathComponent()
+        let process = try XCTUnwrap(
+            NSRunningApplication.runningApplications(withBundleIdentifier: "ilia.page.nagare.dev")
+                .first { $0.bundleURL?.deletingLastPathComponent() == productsURL }
+        )
+        _ = try await NSWorkspace.shared.openApplication(
+            at: XCTUnwrap(process.bundleURL),
+            configuration: NSWorkspace.OpenConfiguration()
+        )
+        app.activate()
+#endif
     }
 
     @MainActor

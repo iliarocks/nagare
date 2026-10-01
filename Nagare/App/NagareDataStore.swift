@@ -83,28 +83,24 @@ final class NagareDataStore {
 
     func updateNote(
         _ id: NoteRecordID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date = .now
     ) throws {
         snapshot = try orchestrator.updateNote(
             id,
-            title: title,
-            notes: notes,
+            changes: changes,
             at: date
         )
     }
 
     func updateProject(
         _ id: UUID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date = .now
     ) throws {
         snapshot = try orchestrator.updateProject(
             id,
-            title: title,
-            notes: notes,
+            changes: changes,
             at: date
         )
     }
@@ -272,18 +268,14 @@ final class NagareDataStore {
         )
     }
 
-    func updateRecurrenceTemplate(
+    func updateRecurrenceRule(
         _ id: UUID,
         rule: RecurrenceRule,
-        startTimeSeconds: Int?,
-        endTimeSeconds: Int?,
         at date: Date = .now
     ) throws {
-        snapshot = try orchestrator.updateRecurrenceTemplate(
+        snapshot = try orchestrator.updateRecurrenceRule(
             id,
             rule: rule,
-            startTimeSeconds: startTimeSeconds,
-            endTimeSeconds: endTimeSeconds,
             at: date
         )
     }

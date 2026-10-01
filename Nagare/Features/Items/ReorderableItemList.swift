@@ -22,7 +22,6 @@ struct ReorderableItemList: View {
     @NagareDataStoreEnvironment private var dataStore
     let groups: [ReorderableItemGroup]
     let showsDateHeaders: Bool
-    @Binding var scrollTargetDate: Date?
     let onOpen: (ItemRecordSnapshot) -> Void
     let onOpenVirtual: (VirtualItem) -> Void
     let onComplete: (TodoRecordSnapshot) -> Void
@@ -39,7 +38,6 @@ struct ReorderableItemList: View {
     init(
         groups: [ReorderableItemGroup],
         showsDateHeaders: Bool,
-        scrollTargetDate: Binding<Date?> = .constant(nil),
         onOpen: @escaping (ItemRecordSnapshot) -> Void,
         onOpenVirtual: @escaping (VirtualItem) -> Void = { _ in },
         onComplete: @escaping (TodoRecordSnapshot) -> Void,
@@ -54,7 +52,6 @@ struct ReorderableItemList: View {
     ) {
         self.groups = groups
         self.showsDateHeaders = showsDateHeaders
-        _scrollTargetDate = scrollTargetDate
         self.onOpen = onOpen
         self.onOpenVirtual = onOpenVirtual
         self.onComplete = onComplete
@@ -65,7 +62,9 @@ struct ReorderableItemList: View {
     }
 
     var body: some View {
-        itemList
+        List {
+            listRows
+        }
         .nagareListSectionSpacing(
             showsDateHeaders ? .custom(48) : .standard
         )
@@ -89,21 +88,6 @@ struct ReorderableItemList: View {
             RecurrenceEditor(template: template)
                 .nagareSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
-        }
-    }
-
-    @ViewBuilder
-    private var itemList: some View {
-        ScrollViewReader { proxy in
-            List {
-                listRows
-            }
-            .onChange(of: scrollTargetDate, initial: true) { _, date in
-                scroll(to: date, using: proxy)
-            }
-            .onChange(of: groups.map(\.date)) {
-                scroll(to: scrollTargetDate, using: proxy)
-            }
         }
     }
 
@@ -136,24 +120,6 @@ struct ReorderableItemList: View {
             .dateTime.month(.abbreviated).day()
         )
         return "\(weekday) \(monthAndDay)"
-    }
-
-    private func scroll(to target: Date?, using proxy: ScrollViewProxy) {
-        guard let target else { return }
-        let calendar = Calendar.autoupdatingCurrent
-        guard let group = groups.first(where: {
-            calendar.isDate($0.date, inSameDayAs: target)
-        }) else {
-            return
-        }
-
-        Task { @MainActor in
-            await Task.yield()
-            withAnimation(.snappy) {
-                proxy.scrollTo(group.date, anchor: .top)
-            }
-            scrollTargetDate = nil
-        }
     }
 
     @ViewBuilder

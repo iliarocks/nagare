@@ -6,6 +6,7 @@ struct TodayView: View {
     @State private var errorMessage: String?
     @State private var displayedItemIDs: [ItemID] = []
 
+    let calendarDay: NagareCalendarDay
     let onOpenNotes: (NotesDestination) -> Void
 
     private var todos: [TodoRecordSnapshot] {
@@ -13,8 +14,7 @@ struct TodayView: View {
     }
 
     private var todayTodos: [TodoRecordSnapshot] {
-        let calendar = Calendar.autoupdatingCurrent
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now)) else {
+        guard let tomorrow = calendarDay.nextStart else {
             return todos.filter { $0.completedAt == nil }
         }
 
@@ -57,7 +57,7 @@ struct TodayView: View {
                 ReorderableItemList(
                     groups: [
                         ReorderableItemGroup(
-                            date: Calendar.autoupdatingCurrent.startOfDay(for: .now),
+                            date: calendarDay.start,
                             items: todayItems
                         )
                     ],

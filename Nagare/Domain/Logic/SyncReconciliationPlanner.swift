@@ -26,11 +26,22 @@ nonisolated enum SyncReconciliationPlanner {
 
         var recurrenceMutations: [SyncReconciliationMutation] = []
         var pending: [SyncPendingTemplate] = []
+        let todosByID = Dictionary(
+            grouping: todos.survivors,
+            by: { $0.metadata.semanticID }
+        )
+        let todosByTemplate = Dictionary(
+            grouping: todos.survivors,
+            by: \.recurrenceTemplateID
+        )
 
         for template in templates.survivors.sorted(by: semanticIDOrder) {
             reconcileTodoTemplate(
                 template,
-                todos: todos.survivors,
+                linked: todosByTemplate[template.metadata.semanticID] ?? [],
+                matchingCurrent: (todosByID[template.currentItemID] ?? []).filter {
+                    $0.recurrenceSequence == template.currentSequence
+                },
                 mutations: &recurrenceMutations,
                 pending: &pending,
                 report: &report
@@ -82,16 +93,13 @@ nonisolated enum SyncReconciliationPlanner {
 
     private static func reconcileTodoTemplate(
         _ template: SyncRecurrenceTemplateSnapshot,
-        todos: [SyncTodoSnapshot],
+        linked: [SyncTodoSnapshot],
+        matchingCurrent: [SyncTodoSnapshot],
         mutations: inout [SyncReconciliationMutation],
         pending: inout [SyncPendingTemplate],
         report: inout ReportAccumulator
     ) {
         let templateID = template.metadata.semanticID
-        let matchingCurrent = todos.filter {
-            $0.metadata.semanticID == template.currentItemID
-                && $0.recurrenceSequence == template.currentSequence
-        }
         if matchingCurrent.contains(where: {
             $0.recurrenceTemplateID != nil
                 && $0.recurrenceTemplateID != templateID
@@ -107,16 +115,15 @@ nonisolated enum SyncReconciliationPlanner {
             return
         }
 
-        let associated = todos.filter {
-            $0.recurrenceTemplateID == templateID
-                || ($0.metadata.semanticID == template.currentItemID
-                    && $0.recurrenceSequence == template.currentSequence
-                    && $0.recurrenceTemplateID == nil)
+        let associated = linked + matchingCurrent.filter {
+            $0.recurrenceTemplateID == nil
         }
-        let sequenced = associated.compactMap { todo in
-            todo.recurrenceSequence.map { (sequence: $0, record: todo) }
-        }
-        guard let highestSequence = sequenced.map(\.sequence).max() else {
+        let bySequence = Dictionary(
+            grouping: associated,
+            by: \.recurrenceSequence
+        )
+        let sequences = bySequence.keys.compactMap { $0 }.sorted()
+        guard let highestSequence = sequences.last else {
             pending.append(
                 SyncPendingTemplate(
                     templateID: templateID,
@@ -140,14 +147,11 @@ nonisolated enum SyncReconciliationPlanner {
 
         let current: SyncTodoSnapshot
         if template.currentSequence == highestSequence {
-            let candidates = sequenced
+            let candidates = bySequence[highestSequence, default: []]
                 .filter {
-                    $0.sequence == highestSequence
-                        && $0.record.metadata.semanticID
-                            == template.currentItemID
-                        && $0.record.completedAt == nil
+                    $0.metadata.semanticID == template.currentItemID
+                        && $0.completedAt == nil
                 }
-                .map(\.record)
             guard !candidates.isEmpty else {
                 let hasCompletedCurrent = matchingCurrent.contains {
                     $0.completedAt != nil
@@ -170,12 +174,8 @@ nonisolated enum SyncReconciliationPlanner {
                 metadata: \.metadata
             )
         } else {
-            let activeHighest = sequenced
-                .filter {
-                    $0.sequence == highestSequence
-                        && $0.record.completedAt == nil
-                }
-                .map(\.record)
+            let activeHighest = bySequence[highestSequence, default: []]
+                .filter { $0.completedAt == nil }
             guard !activeHighest.isEmpty else {
                 pending.append(
                     SyncPendingTemplate(
@@ -198,10 +198,22 @@ nonisolated enum SyncReconciliationPlanner {
             report: &report
         )
 
-        for sequence in Set(sequenced.map(\.sequence)).sorted() {
-            let occurrences = sequenced
-                .filter { $0.sequence == sequence }
-                .map(\.record)
+        // A historical occurrence completes at the earliest creation of any
+        // later sequence, even when imported creation dates are out of order.
+        var laterCreationDates: [Int: Date] = [:]
+        var earliestLaterCreation: Date?
+        for sequence in sequences.reversed() {
+            laterCreationDates[sequence] = earliestLaterCreation
+            for occurrence in bySequence[sequence, default: []] {
+                let createdAt = occurrence.metadata.createdAt
+                earliestLaterCreation = earliestLaterCreation.map {
+                    min($0, createdAt)
+                } ?? createdAt
+            }
+        }
+
+        for sequence in sequences {
+            let occurrences = bySequence[sequence, default: []]
                 .sorted {
                     metadataReferenceOrder($0.metadata, $1.metadata)
                 }
@@ -221,10 +233,8 @@ nonisolated enum SyncReconciliationPlanner {
                 metadata: \.metadata
             )
             if survivor.completedAt == nil {
-                let completionDate = sequenced
-                    .filter { $0.sequence > sequence }
-                    .map { $0.record.metadata.createdAt }
-                    .min() ?? template.metadata.revisionDate
+                let completionDate = laterCreationDates[sequence]
+                    ?? template.metadata.revisionDate
                 mutations.append(
                     .completeTodo(
                         record: survivor.metadata.reference,

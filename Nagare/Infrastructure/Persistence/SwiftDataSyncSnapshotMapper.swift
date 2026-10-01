@@ -1,9 +1,8 @@
 import Foundation
 import SwiftData
 
-/// Pure record-to-value translation shared by sync reconciliation and virtual
-/// recurrence projection. Encoding every tie field here prevents two policies
-/// from quietly disagreeing about replicated identity.
+/// Record-to-value translation for sync reconciliation, including the local
+/// references needed to apply a plan to concrete SwiftData records.
 @MainActor
 enum SwiftDataSyncSnapshotMapper {
     static func project(_ record: Project) -> SyncProjectSnapshot {
@@ -28,39 +27,6 @@ enum SwiftDataSyncSnapshotMapper {
             recurrenceSequence: record.recurrenceSequence,
             recurrenceTemplateID: record.recurrenceTemplate?.id,
             projectID: record.project?.id
-        )
-    }
-
-    static func recurrenceProjectionInput(
-        templates: [RecurrenceTemplate],
-        todos: [Todo]
-    ) -> RecurrenceProjectionInput {
-        RecurrenceProjectionInput(
-            templates: templates.map {
-                RecurrenceProjectionTemplateSnapshot(
-                    metadata: templateMetadata($0),
-                    modeRawValue: $0.modeRawValue,
-                    unitRawValue: $0.unitRawValue,
-                    interval: $0.interval,
-                    anchors: $0.anchors,
-                    reference: $0.reference,
-                    repeatUntil: $0.repeatUntil,
-                    startTimeSeconds: $0.startTimeSeconds,
-                    endTimeSeconds: $0.endTimeSeconds,
-                    currentItemID: $0.currentItemID,
-                    currentSequence: $0.currentSequence
-                )
-            },
-            occurrences: todos.map {
-                RecurrenceProjectionOccurrenceSnapshot(
-                    metadata: todoMetadata($0),
-                    scheduledDate: $0.scheduledDate,
-                    completedAt: $0.completedAt,
-                    order: $0.order,
-                    recurrenceSequence: $0.recurrenceSequence,
-                    recurrenceTemplateID: $0.recurrenceTemplate?.id
-                )
-            }
         )
     }
 

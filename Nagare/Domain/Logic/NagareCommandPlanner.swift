@@ -153,23 +153,10 @@ nonisolated enum NagareCommandPlanner {
             throw PlanningError.missingProject
         }
 
-        let assignedItem: ItemRecordSnapshot
-        let recurrenceTemplateID: UUID?
-        switch target {
-        case .item(let id):
-            guard let existing = item(id, in: snapshot) else {
-                throw PlanningError.missingItem
-            }
-            assignedItem = existing
-            recurrenceTemplateID = existing.recurrenceTemplateID
-        case .recurrenceTemplate(let id):
-            guard let template = snapshot.templatesByID[id],
-                  let current = snapshot.currentItem(for: template) else {
-                throw PlanningError.missingItem
-            }
-            assignedItem = current
-            recurrenceTemplateID = id
-        }
+        let (assignedItem, recurrenceTemplateID) = try assignmentTarget(
+            target,
+            in: snapshot
+        )
 
         let projectOrderPlan: OrderingPlanner.NextOrderPlan<ItemID>?
         if let projectID {
@@ -230,23 +217,8 @@ nonisolated enum NagareCommandPlanner {
             throw PlanningError.missingProject
         }
 
-        let resolved = try targets.map { target -> (
-            item: ItemRecordSnapshot,
-            recurrenceTemplateID: UUID?
-        ) in
-            switch target {
-            case .item(let id):
-                guard let item = item(id, in: snapshot) else {
-                    throw PlanningError.missingItem
-                }
-                return (item, item.recurrenceTemplateID)
-            case .recurrenceTemplate(let id):
-                guard let template = snapshot.templatesByID[id],
-                      let item = snapshot.currentItem(for: template) else {
-                    throw PlanningError.missingItem
-                }
-                return (item, id)
-            }
+        let resolved = try targets.map {
+            try assignmentTarget($0, in: snapshot)
         }
         let selectedIDs = resolved.map(\.item.id)
         guard !selectedIDs.isEmpty,
@@ -349,9 +321,18 @@ nonisolated enum NagareCommandPlanner {
             projectOrderPlan = nil
         }
 
+        let schedule = ItemScheduleLogic.moving(
+            todo.orderingSnapshot,
+            to: date,
+            calendar: calendar
+        )
+        guard let scheduledDate = schedule.scheduledDate else {
+            throw PlanningError.invalidResult
+        }
         return TodoReinstatementPlan(
             id: id,
-            scheduledDate: calendar.startOfDay(for: date),
+            scheduledDate: scheduledDate,
+            endDate: schedule.endDate,
             order: orderPlan.order,
             orderRepairs: orderPlan.repairs.map {
                 ItemOrderingChange(id: $0.id, order: $0.order)
@@ -364,6 +345,27 @@ nonisolated enum NagareCommandPlanner {
                 )
             } ?? []
         )
+    }
+
+    private static func assignmentTarget(
+        _ target: ProjectMoveRecordID,
+        in snapshot: NagareDataSnapshot
+    ) throws -> (item: ItemRecordSnapshot, recurrenceTemplateID: UUID?) {
+        switch target {
+        case .item(let id):
+            guard let item = item(id, in: snapshot) else {
+                throw PlanningError.missingItem
+            }
+            // Historical occurrences keep their own membership. Only the
+            // active occurrence carries project changes into the series.
+            return (item, item.isCompleted ? nil : item.recurrenceTemplateID)
+        case .recurrenceTemplate(let id):
+            guard let template = snapshot.templatesByID[id],
+                  let item = snapshot.currentItem(for: template) else {
+                throw PlanningError.missingItem
+            }
+            return (item, id)
+        }
     }
 
     private static func allItems(

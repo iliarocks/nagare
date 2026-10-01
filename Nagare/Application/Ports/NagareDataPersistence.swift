@@ -19,14 +19,12 @@ nonisolated protocol NagareDataWriting: AnyObject {
     ) throws -> UUID
     func updateNote(
         _ id: NoteRecordID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date
     ) throws
     func updateProject(
         _ id: UUID,
-        title: String,
-        notes: String?,
+        changes: [NoteTextChange],
         at date: Date
     ) throws
     func saveItemOrdering(
@@ -53,11 +51,9 @@ nonisolated protocol NagareDataWriting: AnyObject {
     func deleteRecurrenceTemplate(_ id: UUID, at date: Date) throws
     func assign(_ plan: ProjectAssignmentPlan, at date: Date) throws
     func assign(_ plan: ProjectAssignmentBatchPlan, at date: Date) throws
-    func updateRecurrenceTemplate(
+    func updateRecurrenceRule(
         _ id: UUID,
         rule: RecurrenceRule,
-        startTimeSeconds: Int?,
-        endTimeSeconds: Int?,
         at date: Date
     ) throws
 }

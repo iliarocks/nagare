@@ -212,6 +212,57 @@ struct SyncReconciliationPlannerTests {
         )
     }
 
+    @Test func historicalCompletionUsesEarliestCreationAcrossAllLaterSequences() {
+        let template = todoTemplate(currentItemID: currentID, currentSequence: 2)
+        let first = todo(
+            id: laterID, localID: "first", sequence: 0,
+            templateID: templateID, createdAt: timestamp
+        )
+        let second = todo(
+            id: competingID, localID: "second", sequence: 1,
+            templateID: templateID, createdAt: timestamp.addingTimeInterval(200)
+        )
+        let current = todo(
+            id: currentID, localID: "current", sequence: 2,
+            templateID: templateID, createdAt: timestamp.addingTimeInterval(100)
+        )
+        let expected: [SyncReconciliationMutation] = [
+            .completeTodo(
+                record: first.metadata.reference,
+                completedAt: current.metadata.createdAt
+            ),
+            .completeTodo(
+                record: second.metadata.reference,
+                completedAt: current.metadata.createdAt
+            )
+        ]
+        for occurrences in [[first, second, current], [current, first, second]] {
+            let plan = SyncReconciliationPlanner.plan(
+                for: graph(templates: [template], todos: occurrences)
+            )
+            #expect(plan.mutations == expected)
+            #expect(plan.pendingTemplates.isEmpty)
+        }
+    }
+
+    @Test func currentOccurrenceLinkedElsewhereRemainsPending() {
+        let template = todoTemplate(currentItemID: currentID, currentSequence: 0)
+        let current = todo(
+            id: currentID, localID: "current", sequence: 0,
+            templateID: competingID
+        )
+        let plan = SyncReconciliationPlanner.plan(
+            for: graph(templates: [template], todos: [current])
+        )
+        #expect(plan.mutations.isEmpty)
+        #expect(plan.pendingTemplates == [
+            SyncPendingTemplate(
+                templateID: templateID,
+                reason: .currentOccurrenceLinkedElsewhere(id: currentID)
+            )
+        ])
+    }
+
     private func graph(
         templates: [SyncRecurrenceTemplateSnapshot] = [],
         todos: [SyncTodoSnapshot] = []
@@ -255,14 +306,16 @@ struct SyncReconciliationPlannerTests {
         physicalID: UUID? = nil,
         completedAt: Date? = nil,
         sequence: Int? = nil,
-        templateID: UUID? = nil
+        templateID: UUID? = nil,
+        createdAt: Date? = nil
     ) -> SyncTodoSnapshot {
         SyncTodoSnapshot(
             metadata: metadata(
                 kind: .todo,
                 localID: localID,
                 semanticID: id,
-                physicalID: physicalID ?? id
+                physicalID: physicalID ?? id,
+                createdAt: createdAt
             ),
             completedAt: completedAt,
             recurrenceSequence: sequence,
@@ -275,13 +328,14 @@ struct SyncReconciliationPlannerTests {
         kind: SyncEntityKind,
         localID: String,
         semanticID: UUID,
-        physicalID: UUID? = nil
+        physicalID: UUID? = nil,
+        createdAt: Date? = nil
     ) -> SyncRecordMetadata {
         SyncRecordMetadata(
             reference: SyncRecordReference(kind: kind, localID: localID),
             semanticID: semanticID,
             physicalID: physicalID ?? semanticID,
-            createdAt: timestamp,
+            createdAt: createdAt ?? timestamp,
             modifiedAt: timestamp,
             stableTieBreaker: [localID]
         )

@@ -46,8 +46,7 @@ struct UpgradePersistenceTests {
         #expect(events.first?.notes == "Preserve legacy record")
 
         let repository = SwiftDataNagareRepository(modelContainer: container)
-        try repository.updateNote(.todo(timed.id), title: timed.title,
-            notes: "Edited after upgrade", at: Date(timeIntervalSinceReferenceDate: 800_010_000))
+        try repository.updateNote(.todo(timed.id), changes: [.title(timed.title), .notes("Edited after upgrade")], at: Date(timeIntervalSinceReferenceDate: 800_010_000))
         let reopened = SwiftDataNagareRepository(modelContainer: try openStore(at: url))
         #expect(try reopened.load().todosByID[timed.id]?.notes == "Edited after upgrade")
     }

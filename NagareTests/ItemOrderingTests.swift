@@ -375,11 +375,11 @@ struct ItemOrderingTests {
     private func orderedTodos(
         on day: Date,
         in context: ModelContext
-    ) throws -> [Todo] {
-        let todos = try ModelContext(context.container).fetch(FetchDescriptor<Todo>()).filter {
+    ) throws -> [TodoRecordSnapshot] {
+        let todos = try orderingRepository(in: context).load().todos.filter {
             calendar.isDate($0.scheduledDate, inSameDayAs: day)
         }
-        return Todo.ordered(todos)
+        return TodoRecordSnapshot.ordered(todos)
     }
 
     private func date(day: Int) -> Date {
