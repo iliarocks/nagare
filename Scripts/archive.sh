@@ -6,7 +6,7 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 expected_xcode_build="${EXPECTED_XCODE_BUILD:-27A266a}"
 actual_xcode_build="$(xcodebuild -version | awk '/Build version/ {print $3}')"
 if [[ "$actual_xcode_build" != "$expected_xcode_build" ]]; then
-    echo "Select Xcode 27 RC (27A266a), or explicitly set EXPECTED_XCODE_BUILD for a reviewed toolchain update." >&2
+    echo "Select Xcode 27 stable (27A266a), or explicitly set EXPECTED_XCODE_BUILD for a reviewed toolchain update." >&2
     exit 1
 fi
 platform="${1:-macos}"

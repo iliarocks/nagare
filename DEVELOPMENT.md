@@ -1,6 +1,6 @@
 # Development
 
-Use **Xcode 27 RC, build 27A266a**. Select it in Xcode's Locations settings or
+Use **Xcode 27, build 27A266a (stable release)**. Select it in Xcode's Locations settings or
 with `sudo xcode-select --switch /Applications/Xcode.app`. Run Xcode's first-launch
 setup. Install the iOS 27 runtime only for simulator tests. The scripts report a
 toolchain mismatch; set `EXPECTED_XCODE_BUILD` only when intentionally checking another
@@ -63,7 +63,7 @@ ad-hoc backup directories.
 
 ## Before publishing
 
-- Run unit/UI checks on iPhone and Mac using the RC environment.
+- Run unit/UI checks on iPhone and Mac using the stable Xcode environment.
 - Open an existing store and verify notes, dates, completed tasks, projects and recurrence.
 - Test development iPhone/Mac sync: create/edit/complete, go offline, reconnect, and restart.
 - Separately verify the production CloudKit schema and cross-device behavior with the distribution build. Development signing cannot establish production readiness.
