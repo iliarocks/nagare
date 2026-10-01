@@ -36,6 +36,34 @@ Development builds on iPhone and Mac use the same CloudKit development container
 they do not sync with the production App Store database. Enable iCloud sync in
 both apps and restart them after changing that setting.
 
+For a shared sample dataset, back up each development store (including its WAL
+and SHM files) and preferences before replacing data. Seed **one device only**
+with these Debug launch arguments, then let CloudKit replicate to the other:
+
+```text
+--enable-development-cloud-sync
+--replace-with-development-sample-data
+--development-sample-reference=2026-10-01T21:00:00Z
+--development-sample-time-zone=America/Los_Angeles
+```
+
+Launch the receiving development build with only
+`--enable-development-cloud-sync`. This persists the Debug sync preference
+before opening its store; it is ignored by isolated UI tests and hosted unit
+tests and is unavailable in Release builds. Ordinary later launches retain sync
+and the sample data without resetting either device.
+
+The sample includes 3 projects, 15 items (2 completed), and 3 recurrence templates,
+with prioritized and regular project items, timed items, long notes, and future
+occurrences. The paired reference/time-zone arguments fix schedule and creation
+dates. Semantic and sync IDs are stable; modification timestamps use the seeding
+transaction time so a reset can supersede older cloud copies. Stable IDs do not
+make independently created SwiftData CloudKit records identical: avoid seeding
+both devices with sync enabled. `--seed-development-sample-data` adds fixtures
+only when their marker is absent; `--remove-development-sample-data` removes
+the fixed fixtures while leaving unrelated records. Replacement commits deletion
+and insertion together and rolls back on failure.
+
 The hosted test app starts with an in-memory store. Integration tests create
 temporary stores; UI tests use a dedicated regression store.
 Upgrade tests copy a frozen synthetic fixture before opening it; never use a

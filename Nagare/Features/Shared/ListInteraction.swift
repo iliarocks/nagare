@@ -183,14 +183,15 @@ private struct NagarePriorityHalo: ViewModifier {
     let isPrioritized: Bool
 
     private var halo: some View {
-        let opacity: Double = contrast == .increased
-            ? 0.55 : (colorScheme == .dark ? 0.28 : 0.22)
-        let shape = Circle()
-        return shape
-            .strokeBorder(Color.accentColor.opacity(opacity), lineWidth: 1.5)
-            .blur(radius: contrast == .increased ? 1 : 2)
-            .clipShape(shape)
-            .padding(-4)
+        let glowOpacity: Double = colorScheme == .dark ? 0.75 : 0.6
+        return Circle()
+            .strokeBorder(
+                Color.accentColor.opacity(contrast == .increased ? 1 : 0.9),
+                lineWidth: 1
+            )
+            .shadow(color: .accentColor.opacity(glowOpacity), radius: 2)
+            .shadow(color: .accentColor.opacity(glowOpacity * 0.5), radius: 4)
+            .padding(-2)
             .opacity(isPrioritized ? 1 : 0)
             .accessibilityHidden(true)
             .allowsHitTesting(false)

@@ -33,4 +33,19 @@ enum NagareCloudPreferences {
         !arguments.contains("--use-reorder-ui-test-store")
             && isSyncEnabled(in: defaults)
     }
+
+#if DEBUG
+    static func applyDevelopmentLaunchArguments(
+        _ arguments: [String],
+        isRunningUnitTests: Bool,
+        defaults: UserDefaults = .standard
+    ) {
+        guard !isRunningUnitTests,
+              !arguments.contains("--use-reorder-ui-test-store"),
+              arguments.contains("--enable-development-cloud-sync") else {
+            return
+        }
+        setSyncEnabled(true, in: defaults)
+    }
+#endif
 }

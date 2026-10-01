@@ -34,12 +34,24 @@ enum DevelopmentSampleData {
             return
         }
 
-        if replacesExistingData {
-            try removeAllData(in: context)
+        let reference = try referenceValues(arguments: arguments, now: now, calendar: calendar)
+        // A reset is a new edit even when its displayed dates are fixed. Its
+        // revision must supersede older copies already in the dev cloud store.
+        try SwiftDataTransaction.perform(in: context, at: now) {
+            if replacesExistingData {
+                try removeAllData(in: context)
+            } else if try containsSampleData(in: context) {
+                return
+            }
+            try insertSampleData(in: context, now: reference.date, calendar: reference.calendar)
         }
+    }
 
-        guard try !containsSampleData(in: context) else { return }
-
+    private static func insertSampleData(
+        in context: ModelContext,
+        now: Date,
+        calendar: Calendar
+    ) throws {
         let today = calendar.startOfDay(for: now)
         let tomorrow = try day(1, after: today, calendar: calendar)
 
@@ -65,8 +77,10 @@ enum DevelopmentSampleData {
             order: "r",
             createdAt: try day(-3, after: now, calendar: calendar)
         )
-
-        [nagareProject, kyotoProject, somedayProject].forEach(context.insert)
+        for project in [nagareProject, kyotoProject, somedayProject] {
+            project.syncRecordID = project.id
+            context.insert(project)
+        }
 
         insert(
             Todo(
@@ -88,6 +102,7 @@ enum DevelopmentSampleData {
                 title: "Buy oat milk",
                 notes: "A simple ungrouped todo for swipe and completion testing.",
                 scheduledDate: today,
+                createdAt: now,
                 order: "i",
                 calendar: calendar
             ),
@@ -190,6 +205,7 @@ enum DevelopmentSampleData {
                     minute: 30,
                     calendar: calendar
                 ),
+                createdAt: now,
                 order: "z"
             ),
             context: context
@@ -201,6 +217,7 @@ enum DevelopmentSampleData {
                 title: "Pack a charger and headphones",
                 notes: "Move this between days and into or out of the Kyoto project.",
                 scheduledDate: tomorrow,
+                createdAt: now,
                 order: "9",
                 projectOrder: "9",
                 calendar: calendar
@@ -226,6 +243,7 @@ enum DevelopmentSampleData {
                     minute: 30,
                     calendar: calendar
                 ),
+                createdAt: now,
                 order: "i",
                 projectOrder: "i"
             ),
@@ -238,6 +256,7 @@ enum DevelopmentSampleData {
                 title: "Book a tea ceremony",
                 notes: "Compare the notes sheet at medium and large detents.",
                 scheduledDate: try day(2, after: today, calendar: calendar),
+                createdAt: now,
                 order: "9",
                 projectOrder: "r",
                 calendar: calendar
@@ -263,6 +282,7 @@ enum DevelopmentSampleData {
                     minute: 0,
                     calendar: calendar
                 ),
+                createdAt: now,
                 order: "9",
                 projectOrder: "w"
             ),
@@ -275,6 +295,7 @@ enum DevelopmentSampleData {
                 title: "Renew passport",
                 notes: "An ungrouped item far enough out to exercise Upcoming scrolling.",
                 scheduledDate: try day(9, after: today, calendar: calendar),
+                createdAt: now,
                 order: "9",
                 calendar: calendar
             ),
@@ -286,6 +307,7 @@ enum DevelopmentSampleData {
             title: "Daily stand-up notes",
             notes: "Complete this to verify that Nagare creates the next recurring occurrence.",
             scheduledDate: today,
+            createdAt: now,
             order: "v",
             projectOrder: "v",
             calendar: calendar
@@ -300,6 +322,7 @@ enum DevelopmentSampleData {
             currentItemID: dailyTodo.id,
             createdAt: now
         )
+        dailyTemplate.syncRecordID = dailyTemplate.id
         context.insert(dailyTemplate)
         dailyTemplate.project = nagareProject
         dailyTodo.recurrenceSequence = 0
@@ -323,6 +346,7 @@ enum DevelopmentSampleData {
                 minute: 45,
                 calendar: calendar
             ),
+            createdAt: now,
             order: "i",
             projectOrder: "z"
         )
@@ -343,10 +367,36 @@ enum DevelopmentSampleData {
             currentItemID: weeklyTimedTodo.id,
             createdAt: now
         )
+        weeklyTemplate.syncRecordID = weeklyTemplate.id
         context.insert(weeklyTemplate)
         weeklyTemplate.project = nagareProject
         weeklyTimedTodo.recurrenceSequence = 0
         weeklyTimedTodo.recurrenceTemplate = weeklyTemplate
+
+        let regularRepeatingTodo = Todo(
+            id: id("210"),
+            title: "Water the balcony plants",
+            notes: "A regular-project repeat for comparing priority cues in Today and Upcoming.",
+            scheduledDate: today,
+            createdAt: now,
+            order: "t",
+            projectOrder: "z",
+            calendar: calendar
+        )
+        insert(regularRepeatingTodo, in: kyotoProject, context: context)
+        let regularTemplate = RecurrenceTemplate(
+            id: id("403"),
+            title: regularRepeatingTodo.title,
+            notes: regularRepeatingTodo.notes,
+            rule: try RecurrenceRule.relative(every: 3, unit: .day),
+            currentItemID: regularRepeatingTodo.id,
+            createdAt: now
+        )
+        regularTemplate.syncRecordID = regularTemplate.id
+        context.insert(regularTemplate)
+        regularTemplate.project = kyotoProject
+        regularRepeatingTodo.recurrenceSequence = 0
+        regularRepeatingTodo.recurrenceTemplate = regularTemplate
 
         insert(
             Todo(
@@ -375,13 +425,13 @@ enum DevelopmentSampleData {
                     minute: 20,
                     calendar: calendar
                 ),
+                createdAt: now,
                 order: "z",
                 calendar: calendar
             ),
             context: context
         )
 
-        try SwiftDataTransaction.save(context)
     }
 
     private static func removeLegacySampleData(
@@ -389,11 +439,11 @@ enum DevelopmentSampleData {
     ) throws {
         let projectIDs = Set([markerProjectID, id("102"), id("103")])
         let todoIDs = Set(
-            (201...209).map { id(String($0)) }
+            (201...210).map { id(String($0)) }
                 + (301...305).map { id(String($0)) }
         )
         let legacyEventIDs = Set((301...305).map { id(String($0)) })
-        let templateIDs = Set((401...402).map { id(String($0)) })
+        let templateIDs = Set((401...403).map { id(String($0)) })
 
         let projects = try context.fetch(FetchDescriptor<Project>()).filter {
             projectIDs.contains($0.id)
@@ -434,7 +484,6 @@ enum DevelopmentSampleData {
         todos.forEach(context.delete)
         events.forEach(context.delete)
         projects.forEach(context.delete)
-        try SwiftDataTransaction.save(context)
     }
 
     private static func containsSampleData(
@@ -455,8 +504,29 @@ enum DevelopmentSampleData {
         in project: Project? = nil,
         context: ModelContext
     ) {
+        todo.syncRecordID = todo.id
         context.insert(todo)
         todo.project = project
+    }
+
+    private static func referenceValues(
+        arguments: [String],
+        now: Date,
+        calendar: Calendar
+    ) throws -> (date: Date, calendar: Calendar) {
+        let datePrefix = "--development-sample-reference="
+        let zonePrefix = "--development-sample-time-zone="
+        let dateArgument = arguments.first { $0.hasPrefix(datePrefix) }
+        let zoneArgument = arguments.first { $0.hasPrefix(zonePrefix) }
+        guard dateArgument != nil || zoneArgument != nil else { return (now, calendar) }
+        guard let dateArgument, let zoneArgument,
+              let date = ISO8601DateFormatter().date(from: String(dateArgument.dropFirst(datePrefix.count))),
+              let zone = TimeZone(identifier: String(zoneArgument.dropFirst(zonePrefix.count))) else {
+            throw DevelopmentSampleDataError.invalidReference
+        }
+        var fixedCalendar = Calendar(identifier: .gregorian)
+        fixedCalendar.timeZone = zone
+        return (date, fixedCalendar)
     }
 
     private static func id(_ suffix: String) -> UUID {
@@ -498,7 +568,17 @@ enum DevelopmentSampleData {
     }
 }
 
-private enum DevelopmentSampleDataError: Error {
+private enum DevelopmentSampleDataError: Error, LocalizedError {
     case invalidDate
+    case invalidReference
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidDate:
+            "Nagare couldn't calculate a development sample date."
+        case .invalidReference:
+            "Provide both --development-sample-reference=<ISO-8601 timestamp> and --development-sample-time-zone=<IANA zone>."
+        }
+    }
 }
 #endif

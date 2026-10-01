@@ -67,6 +67,10 @@ struct NagareApp: App {
                 arguments,
                 schema: NagareSchema.current
             )
+            NagareCloudPreferences.applyDevelopmentLaunchArguments(
+                arguments,
+                isRunningUnitTests: isRunningUnitTests
+            )
 #endif
             let cloudSyncEnabled = !isRunningUnitTests
                 && NagareCloudPreferences.shouldEnableSync(

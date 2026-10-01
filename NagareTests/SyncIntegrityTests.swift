@@ -82,6 +82,32 @@ struct SyncIntegrityTests {
     }
 
 #if DEBUG
+    @Test func developmentLaunchFlagPersistsSyncWithoutAffectingTestsOrReleasePreference() throws {
+        let suiteName = "DevelopmentSyncFlagTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let flag = "--enable-development-cloud-sync"
+
+        NagareCloudPreferences.applyDevelopmentLaunchArguments(
+            [flag], isRunningUnitTests: true, defaults: defaults
+        )
+        #expect(!NagareCloudPreferences.isSyncEnabled(in: defaults))
+        NagareCloudPreferences.applyDevelopmentLaunchArguments(
+            [flag, "--use-reorder-ui-test-store"],
+            isRunningUnitTests: false, defaults: defaults
+        )
+        #expect(!NagareCloudPreferences.isSyncEnabled(in: defaults))
+        NagareCloudPreferences.applyDevelopmentLaunchArguments(
+            [], isRunningUnitTests: false, defaults: defaults
+        )
+        #expect(!NagareCloudPreferences.isSyncEnabled(in: defaults))
+        NagareCloudPreferences.applyDevelopmentLaunchArguments(
+            [flag], isRunningUnitTests: false, defaults: defaults
+        )
+        #expect(NagareCloudPreferences.shouldEnableSync(arguments: [], defaults: defaults))
+        #expect(defaults.object(forKey: "nagare.iCloudSyncEnabled.v1") == nil)
+    }
+
     @Test func developmentSyncPreferenceDoesNotReuseReleasePreference() {
         #expect(NagareCloudPreferences.syncEnabledKey.contains("debug"))
         #expect(
