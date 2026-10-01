@@ -15,9 +15,10 @@ not change with the device.
   vertical padding, and a neutral grouped background for adjacent selections.
 - Projects have two priority states: normal and prioritized. In Today and
   Upcoming, active items inherit a soft accent shadow on their completion
-  symbol, or their repeat icon for future items. Priority does not change item order. Project
-  detail and completed lists do not repeat this emphasis; desktop selection
-  keeps its neutral grouped background.
+  symbol, or their repeat icon for future items. Completion controls have an
+  opaque center, with the glow centered evenly around their edge. Priority does
+  not change item order. Project detail and completed lists do not repeat this
+  emphasis; desktop selection keeps its neutral grouped background.
 
 ## Interaction hierarchy
 

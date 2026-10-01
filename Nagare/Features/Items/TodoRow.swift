@@ -41,8 +41,14 @@ struct TodoRow: View {
                         ? "checkmark.circle.fill"
                         : "circle"
                 )
-                    .font(.title3)
                     .contentTransition(.symbolEffect(.replace))
+                    .background {
+                        Image(systemName: "circle.fill")
+                            .foregroundStyle(.background)
+                            .accessibilityHidden(true)
+                    }
+                    .font(.title3)
+                    .compositingGroup()
                     .nagarePriorityGlow(isPrioritized)
             }
             .buttonStyle(.plain)
