@@ -6,7 +6,6 @@ from pathlib import Path
 
 design = Path(__file__).resolve().parent
 repo = design.parent.parent
-app = "Nagare" if (repo / "Nagare.xcodeproj").exists() else "Oto"
 stage = repo / ".build" / "ScreenshotCaptureSource"
 if stage.exists():
     shutil.rmtree(stage)
@@ -19,21 +18,20 @@ for name in filter(None, tracked):
     if source.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-shutil.copy2(design / "CaptureScreenshots.swift", stage / f"{app}UITests/AppStoreCaptureTests.swift")
+shutil.copy2(design / "CaptureScreenshots.swift", stage / "NagareUITests/AppStoreCaptureTests.swift")
 
-if app == "Nagare":
-    source = stage / "Nagare/App/NagareApp.swift"
+source = stage / "Nagare/App/NagareApp.swift"
+contents = source.read_text()
+marker = '        guard arguments.contains("--reset-and-seed-reorder-ui-test") else {'
+assert contents.count(marker) == 1, "Capture insertion point changed; inspect before proceeding."
+contents = contents.replace(marker, (design / "CaptureSampleData.swift").read_text() + "\n" + marker)
+assert '"reorder-regression.store"' in contents
+contents = contents.replace('"reorder-regression.store"', '"app-store-capture.store"')
+source.write_text(contents)
+for name in ["Today", "Upcoming"]:
+    source = stage / f"Nagare/Features/{name}/{name}View.swift"
     contents = source.read_text()
-    marker = '        guard arguments.contains("--reset-and-seed-reorder-ui-test") else {'
-    assert contents.count(marker) == 1, "Capture insertion point changed; inspect before proceeding."
-    contents = contents.replace(marker, (design / "CaptureSampleData.swift").read_text() + "\n" + marker)
-    assert '"reorder-regression.store"' in contents
-    contents = contents.replace('"reorder-regression.store"', '"app-store-capture.store"')
-    source.write_text(contents)
-    for name in ["Today", "Upcoming"]:
-        source = stage / f"Nagare/Features/{name}/{name}View.swift"
-        contents = source.read_text()
-        marker = 'if ProcessInfo.processInfo.arguments.contains("--use-reorder-ui-test-store") {'
-        assert marker in contents, "Test overlay changed; inspect before proceeding."
-        source.write_text(contents.replace(marker, "if false && " + marker[3:]))
+    marker = 'if ProcessInfo.processInfo.arguments.contains("--use-reorder-ui-test-store") {'
+    assert marker in contents, "Test overlay changed; inspect before proceeding."
+    source.write_text(contents.replace(marker, "if false && " + marker[3:]))
 print(stage)

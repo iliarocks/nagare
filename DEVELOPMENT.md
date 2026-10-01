@@ -1,44 +1,50 @@
 # Development
 
-Use **Xcode 27, build 27A266a (stable release)**. Select it in Xcode's Locations settings or
-with `sudo xcode-select --switch /Applications/Xcode.app`. Run Xcode's first-launch
-setup. Install the iOS 27 runtime only for simulator tests. The scripts report a
-toolchain mismatch; set `EXPECTED_XCODE_BUILD` only when intentionally checking another
-reviewed Xcode version.
+Use Xcode 27, build **27A266a**. The check script enforces this version; override
+`EXPECTED_XCODE_BUILD` only when deliberately evaluating another toolchain.
 
-## Builds and tests
-
-Run commands from this repository:
+## Build and test
 
 ```sh
-Scripts/check.sh macos unit
+Scripts/check.sh macos all
 Scripts/check.sh ios all
-TEST_DESTINATION='generic/platform=iOS' Scripts/check.sh ios build
+TEST_DESTINATION='platform=iOS,id=<device-UDID>' Scripts/check.sh ios build
 Scripts/check.sh macos build
-Scripts/check.sh macos ui
 ```
 
-The second argument accepts `unit`, `ui`, `all`, or `build`. iOS tests default to
-an iPhone 17 simulator. Set `TEST_DESTINATION` to a complete Xcode destination
-(e.g. `platform=iOS Simulator,id=...`) when selecting a particular device/runtime.
-Use `TEST_DESTINATION='platform=iOS,id=<device-UDID>'` for a connected iPhone.
-Run UI tests with the desktop available for automation. Stop a run if an Apple
-simulator service repeatedly crashes; do not hide global crash reports.
+The second argument accepts `unit`, `ui`, `all`, or `build`. iOS defaults to the
+iPhone 17 simulator. Output goes to ignored `.build/derived` and `.build/results`.
+Quit the installed Mac development copy before UI tests to avoid two running
+apps with the same bundle ID. Tests use isolated stores; the frozen upgrade
+fixture and its provenance live in `NagareTests/Fixtures`.
 
-Build output lives in `.build/derived/<platform>`, and the latest result for each
-suite lives in `.build/results`. Both are disposable and ignored by Git.
+## Code boundaries
+
+- Domain contains immutable values and deterministic rules; Application issues
+  commands through persistence ports. Both depend only on Foundation.
+- Infrastructure owns SwiftData records and transactions. App publishes immutable
+  snapshots; Features render them and send commands, without retaining records.
+- All saves use `SwiftDataTransaction`. Put each rule on its production command
+  path and test that path; avoid parallel compatibility writers.
+- Preserve legacy persisted models/fields needed to open existing stores. Schema
+  version 5 relies on automatic migration, verified with the frozen fixture.
+- Root owns maintenance and the calendar day. Shared editor drafts own saved
+  baselines; autosave flushes on dismissal, backgrounding, and Mac termination.
+  Text writes contain only edited fields; local edits win same-field conflicts.
+
+`Scripts/lint-imports.sh` enforces these boundaries. Keep native platform controls,
+shared presentation primitives, neutral selection, and autosave. Closing the main
+Mac window intentionally quits the app. Project priority highlights active items
+in Today/Upcoming without changing their order.
 
 ## Development data
 
-Debug builds use `ilia.page.nagare.dev` and a separate `NagareDev.store`.
-The Mac app is named **Nagare Dev**. Release builds use `ilia.page.nagare`.
-Development builds on iPhone and Mac use the same CloudKit development container;
-they do not sync with the production App Store database. Enable iCloud sync in
-both apps and restart them after changing that setting.
+Debug builds use `ilia.page.nagare.dev`, `NagareDev.store`, and the CloudKit
+**development** environment. Release builds use `ilia.page.nagare` and production.
+iCloud preference changes apply on the next launch.
 
-For a shared sample dataset, back up each development store (including its WAL
-and SHM files) and preferences before replacing data. Seed **one device only**
-with these Debug launch arguments, then let CloudKit replicate to the other:
+To install matching fixtures, back up both development stores, their WAL/SHM
+files, and preferences. Seed **one device**, then let iCloud deliver to the other:
 
 ```text
 --enable-development-cloud-sync
@@ -47,59 +53,20 @@ with these Debug launch arguments, then let CloudKit replicate to the other:
 --development-sample-time-zone=America/Los_Angeles
 ```
 
-Launch the receiving development build with only
-`--enable-development-cloud-sync`. This persists the Debug sync preference
-before opening its store; it is ignored by isolated UI tests and hosted unit
-tests and is unavailable in Release builds. Ordinary later launches retain sync
-and the sample data without resetting either device.
+Launch the receiver with only `--enable-development-cloud-sync`; ordinary later
+launches retain data and sync. On Mac, use the normal app launcher, such as
+`open -a "Nagare Dev" --args ...`, so system background-task registration works.
+The fixture contains 3 projects, 15 items, and 3 recurring series. Stable logical
+IDs do not make separately seeded CloudKit records identical.
 
-On macOS, use the normal app launcher (for example, `open -a "Nagare Dev" --args ...`)
-for sync testing, so the app has its normal system background-task registration.
+## Release and assets
 
-The sample includes 3 projects, 15 items (2 completed), and 3 recurrence templates,
-with prioritized and regular project items, timed items, long notes, and future
-occurrences. The paired reference/time-zone arguments fix schedule and creation
-dates. Semantic and sync IDs are stable; modification timestamps use the seeding
-transaction time so a reset can supersede older cloud copies. Stable IDs do not
-make independently created SwiftData CloudKit records identical: avoid seeding
-both devices with sync enabled. `--seed-development-sample-data` adds fixtures
-only when their marker is absent; `--remove-development-sample-data` removes
-the fixed fixtures while leaving unrelated records. Replacement commits deletion
-and insertion together and rolls back on failure.
+Run unit/UI checks on both platforms, verify existing-store upgrades and
+cross-device create/edit/complete/restart behavior, then commit. Archive with
+`Scripts/archive.sh ios` or `Scripts/archive.sh macos`. Archives and source commit
+metadata live in `.build/releases`; keep submitted archives and dSYMs. Archiving
+does not upload or publish. Validate the distribution build's production CloudKit
+schema and sync separately before submission.
 
-The hosted test app starts with an in-memory store. Integration tests create
-temporary stores; UI tests use a dedicated regression store.
-Upgrade tests copy a frozen synthetic fixture before opening it; never use a
-personal database as a committed fixture. `NagareTests/Fixtures/README.md` records
-its provenance.
-
-## Local release archives
-
-Commit the reviewed source, then run:
-
-```sh
-Scripts/archive.sh ios
-Scripts/archive.sh macos
-```
-
-Archives live in `.build/releases/<version>-<build>-<platform>/Nagare.xcarchive`.
-Each has a `source.txt` recording its commit and Xcode build. The script refuses
-a dirty checkout or an existing archive path. `Scripts/ExportOptions.plist` holds
-the App Store export settings. Archiving does not upload, submit or publish.
-
-Keep each submitted archive and its dSYMs while it is needed for debugging.
-Unlike source, these ignored files cannot be recovered from Git. Remove obsolete
-DerivedData, test output and superseded local experiments instead of keeping
-ad-hoc backup directories.
-
-## Before publishing
-
-- Run unit/UI checks on iPhone and Mac using the stable Xcode environment.
-- Open an existing store and verify notes, dates, completed tasks, projects and recurrence.
-- Test development iPhone/Mac sync: create/edit/complete, go offline, reconnect, and restart.
-- Separately verify the production CloudKit schema and cross-device behavior with the distribution build. Development signing cannot establish production readiness.
-- Validate the signed archive, privacy manifest and entitlements; upload only after approval, then confirm processing and the selected App Store build.
-
-The public website lives in `docs`; maintained repository documentation belongs
-outside that folder. Raw screenshots and final designs remain separate under
-`screenshots`, as described in its README.
+`docs/` is the public website. Screenshot originals, render inputs, final exports,
+and rebuild instructions live in `screenshots/`; retain asset licenses and provenance.

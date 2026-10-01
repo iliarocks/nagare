@@ -12,7 +12,7 @@ parser.add_argument("result", type=Path, help="Successful .xcresult bundle")
 parser.add_argument("platform", choices=["iPhone", "Mac"])
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
-config = json.loads((root / "Design/layout.json").read_text())
+config = json.loads((root / "design/layout.json").read_text())
 pages = next(s["pages"] for s in config["sets"] if s["platform"] == args.platform)
 with tempfile.TemporaryDirectory(prefix="app-store-captures-") as temporary:
     export = Path(temporary)
