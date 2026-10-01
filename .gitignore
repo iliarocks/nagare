@@ -2,6 +2,9 @@
 .DS_Store
 xcuserdata/
 __pycache__/
+node_modules/
+.wrangler/
+.dev.vars
 
 # Generated screenshot review files
 screenshots/design/Previews/
