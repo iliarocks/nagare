@@ -409,6 +409,134 @@ struct RecurrenceUIModelTests {
         #expect(todo.title == "Old future title")
     }
 
+    @Test func virtualNotesRetainSelectedDateAndCannotRescheduleCurrentItem() throws {
+        let context = try makeContext()
+        let todo = insertTodo("Practice", day: date(2026, 7, 1), into: context)
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: .absolute(
+                every: 1,
+                unit: .day,
+                reference: todo.scheduledDate,
+                calendar: calendar
+            ),
+            in: context
+        )
+        let items = try project(
+            template,
+            in: context,
+            starting: date(2026, 7, 2),
+            through: date(2026, 7, 3)
+        ).items
+        let first = NotesDestination(try #require(items.first))
+        let second = NotesDestination(try #require(items.last))
+        let snapshot = try SwiftDataNagareRepository(
+            modelContainer: context.container
+        ).load()
+
+        #expect(first.id != second.id)
+        #expect(first.recordID == .recurrenceTemplate(template.id))
+        #expect(second.recordID == first.recordID)
+        #expect(first.schedule(in: snapshot)?.scheduledDate == date(2026, 7, 2))
+        #expect(second.schedule(in: snapshot)?.scheduledDate == date(2026, 7, 3))
+        #expect(first.schedule(in: snapshot)?.includesTime == false)
+        #expect(first.editableScheduledItem(in: snapshot) == nil)
+        #expect(first.recurrenceTemplate(in: snapshot)?.id == template.id)
+
+        let series = NotesDestination.template(template.id)
+        #expect(series.schedule(in: snapshot)?.scheduledDate == todo.scheduledDate)
+        #expect(series.editableScheduledItem(in: snapshot)?.id == todo.id)
+    }
+
+    @Test func virtualNotesRetainProjectedStartAndEndTime() throws {
+        let context = try makeContext()
+        let todo = Todo(
+            title: "Office hours",
+            scheduledDate: date(2026, 7, 1, hour: 9, minute: 30),
+            includesTime: true,
+            endDate: date(2026, 7, 1, hour: 11),
+            order: "i"
+        )
+        context.insert(todo)
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: .relative(every: 1, unit: .day),
+            in: context,
+            calendar: calendar
+        )
+        let item = try #require(
+            try project(
+                template,
+                in: context,
+                starting: date(2026, 7, 2),
+                through: date(2026, 7, 2)
+            ).items.first
+        )
+        let snapshot = try SwiftDataNagareRepository(
+            modelContainer: context.container
+        ).load()
+        let destination = NotesDestination(item)
+        let schedule = try #require(destination.schedule(in: snapshot))
+
+        #expect(schedule.scheduledDate == date(2026, 7, 2, hour: 9, minute: 30))
+        #expect(schedule.includesTime)
+        #expect(schedule.endDate == date(2026, 7, 2, hour: 11))
+        #expect(destination.editableScheduledItem(in: snapshot) == nil)
+    }
+
+    @Test func lastScheduledOccurrenceStillOpensItsRepeatEditor() throws {
+        let context = try makeContext()
+        let todo = insertTodo("Final repeat", day: date(2026, 7, 1), into: context)
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: .relative(
+                every: 1,
+                unit: .day,
+                repeatUntil: todo.scheduledDate,
+                calendar: calendar
+            ),
+            in: context
+        )
+        try context.save()
+        let snapshot = try SwiftDataNagareRepository(
+            modelContainer: context.container
+        ).load()
+        let destination = NotesDestination.todo(todo.id)
+
+        #expect(destination.recordID == .todo(todo.id))
+        #expect(destination.editableScheduledItem(in: snapshot)?.id == todo.id)
+        #expect(destination.recurrenceTemplate(in: snapshot)?.id == template.id)
+    }
+
+    @Test func completedOccurrenceNotesOpenTheOngoingSeriesEditor() throws {
+        let context = try makeContext()
+        let todo = insertTodo("Practice", day: date(2026, 7, 1), into: context)
+        let template = try RecurrencePersistence.createTemplate(
+            for: todo,
+            rule: .relative(every: 1, unit: .day),
+            in: context
+        )
+        let next = try #require(
+            try RecurrencePersistence.complete(
+                todo,
+                at: date(2026, 7, 1, hour: 17),
+                in: context,
+                calendar: calendar
+            )
+        )
+        try context.save()
+        let snapshot = try SwiftDataNagareRepository(
+            modelContainer: context.container
+        ).load()
+        let destination = NotesDestination.todo(todo.id)
+        let series = try #require(destination.recurrenceTemplate(in: snapshot))
+
+        #expect(destination.schedule(in: snapshot)?.scheduledDate == todo.scheduledDate)
+        #expect(series.id == template.id)
+        #expect(series.currentItemID == next.id)
+        #expect(series.currentScheduledDate == next.scheduledDate)
+    }
+
     @Test func templateFirstImportWaitsWithoutFailingProjection() throws {
         let context = try makeContext()
         let todo = insertTodo(

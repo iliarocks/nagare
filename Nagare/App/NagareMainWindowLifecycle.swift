@@ -20,6 +20,7 @@ struct NagareMainWindowLifecycle: NSViewRepresentable {
                 object: nil
             )
             guard let window else { return }
+            window.tabbingMode = .disallowed
             NotificationCenter.default.addObserver(
                 self,
                 selector: #selector(mainWindowWillClose),

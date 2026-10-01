@@ -13,6 +13,11 @@ not change with the device.
   used for temporary layers, not as decoration on every row.
 - Item rows use one shared rhythm: a full-width hit target, comfortable
   vertical padding, and a neutral grouped background for adjacent selections.
+- Projects have two priority states: normal and prioritized. In Today and
+  Upcoming, active items inherit a faint accent halo around their completion
+  control, or their repeat icon for future items. Priority does not change item order. Project
+  detail and completed lists do not repeat this emphasis; desktop selection
+  keeps its neutral grouped background.
 
 ## Interaction hierarchy
 
@@ -26,6 +31,9 @@ not change with the device.
   be changed together.
 - Destructive actions remain explicit and use platform-standard confirmation
   or destructive roles.
+- Repeating-item notes always open the series editor from the repeat control.
+  A future occurrence displays its own projected date without allowing that
+  date to be edited.
 
 ## Layout and motion
 

@@ -8,14 +8,21 @@ nonisolated enum ProjectPriority:
     Hashable,
     Sendable
 {
-    case low = 0
     case normal = 1
     case high = 2
 
-    static let displayOrder: [ProjectPriority] = [.high, .normal, .low]
+    static let displayOrder: [ProjectPriority] = [.high, .normal]
 
     init(isPriority: Bool) {
         self = isPriority ? .high : .normal
+    }
+
+    init(storedRawValue: Int?, isPriority: Bool) {
+        // Raw zero was the former low tier. Both lower tiers are now regular.
+        self = storedRawValue == 0
+            ? .normal
+            : storedRawValue.flatMap(Self.init(rawValue:))
+                ?? Self(isPriority: isPriority)
     }
 
     var higher: ProjectPriority? {

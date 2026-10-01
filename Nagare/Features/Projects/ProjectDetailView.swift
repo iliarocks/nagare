@@ -4,7 +4,6 @@ struct ProjectDetailView: View {
     @NagareDataStoreEnvironment private var dataStore
 
     let project: ProjectRecordSnapshot
-    let onOpenUpcomingDate: (Date) -> Void
 
     @State private var isCreatingItem = false
     @State private var title: String
@@ -31,12 +30,8 @@ struct ProjectDetailView: View {
         dataStore.snapshot.projectsByID[project.id] ?? project
     }
 
-    init(
-        project: ProjectRecordSnapshot,
-        onOpenUpcomingDate: @escaping (Date) -> Void = { _ in }
-    ) {
+    init(project: ProjectRecordSnapshot) {
         self.project = project
-        self.onOpenUpcomingDate = onOpenUpcomingDate
         _title = State(initialValue: project.title)
         _notes = State(initialValue: project.notes ?? "")
         _lastLoadedProject = State(initialValue: project)
@@ -92,11 +87,7 @@ struct ProjectDetailView: View {
         .nagareModal(item: $notesDestination, onDismiss: resetNotesSheet) {
             NotesSheet(
                 destination: $0,
-                detent: $notesDetent,
-                onOpenUpcomingDate: { date in
-                    notesDestination = nil
-                    onOpenUpcomingDate(date)
-                }
+                detent: $notesDetent
             )
                 .id($0.id)
         }

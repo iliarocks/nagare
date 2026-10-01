@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TodoRow: View {
     let todo: TodoRecordSnapshot
+    var isPrioritized = false
     let onOpen: () -> Void
     let onToggleSelection: () -> Void
     let onComplete: () -> Void
@@ -30,6 +31,7 @@ struct TodoRow: View {
                     }
                 }
             }
+            .accessibilityValue(isPrioritized ? "Prioritized project" : "")
             .accessibilityAction(named: "Change Date and Time", onChangeDate)
             .accessibilityAction(named: "Delete", onDelete)
 
@@ -41,6 +43,7 @@ struct TodoRow: View {
                 )
                     .font(.title3)
                     .contentTransition(.symbolEffect(.replace))
+                    .nagarePriorityHalo(isPrioritized)
             }
             .buttonStyle(.plain)
             .foregroundStyle(

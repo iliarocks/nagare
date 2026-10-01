@@ -52,7 +52,7 @@ struct DataImportIntegrationTests {
 
         var snapshot = try repository.load()
         #expect(snapshot.projects.count == 1)
-        #expect(snapshot.projectsByID[projectID]?.priority == .low)
+        #expect(snapshot.projectsByID[projectID]?.priority == .normal)
         #expect(snapshot.todos.count == 3)
         #expect(snapshot.recurrenceTemplates.count == 1)
         #expect(snapshot.todosByID[unrelatedID]?.title == "Local only")
@@ -154,6 +154,72 @@ struct DataImportIntegrationTests {
         #expect(snapshot.projectsByID[projectID]?.isPriority == false)
     }
 
+    @Test func legacyArchiveMergesLowAfterExistingAndImportedRegularProjects() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let existing = Project(title: "Local regular", order: "z")
+        let priority = Project(title: "Priority", priority: .high, order: "i")
+        context.insert(existing)
+        context.insert(priority)
+        try context.save()
+        let regularID = UUID()
+        let firstLowID = UUID()
+        let secondLowID = UUID()
+        let json = """
+        {
+          "formatVersion": 2,
+          "exportedAt": "2027-01-01T00:00:00Z",
+          "projects": [
+            {
+              "id": "\(secondLowID.uuidString)",
+              "createdAt": "2027-01-01T00:00:00Z",
+              "title": "Second low",
+              "isPriority": false,
+              "priorityRawValue": 0,
+              "order": "b"
+            },
+            {
+              "id": "\(regularID.uuidString)",
+              "createdAt": "2027-01-01T00:00:00Z",
+              "title": "Imported regular",
+              "isPriority": false,
+              "priorityRawValue": 1,
+              "order": "m"
+            },
+            {
+              "id": "\(firstLowID.uuidString)",
+              "createdAt": "2027-01-01T00:00:00Z",
+              "title": "First low",
+              "isPriority": true,
+              "priorityRawValue": 0,
+              "order": "a"
+            }
+          ],
+          "todos": [],
+          "recurrenceTemplates": []
+        }
+        """
+        let archive = try NagareDataArchiveCodec.decode(Data(json.utf8))
+        let repository = SwiftDataNagareRepository(modelContainer: container)
+        let plan = try NagareDataArchivePlanner.planImport(
+            archive, into: repository.load(), calendar: calendar
+        )
+
+        try repository.importData(plan, at: day)
+
+        let snapshot = try repository.load()
+        let regular = snapshot.projects.filter { !$0.isPriority }.sorted {
+            $0.order < $1.order
+        }
+        #expect(regular.map(\.id) == [regularID, existing.id, firstLowID, secondLowID])
+        #expect(snapshot.projectsByID[priority.id]?.priority == .high)
+        #expect(snapshot.projectsByID[priority.id]?.order == "i")
+        let exported = try NagareDataArchiveCodec.decode(
+            NagareDataArchiveCodec.encode(snapshot, exportedAt: day)
+        )
+        #expect(exported.projects.allSatisfy { $0.priorityRawValue != 0 })
+    }
+
     private var calendar: Calendar {
         var value = Calendar(identifier: .gregorian)
         value.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -187,7 +253,7 @@ struct DataImportIntegrationTests {
                     title: "Imported project",
                     notes: "Notes",
                     isPriority: false,
-                    priority: .low,
+                    priority: .normal,
                     order: "a"
                 )
             ],

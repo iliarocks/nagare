@@ -101,8 +101,10 @@ final class Project: Note, SyncRecord {
 extension Project {
     var priority: ProjectPriority {
         get {
-            priorityRawValue.flatMap(ProjectPriority.init(rawValue:))
-                ?? ProjectPriority(isPriority: isPriority)
+            ProjectPriority(
+                storedRawValue: priorityRawValue,
+                isPriority: isPriority
+            )
         }
         set {
             priorityRawValue = newValue.rawValue

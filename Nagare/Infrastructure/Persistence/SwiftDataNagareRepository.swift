@@ -105,8 +105,12 @@ final class SwiftDataNagareRepository:
     func load() throws -> NagareDataSnapshot {
         let context = makeContext()
         do {
+            let projects = try context.fetch(FetchDescriptor<Project>())
+            if try ProjectPersistence.migrateLegacyPriorities(in: projects) {
+                try SwiftDataTransaction.savePreservingMetadata(context)
+            }
             return NagareDataSnapshot(
-                projects: try context.fetch(FetchDescriptor<Project>()).map {
+                projects: projects.map {
                     ProjectRecordSnapshot(
                         id: $0.id,
                         syncRecordID: $0.syncRecordID,
@@ -209,9 +213,15 @@ final class SwiftDataNagareRepository:
                 project.title = source.title
                 project.notes = source.notes
                 project.priority = source.priority
+                // Keep the legacy tier until its order is merged below.
+                if source.priorityRawValue == 0 { project.priorityRawValue = 0 }
                 project.order = source.order
                 projectsByID[source.id] = project
             }
+
+            try ProjectPersistence.migrateLegacyPriorities(
+                in: context.fetch(FetchDescriptor<Project>())
+            )
 
             var templatesByID: [UUID: RecurrenceTemplate] = [:]
             for source in plan.recurrenceTemplates {

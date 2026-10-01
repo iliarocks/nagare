@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VirtualItemRow: View {
     let item: VirtualItem
+    var isPrioritized = false
     let onOpen: () -> Void
     let onChangeRepeat: () -> Void
     let onDelete: () -> Void
@@ -24,11 +25,13 @@ struct VirtualItemRow: View {
                 Image(systemName: "repeat")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .nagarePriorityHalo(isPrioritized)
                     .accessibilityHidden(true)
             }
         }
         .padding(.vertical, 4)
         .accessibilityLabel("\(item.template.title), future repeating item")
+        .accessibilityValue(isPrioritized ? "Prioritized project" : "")
         .nagareMobileSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")

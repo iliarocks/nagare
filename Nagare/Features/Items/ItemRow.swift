@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ItemRow: View {
     let item: ItemRecordSnapshot
+    var isPrioritized = false
     let onOpen: (ItemRecordSnapshot) -> Void
     let onToggleSelection: () -> Void
     let onComplete: (TodoRecordSnapshot) -> Void
@@ -12,6 +13,7 @@ struct ItemRow: View {
     var body: some View {
         TodoRow(
             todo: item,
+            isPrioritized: isPrioritized,
             onOpen: { onOpen(item) },
             onToggleSelection: onToggleSelection,
             onComplete: { onComplete(item) },

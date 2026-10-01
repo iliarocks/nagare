@@ -18,12 +18,20 @@ struct ProjectTests {
     }
 
     @Test func prioritiesExposeOnlyAdjacentAvailableMoves() {
+        #expect(ProjectPriority.allCases == [.normal, .high])
+        #expect(ProjectPriority.displayOrder == [.high, .normal])
         #expect(ProjectPriority.high.higher == nil)
         #expect(ProjectPriority.high.lower == .normal)
         #expect(ProjectPriority.normal.higher == .high)
-        #expect(ProjectPriority.normal.lower == .low)
-        #expect(ProjectPriority.low.higher == .normal)
-        #expect(ProjectPriority.low.lower == nil)
+        #expect(ProjectPriority.normal.lower == nil)
+    }
+
+    @Test func storedPriorityPreservesLegacyBooleanAndCollapsesLow() {
+        #expect(ProjectPriority(storedRawValue: nil, isPriority: true) == .high)
+        #expect(ProjectPriority(storedRawValue: nil, isPriority: false) == .normal)
+        #expect(ProjectPriority(storedRawValue: 0, isPriority: true) == .normal)
+        #expect(ProjectPriority(storedRawValue: 1, isPriority: true) == .normal)
+        #expect(ProjectPriority(storedRawValue: 2, isPriority: false) == .high)
     }
 
     @Test func movingProjectBetweenTiersOnlyChangesProjectPlacement() throws {
@@ -60,20 +68,135 @@ struct ProjectTests {
         #expect(snapshot.projectsByID[priority.id]?.priority == .high)
     }
 
-    @Test func movingProjectAcrossNormalAndLowRespectsDropPosition() throws {
+    @Test func deprioritizingProjectRespectsDropPosition() throws {
         let context = try makeContext()
-        let normal = Project(title: "Normal", order: "a")
-        let firstLow = Project(title: "First low", priority: .low, order: "a")
-        let secondLow = Project(title: "Second low", priority: .low, order: "b")
-        [normal, firstLow, secondLow].forEach { context.insert($0) }
+        let priority = Project(title: "Priority", priority: .high, order: "a")
+        let first = Project(title: "First", order: "a")
+        let second = Project(title: "Second", order: "b")
+        [priority, first, second].forEach { context.insert($0) }
         try context.save()
         let commands = orderingCommands(in: context)
-        let low = try commands.moveProjects([normal.id], toPriority: .low, before: secondLow.id, at: date(day: 1))
-        #expect(low.projectsByID[normal.id]?.priority == .low)
-        #expect(low.projectsByID[firstLow.id]!.order < low.projectsByID[normal.id]!.order)
-        #expect(low.projectsByID[normal.id]!.order < low.projectsByID[secondLow.id]!.order)
-        let restored = try commands.moveProjects([normal.id], toPriority: .normal, before: nil, at: date(day: 1))
-        #expect(restored.projectsByID[normal.id]?.priority == .normal)
+        let snapshot = try commands.moveProjects(
+            [priority.id], toPriority: .normal, before: second.id, at: date(day: 1)
+        )
+        #expect(snapshot.projectsByID[priority.id]?.priority == .normal)
+        #expect(snapshot.projectsByID[first.id]!.order < snapshot.projectsByID[priority.id]!.order)
+        #expect(snapshot.projectsByID[priority.id]!.order < snapshot.projectsByID[second.id]!.order)
+    }
+
+    @Test func loadingLegacyLowProjectsPreservesGroupOrderAndMetadata() throws {
+        let context = try makeContext()
+        let first = Project(title: "First regular", order: "m")
+        let second = Project(title: "Second regular", order: "z")
+        let firstLow = Project(title: "First low", order: "a")
+        let secondLow = Project(title: "Second low", order: "b")
+        let priority = Project(title: "Priority", priority: .high, order: "i")
+        firstLow.priorityRawValue = 0
+        secondLow.priorityRawValue = 0
+        let projects = [secondLow, second, priority, firstLow, first]
+        projects.forEach { context.insert($0) }
+        let todo = insertTodo(
+            "Child", order: "r", projectOrder: "f", project: firstLow, into: context
+        )
+        try context.save()
+        let originalMetadata = Dictionary(uniqueKeysWithValues: projects.map {
+            ($0.id, ($0.createdAt, $0.modifiedAt, $0.syncRecordID))
+        })
+        let repository = SwiftDataNagareRepository(modelContainer: context.container)
+
+        let snapshot = try repository.load()
+        let regular = snapshot.projects.filter { !$0.isPriority }.sorted {
+            $0.order < $1.order
+        }
+        #expect(regular.map(\.id) == [first.id, second.id, firstLow.id, secondLow.id])
+        #expect(snapshot.projectsByID[first.id]?.order == "m")
+        #expect(snapshot.projectsByID[second.id]?.order == "z")
+        #expect(snapshot.projectsByID[priority.id]?.priority == .high)
+        #expect(snapshot.projectsByID[priority.id]?.order == "i")
+        #expect(snapshot.todosByID[todo.id]?.projectID == firstLow.id)
+        #expect(snapshot.todosByID[todo.id]?.order == "r")
+        #expect(snapshot.todosByID[todo.id]?.projectOrder == "f")
+        for project in snapshot.projects {
+            let original = try #require(originalMetadata[project.id])
+            #expect(project.createdAt == original.0)
+            #expect(project.modifiedAt == original.1)
+            #expect(project.syncRecordID == original.2)
+        }
+        let stored = try ModelContext(context.container).fetch(FetchDescriptor<Project>())
+        #expect(stored.allSatisfy { $0.priorityRawValue != 0 })
+        #expect(try repository.load() == snapshot)
+    }
+
+    @Test func laterLegacyPriorityImportsAppendWithoutReorderingMigratedProjects() throws {
+        let context = try makeContext()
+        let regular = Project(title: "Regular", order: "z")
+        let earlierArrival = Project(title: "Second legacy low", order: "b")
+        earlierArrival.priorityRawValue = 0
+        context.insert(regular)
+        context.insert(earlierArrival)
+        try context.save()
+        let repository = SwiftDataNagareRepository(modelContainer: context.container)
+        let before = try repository.load()
+
+        let laterArrival = Project(title: "First legacy low", order: "a")
+        laterArrival.priorityRawValue = 0
+        context.insert(laterArrival)
+        try context.save()
+        let after = try repository.load()
+
+        for project in before.projects {
+            #expect(after.projectsByID[project.id]?.order == project.order)
+            #expect(after.projectsByID[project.id]?.modifiedAt == project.modifiedAt)
+        }
+        #expect(after.projects.sorted { $0.order < $1.order }.map(\.id)
+            == [regular.id, earlierArrival.id, laterArrival.id])
+        #expect(after.projects.allSatisfy { $0.priority == .normal })
+    }
+
+    @Test func normalProjectsArrivingAfterLowMigrationKeepTheirStoredPosition() throws {
+        let context = try makeContext()
+        let low = Project(title: "Earlier low", order: "a")
+        low.priorityRawValue = 0
+        context.insert(low)
+        try context.save()
+        let repository = SwiftDataNagareRepository(modelContainer: context.container)
+        let before = try repository.load()
+        let migrated = try #require(before.projectsByID[low.id])
+
+        // A later normal record has no migration marker. Its existing key
+        // remains authoritative even when it follows a former low project.
+        let normal = Project(title: "Later regular", order: "z")
+        context.insert(normal)
+        try context.save()
+        let after = try repository.load()
+
+        #expect(after.projectsByID[low.id] == migrated)
+        #expect(after.projectsByID[normal.id]?.order == "z")
+        #expect(after.projectsByID[normal.id]?.modifiedAt == normal.modifiedAt)
+        #expect(after.projects.sorted { $0.order < $1.order }.map(\.id)
+            == [low.id, normal.id])
+        #expect(after.projects.allSatisfy { $0.priority == .normal })
+        #expect(try repository.load() == after)
+    }
+
+    @Test func legacyPriorityMigrationWaitsForDuplicateReconciliation() throws {
+        let context = try makeContext()
+        let id = UUID()
+        let low = Project(id: id, title: "Old low", order: "a")
+        low.priorityRawValue = 0
+        let priority = Project(id: id, title: "Priority", priority: .high, order: "b")
+        context.insert(low)
+        context.insert(priority)
+        try context.save()
+
+        let snapshot = try SwiftDataNagareRepository(
+            modelContainer: context.container
+        ).load()
+
+        #expect(snapshot.projects.count == 2)
+        #expect(low.priorityRawValue == 0)
+        #expect(priority.priority == .high)
+        #expect(priority.order == "b")
     }
 
     @Test func projectItemMoveDoesNotChangeDateOrderOrSchedule() throws {

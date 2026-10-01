@@ -46,8 +46,10 @@ nonisolated struct NagareArchiveProject: Codable, Equatable, Sendable {
     let order: String
 
     var priority: ProjectPriority {
-        priorityRawValue.flatMap(ProjectPriority.init(rawValue:))
-            ?? ProjectPriority(isPriority: isPriority)
+        ProjectPriority(
+            storedRawValue: priorityRawValue,
+            isPriority: isPriority
+        )
     }
 
     init(_ project: ProjectRecordSnapshot) {

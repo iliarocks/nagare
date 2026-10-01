@@ -4,6 +4,30 @@ import XCTest
 
 final class WindowLifecycleUITests: XCTestCase {
     @MainActor
+    func testWindowTabCommandsAreUnavailable() throws {
+        let app = launchApp()
+
+        assertNoTabCommands(in: "View", app: app)
+        assertNoTabCommands(in: "Window", app: app)
+        assertNoTabCommands(in: "File", app: app)
+
+        // The standard new-tab shortcut must not open another main window.
+        app.typeKey("t", modifierFlags: .command)
+        XCTAssertEqual(
+            app.windows.containing(.outline, identifier: "Sidebar").count,
+            1
+        )
+
+        // Supporting windows remain separate and cannot expose tab controls.
+        let settings = openSettings(in: app)
+        assertNoTabCommands(in: "View", app: app)
+        settings.buttons["Completed Items"].click()
+        XCTAssertTrue(completedWindow(in: app).waitForExistence(timeout: 5))
+        assertNoTabCommands(in: "View", app: app)
+        assertNoTabCommands(in: "Window", app: app)
+    }
+
+    @MainActor
     func testClosingMainWindowQuitsApplication() throws {
         let app = launchApp()
 
@@ -120,6 +144,25 @@ final class WindowLifecycleUITests: XCTestCase {
         let restoredNotes = app.textViews["Project Notes"]
         XCTAssertTrue(restoredNotes.waitForExistence(timeout: 5))
         XCTAssertEqual(restoredNotes.value as? String, savedNotes)
+    }
+
+    @MainActor
+    private func assertNoTabCommands(in menu: String, app: XCUIApplication) {
+        let menuItem = app.menuBars.menuBarItems[menu]
+        // AppKit can omit a menu once its last automatic command is removed.
+        guard menuItem.exists else { return }
+        menuItem.click()
+        for command in [
+            "New Tab", "Show Tab Bar", "Hide Tab Bar", "Show All Tabs",
+            "Show Next Tab", "Show Previous Tab", "Move Tab to New Window",
+            "Merge All Windows"
+        ] {
+            XCTAssertFalse(
+                app.menuItems[command].exists,
+                "Unexpected tab command in \(menu): \(command)"
+            )
+        }
+        app.typeKey(.escape, modifierFlags: [])
     }
 
     @MainActor

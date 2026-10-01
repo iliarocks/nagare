@@ -83,8 +83,7 @@ struct RootView: View {
         ) { destination in
             NotesSheet(
                 destination: destination,
-                detent: $notesDetent,
-                onOpenUpcomingDate: openUpcoming
+                detent: $notesDetent
             )
                 .id(destination.id)
         }
@@ -153,10 +152,7 @@ struct RootView: View {
                             if let project = projects.first(where: {
                                 $0.id == projectID
                             }) {
-                                ProjectDetailView(
-                                    project: project,
-                                    onOpenUpcomingDate: openUpcoming
-                                )
+                                ProjectDetailView(project: project)
                             } else {
                                 ContentUnavailableView(
                                     "Project Not Found",
@@ -239,10 +235,7 @@ struct RootView: View {
     @ViewBuilder
     private func projectDestination(for projectID: UUID) -> some View {
         if let project = projects.first(where: { $0.id == projectID }) {
-            ProjectDetailView(
-                project: project,
-                onOpenUpcomingDate: openUpcoming
-            )
+            ProjectDetailView(project: project)
         } else {
             ContentUnavailableView(
                 "Project Not Found",
@@ -303,12 +296,6 @@ struct RootView: View {
         notesDetent = .medium
     }
 
-    private func openUpcoming(_ date: Date) {
-        notesDestination = nil
-        upcomingTargetDate = Calendar.autoupdatingCurrent.startOfDay(for: date)
-        selectedSection = .upcoming
-    }
-
     private func beginManualCreate() {
         isCreatingItem = true
     }
@@ -335,20 +322,9 @@ struct RootView: View {
 struct NotesSheet: View {
     let destination: NotesDestination
     @Binding var detent: PresentationDetent
-    let onOpenUpcomingDate: (Date) -> Void
-
-    init(
-        destination: NotesDestination,
-        detent: Binding<PresentationDetent>,
-        onOpenUpcomingDate: @escaping (Date) -> Void = { _ in }
-    ) {
-        self.destination = destination
-        _detent = detent
-        self.onOpenUpcomingDate = onOpenUpcomingDate
-    }
 
     var body: some View {
-        notesView
+        NotesView(destination: destination)
             .nagareDocumentSheetFrame()
             .nagareSheetDetents(
                 [.medium, .large],
@@ -357,13 +333,6 @@ struct NotesSheet: View {
             .presentationDragIndicator(.visible)
     }
 
-    @ViewBuilder
-    private var notesView: some View {
-        NotesView(
-            id: destination.recordID,
-            onOpenUpcomingDate: onOpenUpcomingDate
-        )
-    }
 }
 
 #Preview {

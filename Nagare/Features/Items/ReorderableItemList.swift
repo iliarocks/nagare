@@ -19,6 +19,7 @@ struct ReorderableItemGroup: Identifiable {
 }
 
 struct ReorderableItemList: View {
+    @NagareDataStoreEnvironment private var dataStore
     let groups: [ReorderableItemGroup]
     let showsDateHeaders: Bool
     @Binding var scrollTargetDate: Date?
@@ -108,10 +109,13 @@ struct ReorderableItemList: View {
 
     @ViewBuilder
     private var listRows: some View {
+        let prioritizedProjectIDs = Set(
+            dataStore.projects.filter(\.isPriority).map(\.id)
+        )
         if showsDateHeaders {
             ForEach(groups) { group in
                 Section {
-                    rows(for: group)
+                    rows(for: group, prioritizedProjectIDs: prioritizedProjectIDs)
                 } header: {
                     Text(upcomingHeaderTitle(for: group.date))
                     .nagareDateSectionHeader(
@@ -122,7 +126,7 @@ struct ReorderableItemList: View {
                 .id(group.date)
             }
         } else if let group = groups.first {
-            rows(for: group)
+            rows(for: group, prioritizedProjectIDs: prioritizedProjectIDs)
         }
     }
 
@@ -153,10 +157,14 @@ struct ReorderableItemList: View {
     }
 
     @ViewBuilder
-    private func rows(for group: ReorderableItemGroup) -> some View {
+    private func rows(
+        for group: ReorderableItemGroup,
+        prioritizedProjectIDs: Set<UUID>
+    ) -> some View {
         ForEach(group.items) { item in
             ItemRow(
                 item: item,
+                isPrioritized: item.projectID.map(prioritizedProjectIDs.contains) ?? false,
                 onOpen: onOpen,
                 onToggleSelection: { toggleSelection(of: item.id) },
                 onComplete: onComplete,
@@ -169,6 +177,7 @@ struct ReorderableItemList: View {
                     for: item.id,
                     in: group.items
                 ),
+                isPrioritized: item.projectID.map(prioritizedProjectIDs.contains) ?? false,
                 toggle: { toggleSelection(of: item.id) }
             )
         }
@@ -178,6 +187,7 @@ struct ReorderableItemList: View {
         ForEach(group.virtualItems) { item in
             VirtualItemRow(
                 item: item,
+                isPrioritized: item.template.projectID.map(prioritizedProjectIDs.contains) ?? false,
                 onOpen: { onOpenVirtual(item) },
                 onChangeRepeat: {
                     recurrenceTemplateBeingEdited = item.template

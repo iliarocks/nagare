@@ -19,7 +19,7 @@ struct NagareDataArchiveTests {
                     modifiedAt: day,
                     title: "Project",
                     notes: "Project notes",
-                    priority: .low,
+                    priority: .normal,
                     order: "a"
                 )
             ],
@@ -97,7 +97,30 @@ struct NagareDataArchiveTests {
         #expect(!json.contains("modifiedAt"))
         #expect(json.contains("calendar-event-id"))
         #expect(json.contains("repeatUntil"))
-        #expect(decoded.projects.first?.priority == .low)
+        #expect(decoded.projects.first?.priority == .normal)
+    }
+
+    @Test func decoderCollapsesLegacyLowEvenWithStalePriorityBoolean() throws {
+        let json = """
+        {
+          "formatVersion": 2,
+          "exportedAt": "2027-01-01T00:00:00Z",
+          "projects": [{
+            "id": "\(UUID().uuidString)",
+            "createdAt": "2027-01-01T00:00:00Z",
+            "title": "Legacy low",
+            "isPriority": true,
+            "priorityRawValue": 0,
+            "order": "a"
+          }],
+          "todos": [],
+          "recurrenceTemplates": []
+        }
+        """
+
+        let archive = try NagareDataArchiveCodec.decode(Data(json.utf8))
+        #expect(archive.projects.first?.priority == .normal)
+        #expect(archive.projects.first?.priorityRawValue == 0)
     }
 
     @Test func decoderTreatsMissingRepeatUntilAsIndefinite() throws {

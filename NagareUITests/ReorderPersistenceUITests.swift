@@ -596,12 +596,12 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 2))
         XCTAssertLessThan(project.frame.maxY, title.frame.minY)
         XCTAssertGreaterThan(project.frame.minX, date.frame.maxX)
+        XCTAssertTrue(app.buttons["Notes Repeat"].exists)
         project.tap()
 
         XCTAssertTrue(app.buttons["No project"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Priority Project UI"].exists)
         XCTAssertTrue(app.buttons["Background Project UI"].exists)
-        XCTAssertTrue(app.buttons["Notes Repeat"].exists)
         XCTAssertFalse(app.buttons["Projects"].isSelected)
     }
 
@@ -764,7 +764,7 @@ final class ReorderPersistenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testCurrentRecurrenceInstanceDoesNotExposeTemplateControls() throws {
+    func testCurrentRecurrenceNotesOpenRepeatEditor() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "--use-reorder-ui-test-store",
@@ -790,15 +790,8 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Stop Repeating"].exists)
 
         repeatButton.tap()
-        XCTAssertTrue(app.buttons["Upcoming"].isSelected)
-        XCTAssertTrue(
-            app.buttons.matching(
-                NSPredicate(
-                    format: "label CONTAINS %@",
-                    "Recurring Future UI"
-                )
-            ).firstMatch.waitForExistence(timeout: 5)
-        )
+        XCTAssertTrue(app.staticTexts["Every"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Upcoming"].isSelected)
     }
 
     @MainActor
@@ -835,6 +828,13 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(date.waitForExistence(timeout: 2))
         XCTAssertTrue(project.waitForExistence(timeout: 2))
         XCTAssertTrue(project.isHittable)
+        XCTAssertFalse(date.isEnabled)
+        let tomorrow = Calendar.autoupdatingCurrent.date(
+            byAdding: .day,
+            value: 1,
+            to: .now
+        )!
+        XCTAssertEqual(date.label, tomorrow.formatted(.dateTime.month(.abbreviated).day()))
         let repeatButton = app.buttons["Notes Repeat"]
         XCTAssertTrue(repeatButton.waitForExistence(timeout: 2))
         XCTAssertGreaterThan(project.frame.minX, date.frame.maxX)
@@ -992,7 +992,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         background.swipeRight()
         let prioritize = app.buttons["Prioritize"]
         XCTAssertTrue(prioritize.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Deprioritize"].exists)
+        XCTAssertFalse(app.buttons["Deprioritize"].exists)
         prioritize.tap()
 
         app.terminate()
@@ -1028,9 +1028,7 @@ final class ReorderPersistenceUITests: XCTestCase {
         XCTAssertTrue(
             relaunchedApp.buttons["Prioritize"].waitForExistence(timeout: 2)
         )
-        let moveToLow = relaunchedApp.buttons["Deprioritize"]
-        XCTAssertTrue(moveToLow.exists)
-        moveToLow.tap()
+        XCTAssertFalse(relaunchedApp.buttons["Deprioritize"].exists)
 
         relaunchedApp.terminate()
 
@@ -1071,6 +1069,15 @@ final class ReorderPersistenceUITests: XCTestCase {
             first.frame.minY,
             "Dragging a project row should reorder its own section"
         )
+        // Native drag previews can already show the destination order before
+        // the drop callback commits it. Reopen the list to check model state.
+        app.buttons["Today"].tap()
+        app.buttons["Projects"].tap()
+        let committedFirst = project(named: "Background Project UI", in: app)
+        let committedSecond = project(named: "Background Project Second UI", in: app)
+        XCTAssertTrue(committedFirst.waitForExistence(timeout: 5))
+        XCTAssertTrue(committedSecond.waitForExistence(timeout: 2))
+        XCTAssertLessThan(committedSecond.frame.minY, committedFirst.frame.minY)
 
         app.terminate()
 

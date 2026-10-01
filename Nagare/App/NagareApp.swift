@@ -4,6 +4,8 @@ import SwiftData
 import SwiftUI
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 enum NagareWindowID {
@@ -41,6 +43,9 @@ struct NagareApp: App {
     init() {
 #if os(iOS)
         Self.configureMobileNavigationAppearance()
+#elseif os(macOS)
+        // Disable AppKit's tab menu commands before any scene creates a window.
+        NSWindow.allowsAutomaticWindowTabbing = false
 #endif
         let processInfo = ProcessInfo.processInfo
         let arguments = processInfo.arguments
@@ -188,6 +193,7 @@ struct NagareApp: App {
 #if os(macOS)
         WindowGroup {
             startupContent
+                .preferredColorScheme(uiTestColorScheme)
                 .background(NagareMainWindowLifecycle())
                 .windowFullScreenBehavior(.disabled)
         }
@@ -212,8 +218,19 @@ struct NagareApp: App {
 #else
         WindowGroup {
             startupContent
+                .preferredColorScheme(uiTestColorScheme)
         }
 #endif
+    }
+
+    private var uiTestColorScheme: ColorScheme? {
+#if DEBUG
+        if arguments.contains("--use-reorder-ui-test-store") {
+            if arguments.contains("--ui-test-dark") { return .dark }
+            if arguments.contains("--ui-test-light") { return .light }
+        }
+#endif
+        return nil
     }
 
     @ViewBuilder

@@ -133,7 +133,7 @@ struct UpcomingView: View {
                     scrollTargetDate: $scrollTargetDate,
                     onOpen: { onOpenNotes(NotesDestination($0)) },
                     onOpenVirtual: {
-                        onOpenNotes(.template($0.template.id))
+                        onOpenNotes(NotesDestination($0))
                     },
                     onComplete: complete,
                     onDelete: delete,

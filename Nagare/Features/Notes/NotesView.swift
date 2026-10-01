@@ -3,8 +3,7 @@ import SwiftUI
 struct NotesView: View {
     @NagareDataStoreEnvironment private var dataStore
 
-    let id: NoteRecordID
-    let onOpenUpcomingDate: (Date) -> Void
+    let destination: NotesDestination
 
     @State private var title = ""
     @State private var notes = ""
@@ -16,16 +15,8 @@ struct NotesView: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: NagareEditorField?
 
-    init(
-        id: NoteRecordID,
-        onOpenUpcomingDate: @escaping (Date) -> Void = { _ in }
-    ) {
-        self.id = id
-        self.onOpenUpcomingDate = onOpenUpcomingDate
-    }
-
     private var record: NoteRecordSnapshot? {
-        dataStore.snapshot.note(for: id)
+        dataStore.snapshot.note(for: destination.recordID)
     }
 
     var body: some View {
@@ -70,16 +61,16 @@ struct NotesView: View {
         NavigationStack {
             editorContent(record)
                 .nagareEditorMetadataChrome(
-                    scheduleTitle: scheduleTitle(for: record),
+                    scheduleTitle: scheduleTitle,
                     scheduleAccessibilityIdentifier: "Notes Date",
                     projects: dataStore.projects,
                     selectedProject: selectedProject(for: record),
                     hasRepeat: hasRepeat(record),
                     projectAccessibilityIdentifier: "Notes Project",
                     repeatAccessibilityIdentifier: "Notes Repeat",
-                    onSchedule: scheduleAction(for: record),
+                    onSchedule: scheduleAction,
                     onSelectProject: { assign($0, to: record) },
-                    onRepeat: repeatAction(for: record)
+                    onRepeat: repeatAction
                 )
         }
     }
@@ -115,61 +106,29 @@ struct NotesView: View {
         }
     }
 
-    private func repeatAction(
-        for record: NoteRecordSnapshot
-    ) -> (() -> Void)? {
-        switch record {
-        case .recurrenceTemplate(let template):
-            return {
-                focusedField = nil
-                recurrenceTemplateBeingEdited = template
-            }
-        case .todo(let todo):
-            guard let templateID = todo.recurrenceTemplateID else {
-                return nil
-            }
-
-            guard let template = dataStore.snapshot.templatesByID[templateID]
-            else {
-                return nil
-            }
-
-            guard let nextDate = RecurrencePresentation.nextDate(
-                after: todo.scheduledDate,
-                for: template
-            ) else { return nil }
-
-            return {
-                focusedField = nil
-                onOpenUpcomingDate(nextDate)
-            }
+    private var repeatAction: (() -> Void)? {
+        guard let template = destination.recurrenceTemplate(in: dataStore.snapshot)
+        else { return nil }
+        return {
+            focusedField = nil
+            recurrenceTemplateBeingEdited = template
         }
     }
 
-    private func scheduleAction(
-        for record: NoteRecordSnapshot
-    ) -> (() -> Void)? {
-        guard let item = scheduledItem(for: record) else { return nil }
+    private var scheduleAction: (() -> Void)? {
+        guard let item = destination.editableScheduledItem(in: dataStore.snapshot)
+        else { return nil }
         return { presentScheduleEditor(for: item) }
     }
 
-    private func scheduleTitle(for record: NoteRecordSnapshot) -> String {
-        guard let item = scheduledItem(for: record) else { return "No date" }
+    private var scheduleTitle: String {
+        guard let schedule = destination.schedule(in: dataStore.snapshot)
+        else { return "No date" }
         return ScheduleToolbarPresentation.title(
-            scheduledDate: item.scheduledDate,
-            includesTime: item.includesTime,
-            endDate: item.endDate
+            scheduledDate: schedule.scheduledDate,
+            includesTime: schedule.includesTime,
+            endDate: schedule.endDate
         )
-    }
-
-    private func scheduledItem(
-        for record: NoteRecordSnapshot
-    ) -> ItemRecordSnapshot? {
-        switch record {
-        case .todo(let todo): todo
-        case .recurrenceTemplate(let template):
-            dataStore.snapshot.currentItem(for: template)
-        }
     }
 
     private func selectedProject(
@@ -248,12 +207,12 @@ struct NotesView: View {
 
         do {
             try dataStore.updateNote(
-                id,
+                destination.recordID,
                 title: trimmedTitle,
                 notes: normalizedNotes
             )
             lastLoadedRecord = nil
-            load(dataStore.snapshot.note(for: id))
+            load(dataStore.snapshot.note(for: destination.recordID))
         } catch {
             errorMessage = error.localizedDescription
         }

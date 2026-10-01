@@ -177,7 +177,35 @@ struct NagarePrimaryRowAction<Label: View>: View {
     }
 }
 
+private struct NagarePriorityHalo: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    let isPrioritized: Bool
+
+    private var halo: some View {
+        let opacity: Double = contrast == .increased
+            ? 0.55 : (colorScheme == .dark ? 0.28 : 0.22)
+        let shape = Circle()
+        return shape
+            .strokeBorder(Color.accentColor.opacity(opacity), lineWidth: 1.5)
+            .blur(radius: contrast == .increased ? 1 : 2)
+            .clipShape(shape)
+            .padding(-4)
+            .opacity(isPrioritized ? 1 : 0)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+    }
+
+    func body(content: Content) -> some View {
+        content.background { halo }
+    }
+}
+
 extension View {
+    func nagarePriorityHalo(_ isPrioritized: Bool) -> some View {
+        modifier(NagarePriorityHalo(isPrioritized: isPrioritized))
+    }
+
     @ViewBuilder
     func nagareDesktopListRow() -> some View {
 #if os(macOS)
@@ -223,6 +251,7 @@ extension View {
     @ViewBuilder
     func nagareCommandSelection(
         position: NagareSelectionPosition,
+        isPrioritized: Bool = false,
         toggle: @escaping () -> Void
     ) -> some View {
 #if os(macOS)
@@ -230,7 +259,11 @@ extension View {
                 NagareSelectionBackground(position: position)
             }
             .environment(\.nagareSelectionPosition, position)
-            .accessibilityValue(position == .none ? "" : "Selected")
+            .accessibilityValue(
+                [isPrioritized ? "Prioritized project" : nil,
+                 position == .none ? nil : "Selected"]
+                    .compactMap { $0 }.joined(separator: ", ")
+            )
             .accessibilityAction(named: "Toggle Selection", toggle)
 #else
         self
