@@ -177,34 +177,27 @@ struct NagarePrimaryRowAction<Label: View>: View {
     }
 }
 
-private struct NagarePriorityHalo: ViewModifier {
+private struct NagarePriorityGlow: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     let isPrioritized: Bool
 
-    private var halo: some View {
-        let glowOpacity: Double = colorScheme == .dark ? 0.75 : 0.6
-        return Circle()
-            .strokeBorder(
-                Color.accentColor.opacity(contrast == .increased ? 1 : 0.9),
-                lineWidth: 1
-            )
-            .shadow(color: .accentColor.opacity(glowOpacity), radius: 2)
-            .shadow(color: .accentColor.opacity(glowOpacity * 0.5), radius: 4)
-            .padding(-2)
-            .opacity(isPrioritized ? 1 : 0)
-            .accessibilityHidden(true)
-            .allowsHitTesting(false)
+    private var glow: Color {
+        let opacity: Double = contrast == .increased
+            ? 1 : (colorScheme == .dark ? 0.9 : 0.85)
+        return Color.accentColor.opacity(isPrioritized ? opacity : 0)
     }
 
     func body(content: Content) -> some View {
-        content.background { halo }
+        content
+            .shadow(color: glow, radius: 2)
+            .shadow(color: glow.opacity(0.6), radius: 5)
     }
 }
 
 extension View {
-    func nagarePriorityHalo(_ isPrioritized: Bool) -> some View {
-        modifier(NagarePriorityHalo(isPrioritized: isPrioritized))
+    func nagarePriorityGlow(_ isPrioritized: Bool) -> some View {
+        modifier(NagarePriorityGlow(isPrioritized: isPrioritized))
     }
 
     @ViewBuilder

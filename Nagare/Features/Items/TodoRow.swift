@@ -43,7 +43,7 @@ struct TodoRow: View {
                 )
                     .font(.title3)
                     .contentTransition(.symbolEffect(.replace))
-                    .nagarePriorityHalo(isPrioritized)
+                    .nagarePriorityGlow(isPrioritized)
             }
             .buttonStyle(.plain)
             .foregroundStyle(

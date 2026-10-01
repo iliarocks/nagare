@@ -25,7 +25,7 @@ struct VirtualItemRow: View {
                 Image(systemName: "repeat")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .nagarePriorityHalo(isPrioritized)
+                    .nagarePriorityGlow(isPrioritized)
                     .accessibilityHidden(true)
             }
         }

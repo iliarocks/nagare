@@ -53,6 +53,9 @@ before opening its store; it is ignored by isolated UI tests and hosted unit
 tests and is unavailable in Release builds. Ordinary later launches retain sync
 and the sample data without resetting either device.
 
+On macOS, use the normal app launcher (for example, `open -a "Nagare Dev" --args ...`)
+for sync testing, so the app has its normal system background-task registration.
+
 The sample includes 3 projects, 15 items (2 completed), and 3 recurrence templates,
 with prioritized and regular project items, timed items, long notes, and future
 occurrences. The paired reference/time-zone arguments fix schedule and creation

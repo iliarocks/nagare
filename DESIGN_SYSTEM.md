@@ -14,8 +14,8 @@ not change with the device.
 - Item rows use one shared rhythm: a full-width hit target, comfortable
   vertical padding, and a neutral grouped background for adjacent selections.
 - Projects have two priority states: normal and prioritized. In Today and
-  Upcoming, active items inherit an accent ring with a soft outward glow around their completion
-  control, or their repeat icon for future items. Priority does not change item order. Project
+  Upcoming, active items inherit a soft accent shadow on their completion
+  symbol, or their repeat icon for future items. Priority does not change item order. Project
   detail and completed lists do not repeat this emphasis; desktop selection
   keeps its neutral grouped background.
 

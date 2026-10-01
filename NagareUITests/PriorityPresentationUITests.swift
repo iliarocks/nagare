@@ -40,12 +40,13 @@ final class PriorityPresentationUITests: XCTestCase {
         app.launchArguments = ["--use-reorder-ui-test-store"]
         app.launch()
 #if os(macOS)
+        let productsURL = Bundle.main.bundleURL.deletingLastPathComponent()
         let process = try XCTUnwrap(
             NSRunningApplication.runningApplications(
                 withBundleIdentifier: "ilia.page.nagare.dev"
-            ).first
+            ).first { $0.bundleURL?.deletingLastPathComponent() == productsURL }
         )
-        // XCTest starts the process; send the same open event as a Dock launch.
+        // Open this test build, even if an installed development copy is running.
         _ = try await NSWorkspace.shared.openApplication(
             at: XCTUnwrap(process.bundleURL),
             configuration: NSWorkspace.OpenConfiguration()
