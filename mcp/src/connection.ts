@@ -22,7 +22,7 @@ export type Operation =
 
 type NagareData = Awaited<ReturnType<Nagare['listProjects'] | Nagare['listTasks'] | Nagare['createTask'] | Nagare['updateTask'] | Nagare['completeTask']>>;
 export type OperationResult = { ok: true; data: NagareData } | { ok: false; code: string; message: string };
-type Settings = { token: string; timeZone: string; zoneID: CloudKitZoneID };
+type Settings = { token: string; timeZone: string; zoneID: CloudKitZoneID; expiresAt: number };
 
 export function cloudKit(env: Env, token?: string, saveToken?: (token: string) => Promise<void>) {
   return new CloudKitClient({
@@ -45,6 +45,25 @@ export class Connection extends DurableObject<Env> {
     return result;
   }
 
+  private async retain(settings: Omit<Settings, 'expiresAt'>): Promise<void> {
+    const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    await this.ctx.storage.transaction(async storage => {
+      await storage.put('connection', { ...settings, expiresAt });
+      await storage.setAlarm(expiresAt);
+    });
+  }
+
+  alarm(): Promise<void> {
+    return this.serialized(async () => {
+      const settings = await this.ctx.storage.get<Settings>('connection');
+      if (settings && settings.expiresAt > Date.now()) {
+        await this.ctx.storage.setAlarm(settings.expiresAt);
+        return;
+      }
+      await this.ctx.storage.deleteAll();
+    });
+  }
+
   configure(token: string, timeZone: string): Promise<void> {
     return this.serialized(async () => {
       new Intl.DateTimeFormat('en', { timeZone });
@@ -52,7 +71,7 @@ export class Connection extends DurableObject<Env> {
       const zones = await client.listZones();
       const zone = zones.find(value => value.zoneID.zoneName === 'com.apple.coredata.cloudkit.zone');
       if (!zone) throw new Error('Open Nagare with iCloud sync enabled before connecting.');
-      await this.ctx.storage.put<Settings>('connection', { token, timeZone, zoneID: zone.zoneID });
+      await this.retain({ token, timeZone, zoneID: zone.zoneID });
     });
   }
 
@@ -60,7 +79,10 @@ export class Connection extends DurableObject<Env> {
     return this.serialized(async () => {
       try {
         const settings = await this.ctx.storage.get<Settings>('connection');
-        if (!settings) return { ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.' };
+        if (!settings || settings.expiresAt <= Date.now()) {
+          await this.ctx.storage.deleteAll();
+          return { ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.' };
+        }
         const client = cloudKit(this.env, settings.token, async token => {
           settings.token = token;
           await this.ctx.storage.put('connection', settings);
@@ -83,7 +105,7 @@ export class Connection extends DurableObject<Env> {
             try {
               return (await client.lookup({ recordNames: [recordName], zoneID: settings.zoneID }))[0];
             } catch (error) {
-              if (error instanceof CloudKitError && error.code === 'UNKNOWN_ITEM') return undefined;
+              if (error instanceof CloudKitError && ['NOT_FOUND', 'UNKNOWN_ITEM'].includes(error.code)) return undefined;
               throw error;
             }
           },
@@ -97,6 +119,7 @@ export class Connection extends DurableObject<Env> {
           case 'update_task': data = await nagare.updateTask(operation.id, operation.changes, operation.revision); break;
           case 'complete_task': data = await nagare.completeTask(operation.id, operation.revision); break;
         }
+        await this.retain(settings);
         return { ok: true, data };
       } catch (error) {
         if (error instanceof NagareError) return { ok: false, code: error.code, message: error.message };

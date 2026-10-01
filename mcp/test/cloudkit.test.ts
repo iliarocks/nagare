@@ -27,9 +27,16 @@ test('uses the caller endpoint and encodes credentials without altering them', a
     assert.equal(url.searchParams.get('ckWebAuthToken'), base.webAuthToken);
     assert.equal(init.method, 'GET');
     assert.equal(init.redirect, 'manual');
-    return json({ users: [{ userRecordName: 'user-1', nameComponents: { givenName: 'Private' } }] });
+    return json({ userRecordName: 'user-1', nameComponents: { givenName: 'Private' } });
   });
   assert.deepEqual(await client.currentUser(), { userRecordName: 'user-1' });
+});
+
+test('rejects missing or malformed caller identities', async () => {
+  for (const userRecordName of [undefined, null, '', 42, {}]) {
+    const client = mockClient(() => json({ userRecordName }));
+    await assert.rejects(client.currentUser(), { code: 'UNEXPECTED_SERVER_RESPONSE' });
+  }
 });
 
 test('rejects HTTP redirects without following them or accepting their tokens', async () => {

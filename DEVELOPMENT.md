@@ -67,10 +67,10 @@ responses; they never touch an iCloud account. `npm run deploy` publishes the
 development endpoint at `https://mcp.dev.nagare.page/mcp`.
 
 The Worker uses one OAuth KV namespace and a Durable Object per connected user
-for credentials, timezone, and serialized CloudKit calls. Tasks remain in
-CloudKit. `CLOUDKIT_API_TOKEN` is a Worker secret; local development uses ignored
-`.dev.vars`. The CloudKit token uses Post Message sign-in and allows only the
-Worker origin. Keep it in the development environment while testing.
+for credentials, timezone, and serialized CloudKit calls. Idle credentials expire
+after 30 days. Tasks remain in CloudKit. `CLOUDKIT_API_TOKEN` is a Worker secret;
+local development uses ignored `.dev.vars`. The CloudKit token uses Post Message
+sign-in and allows only the Worker origin. Keep it in development while testing.
 
 The initial tools read projects and saved tasks, and create, edit, reschedule,
 and complete ordinary tasks. Updates require the latest record revision; create

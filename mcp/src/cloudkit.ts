@@ -117,9 +117,8 @@ export class CloudKitClient {
 
   async currentUser(): Promise<{ userRecordName: string }> {
     const body = await this.#request('public', 'users/caller');
-    const user = results<{ userRecordName?: string }>(body, 'users')[0];
-    if (!user?.userRecordName) throw new CloudKitError('UNEXPECTED_SERVER_RESPONSE');
-    return { userRecordName: user.userRecordName };
+    if (typeof body.userRecordName !== 'string' || !body.userRecordName) throw new CloudKitError('UNEXPECTED_SERVER_RESPONSE');
+    return { userRecordName: body.userRecordName };
   }
 
   async listZones(): Promise<CloudKitZone[]> {

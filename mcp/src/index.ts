@@ -106,6 +106,7 @@ export default new OAuthProvider<Env>({
   tokenEndpoint: '/oauth/token',
   clientRegistrationEndpoint: '/oauth/register',
   clientIdMetadataDocumentEnabled: true,
+  refreshTokenIdleTTL: 30 * 24 * 60 * 60,
   scopesSupported: OAUTH_SCOPES,
   requiredScopes,
   resourceMetadata: { resource: `${ORIGIN}/mcp`, authorization_servers: [ORIGIN], resource_name: 'Nagare Development' },

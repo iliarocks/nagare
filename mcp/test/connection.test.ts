@@ -34,15 +34,21 @@ function gate() {
 function setup() {
   const values = new Map<string, unknown>();
   const storage = {
+    alarmAt: null as number | null,
     beforePut: undefined as undefined | ((value: unknown) => Promise<void>),
     async get(key: string) { return structuredClone(values.get(key)); },
     async put(key: string, value: unknown) {
       await storage.beforePut?.(value);
       values.set(key, structuredClone(value));
     },
+    async setAlarm(timestamp: number) { storage.alarmAt = timestamp; },
+    async deleteAll() { values.clear(); storage.alarmAt = null; },
+    async transaction<T>(action: (transaction: Pick<DurableObjectStorage, 'put' | 'setAlarm'>) => Promise<T>): Promise<T> {
+      return action(storage as unknown as Pick<DurableObjectStorage, 'put' | 'setAlarm'>);
+    },
   };
   const connection = new Connection({ storage } as unknown as DurableObjectState, env);
-  const settings = () => values.get('connection') as { token: string; timeZone: string; zoneID: typeof zoneID } | undefined;
+  const settings = () => values.get('connection') as { token: string; timeZone: string; zoneID: typeof zoneID; expiresAt?: number } | undefined;
   return { connection, values, storage, settings };
 }
 
@@ -106,7 +112,7 @@ test('selects the Core Data zone and follows every indexed-query page', async t 
   assert.ok(result.ok);
   assert.deepEqual((result.data as { title: string }[]).map(item => item.title), ['First', 'Second']);
   assert.deepEqual(markers, [undefined, 'next-page']);
-  assert.deepEqual(settings(), { token: 'page-2-token', timeZone: 'America/Los_Angeles', zoneID });
+  assert.deepEqual(settings(), { token: 'page-2-token', timeZone: 'America/Los_Angeles', zoneID, expiresAt: settings()?.expiresAt });
   assert.deepEqual([...values.keys()], ['connection']);
 });
 
@@ -167,3 +173,118 @@ test('upstream failures expose no token or private reason and do not poison late
   assert.equal((await connection.run({ name: 'list_projects' })).ok, true);
   assert.equal(settings()?.token, 'recovered');
 });
+
+for (const missingCode of ['NOT_FOUND', 'UNKNOWN_ITEM']) {
+  test(`creates a task when exact lookup reports ${missingCode}`, async t => {
+    const { connection } = setup();
+    let writes = 0;
+    intercept(t, (url, body) => {
+      if (url.pathname.endsWith('zones/list')) return response({ zones: [{ zoneID }] }, 'configured');
+      if (url.pathname.endsWith('records/lookup')) return response({ records: [{
+        recordName: `CD_Todo_${firstId}`, serverErrorCode: missingCode,
+      }] }, 'lookup-token');
+      if (url.pathname.endsWith('records/query')) return response({ records: [] }, 'query-token');
+      assert.ok(url.pathname.endsWith('records/modify'));
+      const operations = body!.operations as { operationType: string; record: CloudKitRecord }[];
+      assert.equal(operations.length, 1);
+      assert.equal(operations[0].operationType, 'create');
+      writes++;
+      return response({ records: [{ ...operations[0].record, recordChangeTag: 'created' }] }, 'created-token');
+    });
+    await connection.configure('initial', 'UTC');
+    const result = await connection.run({
+      name: 'create_task', input: { id: firstId, title: 'New task', schedule: { date: '2026-10-01' } },
+    });
+    assert.ok(result.ok);
+    assert.equal((result.data as { title: string }).title, 'New task');
+    assert.equal(writes, 1);
+  });
+}
+
+test('an exact-lookup permission failure blocks creation instead of treating the record as absent', async t => {
+  const { connection } = setup();
+  let requests = 0;
+  intercept(t, url => {
+    requests++;
+    if (url.pathname.endsWith('zones/list')) return response({ zones: [{ zoneID }] }, 'configured');
+    assert.ok(url.pathname.endsWith('records/lookup'));
+    return response({ records: [{ recordName: `CD_Todo_${firstId}`, serverErrorCode: 'ACCESS_DENIED' }] }, 'lookup-token');
+  });
+  await connection.configure('initial', 'UTC');
+  const result = await connection.run({
+    name: 'create_task', input: { id: firstId, title: 'Must not create', schedule: { date: '2026-10-01' } },
+  });
+  assert.deepEqual(result, { ok: false, code: 'ACCESS_DENIED', message: 'CloudKit could not complete the operation (ACCESS_DENIED).' });
+  assert.equal(requests, 2);
+});
+
+test('only configuration and successful operations extend the 30-day idle deadline', async t => {
+  const { connection, storage, settings } = setup();
+  const month = 30 * 24 * 60 * 60 * 1000;
+  let now = Date.UTC(2026, 9, 1);
+  t.mock.method(Date, 'now', () => now);
+  let fail = true;
+  intercept(t, url => {
+    if (url.pathname.endsWith('zones/list')) return response({ zones: [{ zoneID }] }, 'configured');
+    if (fail) return Response.json({ serverErrorCode: 'THROTTLED' }, { status: 429 });
+    return response({ records: [project()] }, 'used');
+  });
+  await connection.configure('initial', 'UTC');
+  const originalDeadline = now + month;
+  assert.equal(settings()?.expiresAt, originalDeadline);
+  assert.equal(storage.alarmAt, originalDeadline);
+  now += 86_400_000;
+  assert.equal((await connection.run({ name: 'list_projects' })).ok, false);
+  assert.equal(settings()?.expiresAt, originalDeadline);
+  assert.equal(storage.alarmAt, originalDeadline);
+  fail = false;
+  assert.equal((await connection.run({ name: 'list_projects' })).ok, true);
+  assert.equal(settings()?.expiresAt, now + month);
+  assert.equal(storage.alarmAt, now + month);
+});
+
+for (const trigger of ['run', 'alarm'] as const) {
+  test(`${trigger} removes expired credentials and alarms without contacting CloudKit`, async t => {
+    const { connection, values, storage, settings } = setup();
+    let now = Date.UTC(2026, 9, 1);
+    t.mock.method(Date, 'now', () => now);
+    let requests = 0;
+    intercept(t, () => { requests++; return response({ zones: [{ zoneID }] }, 'configured'); });
+    await connection.configure('initial', 'UTC');
+    now = settings()!.expiresAt!;
+    if (trigger === 'alarm') await connection.alarm();
+    const result = await connection.run({ name: 'list_projects' });
+    assert.deepEqual(result, { ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.' });
+    assert.equal(requests, 1);
+    assert.equal(values.size, 0);
+    assert.equal(storage.alarmAt, null);
+  });
+}
+
+for (const activity of ['configure', 'run'] as const) {
+  test(`a delayed alarm cannot delete credentials refreshed by an in-flight ${activity}`, async t => {
+    const { connection, storage, settings } = setup();
+    let now = Date.UTC(2026, 9, 1);
+    t.mock.method(Date, 'now', () => now);
+    const started = gate();
+    const release = gate();
+    let delay = false;
+    intercept(t, async url => {
+      if (delay) { started.open(); await release.promise; }
+      return response(url.pathname.endsWith('zones/list') ? { zones: [{ zoneID }] } : { records: [project()] }, 'current-token');
+    });
+    await connection.configure('initial', 'UTC');
+    const oldDeadline = settings()!.expiresAt!;
+    now = oldDeadline - 1;
+    delay = true;
+    const operation = activity === 'configure' ? connection.configure('new-sign-in', 'UTC') : connection.run({ name: 'list_projects' });
+    await started.promise;
+    now = oldDeadline + 1;
+    const alarm = connection.alarm();
+    release.open();
+    await Promise.all([operation, alarm]);
+    assert.equal(settings()?.token, 'current-token');
+    assert.ok(settings()!.expiresAt! > now);
+    assert.equal(storage.alarmAt, settings()?.expiresAt);
+  });
+}
