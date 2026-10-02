@@ -81,6 +81,9 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
         case .mergeDuplicate(let duplicate, let canonical):
             try merge(duplicate: duplicate, into: canonical)
 
+        case .copyValues(let source, let destination):
+            try copyValues(from: source, to: destination)
+
         case .attachTodo(let todoReference, let templateReference):
             let todo = try require(todos[todoReference], todoReference)
             let template = try require(
@@ -106,6 +109,65 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
         }
     }
 
+    private func copyValues(
+        from source: SyncRecordReference,
+        to destination: SyncRecordReference
+    ) throws {
+        guard source.kind == destination.kind else {
+            throw adapterError("A content source and destination have different types.")
+        }
+        // The physical identity remains fixed. Copy the chosen revision's
+        // complete value, including relationships, before duplicate deletion.
+        switch source.kind {
+        case .project:
+            let from = try require(projects[source], source)
+            let to = try require(projects[destination], destination)
+            to.title = from.title
+            to.notes = from.notes
+            to.createdAt = from.createdAt
+            to.modifiedAt = from.modifiedAt
+            to.isPriority = from.isPriority
+            to.priorityRawValue = from.priorityRawValue
+            to.order = from.order
+        case .recurrenceTemplate:
+            let from = try require(templates[source], source)
+            let to = try require(templates[destination], destination)
+            to.title = from.title
+            to.notes = from.notes
+            to.createdAt = from.createdAt
+            to.modifiedAt = from.modifiedAt
+            to.itemTypeRawValue = from.itemTypeRawValue
+            to.modeRawValue = from.modeRawValue
+            to.unitRawValue = from.unitRawValue
+            to.interval = from.interval
+            to.anchors = from.anchors
+            to.reference = from.reference
+            to.repeatUntil = from.repeatUntil
+            to.startTimeSeconds = from.startTimeSeconds
+            to.endTimeSeconds = from.endTimeSeconds
+            to.currentItemID = from.currentItemID
+            to.currentSequence = from.currentSequence
+            to.project = from.project
+        case .todo:
+            let from = try require(todos[source], source)
+            let to = try require(todos[destination], destination)
+            to.title = from.title
+            to.notes = from.notes
+            to.createdAt = from.createdAt
+            to.modifiedAt = from.modifiedAt
+            to.scheduledDate = from.scheduledDate
+            to.includesTime = from.includesTime
+            to.endDate = from.endDate
+            to.calendarIdentifier = from.calendarIdentifier
+            to.completedAt = from.completedAt
+            to.order = from.order
+            to.projectOrder = from.projectOrder
+            to.recurrenceSequence = from.recurrenceSequence
+            to.recurrenceTemplate = from.recurrenceTemplate
+            to.project = from.project
+        }
+    }
+
     private func merge(
         duplicate: SyncRecordReference,
         into canonical: SyncRecordReference
@@ -123,6 +185,9 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
             for todo in todos.values where todo.project === old {
                 todo.project = survivor
             }
+            for event in old.events {
+                event.project = survivor
+            }
             for template in templates.values where template.project === old {
                 template.project = survivor
             }
@@ -133,6 +198,9 @@ final class SwiftDataSyncReconciliationAdapter: SyncReconciliationPersistence {
             let survivor = try require(templates[canonical], canonical)
             for todo in todos.values where todo.recurrenceTemplate === old {
                 todo.recurrenceTemplate = survivor
+            }
+            for event in old.eventOccurrences {
+                event.recurrenceTemplate = survivor
             }
             context.delete(old)
 

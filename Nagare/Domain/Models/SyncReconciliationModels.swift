@@ -69,6 +69,7 @@ nonisolated enum SyncPendingReason: Equatable, Sendable {
     case missingCurrentOccurrence(id: UUID, sequence: Int)
     case currentOccurrenceLinkedElsewhere(id: UUID)
     case noActiveTodoAtCurrentSequence(Int)
+    case ambiguousDuplicateRecords
 }
 
 nonisolated struct SyncPendingTemplate: Equatable, Sendable {
@@ -85,6 +86,7 @@ nonisolated enum SyncReconciliationMutation: Equatable, Sendable {
         duplicate: SyncRecordReference,
         canonical: SyncRecordReference
     )
+    case copyValues(from: SyncRecordReference, to: SyncRecordReference)
     case attachTodo(
         todo: SyncRecordReference,
         template: SyncRecordReference
@@ -106,6 +108,7 @@ nonisolated struct SyncReconciliationReport: Equatable, Sendable {
     let recurrenceLinksRepaired: Int
     let syncRecordIDsAssigned: Int
     let pendingTemplates: Int
+    let pendingDuplicates: Int
 
     init(
         duplicateProjectsRemoved: Int = 0,
@@ -114,7 +117,8 @@ nonisolated struct SyncReconciliationReport: Equatable, Sendable {
         recurrenceConflictsRepaired: Int = 0,
         recurrenceLinksRepaired: Int = 0,
         syncRecordIDsAssigned: Int = 0,
-        pendingTemplates: Int = 0
+        pendingTemplates: Int = 0,
+        pendingDuplicates: Int = 0
     ) {
         self.duplicateProjectsRemoved = duplicateProjectsRemoved
         self.duplicateTodosRemoved = duplicateTodosRemoved
@@ -123,6 +127,7 @@ nonisolated struct SyncReconciliationReport: Equatable, Sendable {
         self.recurrenceLinksRepaired = recurrenceLinksRepaired
         self.syncRecordIDsAssigned = syncRecordIDsAssigned
         self.pendingTemplates = pendingTemplates
+        self.pendingDuplicates = pendingDuplicates
     }
 
     var madeChanges: Bool {

@@ -9,6 +9,7 @@ import AppKit
 #endif
 
 enum NagareWindowID {
+    static let main = "main"
     static let completed = "completed-history"
 }
 
@@ -16,7 +17,6 @@ enum NagareWindowID {
 struct NagareApp: App {
     private struct RuntimeState {
         let syncMonitor: SyncIntegrityMonitor
-        let cloudSyncMonitor: NagareCloudSyncMonitor
         let dataStore: NagareDataStore
     }
 
@@ -97,20 +97,11 @@ struct NagareApp: App {
         cloudSyncEnabled: Bool,
         isRunningUnitTests: Bool
     ) throws -> RuntimeState {
-        let cloudSyncMonitor = NagareCloudSyncMonitor(
-            isEnabled: cloudSyncEnabled
+        let modelContainer = try makeModelContainer(
+            arguments: arguments,
+            cloudSyncEnabled: cloudSyncEnabled,
+            isRunningUnitTests: isRunningUnitTests
         )
-        let modelContainer: ModelContainer
-        do {
-            modelContainer = try makeModelContainer(
-                arguments: arguments,
-                cloudSyncEnabled: cloudSyncEnabled,
-                isRunningUnitTests: isRunningUnitTests
-            )
-        } catch {
-            cloudSyncMonitor.stop()
-            throw error
-        }
         modelContainer.mainContext.autosaveEnabled = false
         modelContainer.mainContext.author = NagareCloud.localHistoryAuthor
         try prepareReorderRegressionTestDataIfRequested(
@@ -145,31 +136,15 @@ struct NagareApp: App {
             modelContainer: modelContainer,
             requiresReconciliation: cloudSyncEnabled,
             onPersistedChange: { [dataStore] in
-                do {
-                    try dataStore.reload()
-                } catch {
-                    logger.error(
-                        "Unable to publish persisted data: \(error.localizedDescription, privacy: .public)"
-                    )
-                }
-            },
-            onObservationHealthChanged: { [cloudSyncMonitor] isHealthy, error in
-                cloudSyncMonitor.recordHistoryObservation(
-                    isHealthy: isHealthy,
-                    errorDescription: error
-                )
+                _ = try dataStore.reload()
             }
         )
-        cloudSyncMonitor.setOnSuccessfulImport { [weak syncMonitor] in
-            syncMonitor?.cloudImportDidFinish()
-        }
         // Covers an import that may have completed between opening SwiftData's
         // CloudKit stack and attaching the event callback. The debounce also
         // coalesces with any real completion event still in flight.
         syncMonitor.cloudImportDidFinish()
         return RuntimeState(
             syncMonitor: syncMonitor,
-            cloudSyncMonitor: cloudSyncMonitor,
             dataStore: dataStore
         )
     }
@@ -184,7 +159,7 @@ struct NagareApp: App {
 
     var body: some Scene {
 #if os(macOS)
-        WindowGroup {
+        WindowGroup(id: NagareWindowID.main) {
             startupContent
                 .preferredColorScheme(uiTestColorScheme)
                 .background(NagareMainWindowLifecycle())

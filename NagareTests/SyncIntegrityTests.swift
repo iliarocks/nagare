@@ -6,57 +6,6 @@ import Testing
 
 @MainActor
 struct SyncIntegrityTests {
-    @Test func cloudSyncMonitorTracksSuccessAndRecoversFromErrors() {
-        let monitor = NagareCloudSyncMonitor(isEnabled: true)
-        defer { monitor.stop() }
-        let firstID = UUID()
-        let start = Date(timeIntervalSince1970: 100)
-        let failureDate = start.addingTimeInterval(1)
-
-        monitor.record(
-            type: .import,
-            identifier: firstID,
-            startDate: start,
-            endDate: nil,
-            succeeded: false,
-            errorDescription: nil
-        )
-        #expect(monitor.phase == .syncing)
-
-        monitor.record(
-            type: .import,
-            identifier: firstID,
-            startDate: start,
-            endDate: failureDate,
-            succeeded: false,
-            errorDescription: "Network unavailable"
-        )
-        #expect(monitor.phase == .failed)
-        #expect(monitor.lastErrorDescription == "Network unavailable")
-
-        let recoveryDate = failureDate.addingTimeInterval(10)
-        monitor.record(
-            type: .import,
-            identifier: UUID(),
-            startDate: recoveryDate,
-            endDate: recoveryDate,
-            succeeded: true,
-            errorDescription: nil
-        )
-        #expect(monitor.phase == .upToDate)
-        #expect(monitor.lastSuccessfulImport == recoveryDate)
-        #expect(monitor.lastErrorDescription == nil)
-
-        monitor.recordHistoryObservation(
-            isHealthy: false,
-            errorDescription: "History unavailable"
-        )
-        #expect(monitor.phase == .failed)
-        #expect(monitor.lastErrorDescription == "History unavailable")
-        monitor.recordHistoryObservation(isHealthy: true)
-        #expect(monitor.phase == .upToDate)
-    }
-
     @Test func iCloudSyncIsStrictlyOptIn() throws {
         let suiteName = "NagareCloudPreferencesTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -214,6 +163,9 @@ struct SyncIntegrityTests {
         )
         older.modifiedAt = Date(timeIntervalSince1970: 300)
         newer.modifiedAt = Date(timeIntervalSince1970: 400)
+        older.syncRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000002")!
+        newer.syncRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000001")!
+        newer.notes = "Retain the latest content on the fixed physical row."
         context.insert(older)
         context.insert(newer)
 
@@ -224,6 +176,9 @@ struct SyncIntegrityTests {
         #expect(saved.count == 1)
         #expect(saved.first?.id == sharedID)
         #expect(saved.first?.title == "Newer")
+        #expect(saved.first === older)
+        #expect(saved.first?.notes == "Retain the latest content on the fixed physical row.")
+        #expect(saved.first?.modifiedAt == Date(timeIntervalSince1970: 400))
     }
 
     @Test func exactTimestampTiesUseReplicatedPhysicalIdentity() throws {
@@ -285,6 +240,9 @@ struct SyncIntegrityTests {
         )
         olderProject.modifiedAt = timestamp
         newerProject.modifiedAt = timestamp.addingTimeInterval(1)
+        olderProject.syncRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000002")!
+        newerProject.syncRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000001")!
+        newerProject.priority = .high
 
         let rule = try RecurrenceRule.relative(every: 1, unit: .day)
         let todo = Todo(
@@ -310,16 +268,24 @@ struct SyncIntegrityTests {
         )
         olderTemplate.modifiedAt = timestamp
         newerTemplate.modifiedAt = timestamp.addingTimeInterval(1)
+        olderTemplate.syncRecordID = UUID(uuidString: "50000000-0000-0000-0000-000000000002")!
+        newerTemplate.syncRecordID = UUID(uuidString: "50000000-0000-0000-0000-000000000001")!
+        newerTemplate.interval = 2
+        newerTemplate.startTimeSeconds = 9 * 3_600
 
         todo.project = olderProject
         todo.recurrenceTemplate = olderTemplate
         olderTemplate.project = olderProject
         newerTemplate.project = newerProject
+        let legacy = Event(title: "Legacy event", scheduledDate: timestamp, order: "i")
+        legacy.project = newerProject
+        legacy.recurrenceTemplate = newerTemplate
 
         context.insert(olderProject)
         context.insert(newerProject)
         context.insert(olderTemplate)
         context.insert(newerTemplate)
+        context.insert(legacy)
         context.insert(todo)
 
         let report = try SyncIntegrityRepair.repair(in: context)
@@ -331,12 +297,19 @@ struct SyncIntegrityTests {
         #expect(report.duplicateProjectsRemoved == 1)
         #expect(report.duplicateTemplatesRemoved == 1)
         #expect(projects.count == 1)
-        #expect(projects.first === newerProject)
-        #expect(todo.project === newerProject)
+        #expect(projects.first === olderProject)
+        #expect(projects.first?.title == "Newer project")
+        #expect(projects.first?.priority == .high)
+        #expect(todo.project === olderProject)
         #expect(templates.count == 1)
-        #expect(templates.first === newerTemplate)
-        #expect(todo.recurrenceTemplate === newerTemplate)
-        #expect(newerTemplate.project === newerProject)
+        #expect(templates.first === olderTemplate)
+        #expect(templates.first?.title == "Newer template")
+        #expect(templates.first?.interval == 2)
+        #expect(templates.first?.startTimeSeconds == 9 * 3_600)
+        #expect(todo.recurrenceTemplate === olderTemplate)
+        #expect(olderTemplate.project === olderProject)
+        #expect(legacy.project === olderProject)
+        #expect(legacy.recurrenceTemplate === olderTemplate)
     }
 
     @Test func recordsReceiveOneStablePhysicalIdentity() throws {
@@ -455,7 +428,7 @@ struct SyncIntegrityTests {
         )
     }
 
-    @Test func concurrentRecurringTodoSuccessorsConvergeToTemplatePointer() throws {
+    @Test func concurrentRecurringTodoSuccessorsConvergeToImmutableIdentity() throws {
         let context = try makeContext()
         let day = Date(timeIntervalSince1970: 1_750_000_000)
         let original = Todo(
@@ -484,6 +457,7 @@ struct SyncIntegrityTests {
         )
         firstSuccessor.recurrenceSequence = 1
         firstSuccessor.recurrenceTemplate = template
+        firstSuccessor.id = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
         let secondSuccessor = Todo(
             title: "Second device",
             scheduledDate: day.addingTimeInterval(86_400),
@@ -492,6 +466,7 @@ struct SyncIntegrityTests {
         )
         secondSuccessor.recurrenceSequence = 1
         secondSuccessor.recurrenceTemplate = template
+        secondSuccessor.id = UUID(uuidString: "20000000-0000-0000-0000-000000000002")!
         template.currentSequence = 1
         template.currentItemID = firstSuccessor.id
 
@@ -504,10 +479,10 @@ struct SyncIntegrityTests {
         let active = try context.fetch(FetchDescriptor<Todo>())
             .filter { $0.completedAt == nil }
 
-        #expect(report.recurrenceConflictsRepaired == 1)
-        #expect(active.map(\.id) == [firstSuccessor.id])
+        #expect(report.recurrenceConflictsRepaired == 2)
+        #expect(active.map(\.id) == [secondSuccessor.id])
         #expect(template.currentSequence == 1)
-        #expect(template.currentItemID == firstSuccessor.id)
+        #expect(template.currentItemID == secondSuccessor.id)
     }
 
     @Test func timedTodoRecurrenceKeepsHistoryAndHighestActiveSequence() throws {

@@ -1,7 +1,7 @@
 import Foundation
 
-/// One canonical ordering for every replicated-record conflict. Store-local
-/// identity is consulted only after every replicated value compares equal.
+/// Chooses replicated content, independently of which physical row survives.
+/// Store-local identity is consulted only when all replicated values are equal.
 nonisolated enum SyncRecordOrdering {
     static func canonical<Record>(
         _ records: [Record],

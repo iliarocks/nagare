@@ -321,6 +321,33 @@ struct NagareCommandPlannerTests {
         #expect(graph.itemsByID[id]?.title == "Newer")
     }
 
+    @Test func currentRecurrenceTargetRequiresMatchingSequenceAndRelationship() {
+        let id = UUID()
+        let templateID = UUID()
+        let template = RecurrenceTemplateRecordSnapshot(
+            id: templateID, syncRecordID: templateID, createdAt: day, modifiedAt: day,
+            title: "Repeat", notes: nil, modeRawValue: "relative", unitRawValue: "day",
+            interval: 1, anchors: [], reference: nil, repeatUntil: nil,
+            startTimeSeconds: nil, endTimeSeconds: nil,
+            currentItemID: id, currentSequence: 1, currentScheduledDate: day, projectID: nil
+        )
+        let invalid = [
+            todo(id: id, order: "a"),
+            todo(id: id, order: "a", recurrenceTemplateID: templateID, recurrenceSequence: 0),
+            todo(id: id, order: "a", recurrenceTemplateID: UUID(), recurrenceSequence: 1),
+            todo(id: id, order: "a", completedAt: day, recurrenceTemplateID: templateID, recurrenceSequence: 1)
+        ]
+        #expect(snapshot(todos: invalid).currentItem(for: template) == nil)
+        let older = todo(id: id, modifiedAt: day, title: "Older", order: "a",
+                         recurrenceTemplateID: templateID, recurrenceSequence: 1)
+        // The inverse relationship may arrive after the task and template.
+        let latest = todo(id: id, modifiedAt: day.addingTimeInterval(1), title: "Latest", order: "a",
+                          recurrenceSequence: 1)
+        for candidates in [invalid + [older, latest], [latest, older] + invalid.reversed()] {
+            #expect(snapshot(todos: candidates).currentItem(for: template) == latest)
+        }
+    }
+
     private func snapshot(
         projects: [ProjectRecordSnapshot] = [],
         todos: [TodoRecordSnapshot] = []
@@ -359,7 +386,8 @@ struct NagareCommandPlannerTests {
         projectOrder: String? = nil,
         projectID: UUID? = nil,
         completedAt: Date? = nil,
-        recurrenceTemplateID: UUID? = nil
+        recurrenceTemplateID: UUID? = nil,
+        recurrenceSequence: Int? = nil
     ) -> TodoRecordSnapshot {
         TodoRecordSnapshot(
             id: id,
@@ -375,7 +403,7 @@ struct NagareCommandPlannerTests {
             completedAt: completedAt,
             order: order,
             projectOrder: projectOrder,
-            recurrenceSequence: nil,
+            recurrenceSequence: recurrenceSequence,
             recurrenceTemplateID: recurrenceTemplateID,
             projectID: projectID
         )

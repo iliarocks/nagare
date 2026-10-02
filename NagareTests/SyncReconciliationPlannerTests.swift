@@ -82,6 +82,60 @@ struct SyncReconciliationPlannerTests {
         ])
     }
 
+    @Test func duplicateReplicasRetainTheSamePhysicalRowDespiteStaleContent() {
+        for newestPhysicalID in [currentID, competingID] {
+            let rows = [currentID, competingID].map { physicalID in
+                todo(id: laterID, localID: physicalID.uuidString, physicalID: physicalID,
+                     modifiedAt: timestamp.addingTimeInterval(physicalID == newestPhysicalID ? 10 : 0))
+            }
+            let plan = SyncReconciliationPlanner.plan(for: graph(todos: rows))
+            let source = rows[0].metadata.reference
+            let survivor = rows[1].metadata.reference
+            let copy: [SyncReconciliationMutation] = newestPhysicalID == currentID
+                ? [.copyValues(from: source, to: survivor)] : []
+            #expect(plan.mutations == copy + [.mergeDuplicate(duplicate: source, canonical: survivor)])
+            #expect(plan.report.duplicateTodosRemoved == 1)
+        }
+    }
+
+    @Test func ambiguousPhysicalIdentitiesRemainIntactAndBlockRecurrenceCleanup() {
+        for physicalID in [nil, Optional(currentID)] {
+            let rows = ["local-a", "local-b"].map { localID in
+                SyncTodoSnapshot(metadata: SyncRecordMetadata(
+                    reference: SyncRecordReference(kind: .todo, localID: localID), semanticID: currentID,
+                    physicalID: physicalID, createdAt: timestamp, modifiedAt: timestamp, stableTieBreaker: []
+                ), completedAt: nil, recurrenceSequence: 0, recurrenceTemplateID: templateID, projectID: nil)
+            }
+            let plan = SyncReconciliationPlanner.plan(for: graph(
+                templates: [todoTemplate(currentItemID: currentID, currentSequence: 0)], todos: rows
+            ))
+            #expect(plan.report.pendingDuplicates == 1)
+            #expect(plan.report.duplicateTodosRemoved == 0)
+            #expect(plan.pendingTemplates == [SyncPendingTemplate(templateID: templateID, reason: .ambiguousDuplicateRecords)])
+            #expect(plan.mutations.allSatisfy {
+                if case .assignPhysicalID = $0 { return true }
+                return false
+            })
+        }
+    }
+
+    @Test func recurrenceRepairUsesContentCopiedOntoTheFixedTemplateSurvivor() {
+        let latest = SyncRecurrenceTemplateSnapshot(metadata: metadata(
+            kind: .recurrenceTemplate, localID: "latest", semanticID: templateID,
+            physicalID: currentID, modifiedAt: timestamp.addingTimeInterval(10)
+        ), currentItemID: competingID, currentSequence: 1, projectID: nil)
+        let fixed = SyncRecurrenceTemplateSnapshot(metadata: metadata(
+            kind: .recurrenceTemplate, localID: "fixed", semanticID: templateID, physicalID: competingID
+        ), currentItemID: laterID, currentSequence: 0, projectID: nil)
+        let current = todo(id: competingID, localID: "current", sequence: 1, templateID: templateID)
+        let plan = SyncReconciliationPlanner.plan(for: graph(templates: [latest, fixed], todos: [current]))
+        #expect(plan.pendingTemplates.isEmpty)
+        #expect(plan.mutations == [
+            .copyValues(from: latest.metadata.reference, to: fixed.metadata.reference),
+            .mergeDuplicate(duplicate: latest.metadata.reference, canonical: fixed.metadata.reference)
+        ])
+    }
+
     @Test func templateFirstImportIsPendingAndNonDestructive() {
         let template = todoTemplate(
             currentItemID: currentID,
@@ -135,7 +189,7 @@ struct SyncReconciliationPlannerTests {
         ])
     }
 
-    @Test func competingTodoSuccessorsHonorReplicatedTemplatePointer() {
+    @Test func competingTodoSuccessorsChooseImmutableIdentity() {
         let template = todoTemplate(
             currentItemID: currentID,
             currentSequence: 1
@@ -169,8 +223,88 @@ struct SyncReconciliationPlannerTests {
 
         #expect(plan.pendingTemplates.isEmpty)
         #expect(plan.mutations == [
-            .delete(record: competing.metadata.reference)
+            .delete(record: pointed.metadata.reference),
+            .updateTemplate(
+                record: template.metadata.reference,
+                currentItemID: competingID,
+                currentSequence: 1
+            )
         ])
+    }
+
+    @Test func interleavedSuccessorImportsCannotMakeReplicasDeleteEachOther() {
+        var deleted: Set<SyncRecordReference> = []
+        for localCurrentID in [currentID, competingID] {
+            let template = todoTemplate(currentItemID: localCurrentID, currentSequence: 1)
+            // Each replica receives both successors before the other template
+            // update, and still considers its own successor the newest edit.
+            let occurrences = [currentID, competingID].map { id in
+                todo(
+                    id: id, localID: id.uuidString, sequence: 1,
+                    templateID: templateID,
+                    modifiedAt: timestamp.addingTimeInterval(id == localCurrentID ? 10 : 0)
+                )
+            }
+            let plan = SyncReconciliationPlanner.plan(
+                for: graph(templates: [template], todos: occurrences)
+            )
+            #expect(plan.pendingTemplates.isEmpty)
+            let removals = plan.mutations.compactMap { mutation -> SyncRecordReference? in
+                if case .delete(let record) = mutation { return record }
+                return nil
+            }
+            #expect(removals.map(\.localID) == [currentID.uuidString])
+            deleted.formUnion(removals)
+        }
+        let survivor = todo(id: competingID, localID: competingID.uuidString, sequence: 1, templateID: templateID)
+        #expect(!deleted.contains(survivor.metadata.reference))
+        let converged = SyncReconciliationPlanner.plan(for: graph(
+            templates: [todoTemplate(currentItemID: competingID, currentSequence: 1)],
+            todos: [survivor]
+        ))
+        #expect(converged.mutations.isEmpty)
+        #expect(converged.pendingTemplates.isEmpty)
+    }
+
+    @Test func completedCompetingSuccessorWaitsForItsLaterSequence() {
+        let template = todoTemplate(currentItemID: currentID, currentSequence: 1)
+        let current = todo(id: currentID, localID: "current", sequence: 1, templateID: templateID)
+        let completed = todo(id: competingID, localID: "completed", completedAt: timestamp,
+                             sequence: 1, templateID: templateID)
+        let plan = SyncReconciliationPlanner.plan(for: graph(templates: [template], todos: [current, completed]))
+        #expect(plan.mutations.isEmpty)
+        #expect(plan.pendingTemplates == [SyncPendingTemplate(
+            templateID: templateID, reason: .noActiveTodoAtCurrentSequence(1)
+        )])
+    }
+
+    @Test func historicalSurvivorDoesNotDependOnWhichCompletionArrivesFirst() {
+        let template = todoTemplate(currentItemID: laterID, currentSequence: 2)
+        let next = todo(id: laterID, localID: "next", sequence: 2, templateID: templateID,
+                        createdAt: timestamp.addingTimeInterval(10))
+        for completedID in [currentID, competingID] {
+            let occurrences = [currentID, competingID].map { id in
+                todo(id: id, localID: id.uuidString, completedAt: id == completedID ? timestamp : nil,
+                     sequence: 1, templateID: templateID)
+            }
+            let plan = SyncReconciliationPlanner.plan(for: graph(templates: [template], todos: occurrences + [next]))
+            #expect(plan.pendingTemplates.isEmpty)
+            #expect(plan.mutations.contains(.delete(record: occurrences[0].metadata.reference)))
+            #expect(!plan.mutations.contains(.delete(record: occurrences[1].metadata.reference)))
+            if completedID == currentID {
+                #expect(plan.mutations.contains(.completeTodo(record: occurrences[1].metadata.reference, completedAt: timestamp)))
+            }
+        }
+    }
+
+    @Test func newerTemplateSequenceNeverRegressesToAnOlderImportedOccurrence() {
+        let template = todoTemplate(currentItemID: laterID, currentSequence: 2)
+        let earlier = todo(id: currentID, localID: "earlier", sequence: 1, templateID: templateID)
+        let plan = SyncReconciliationPlanner.plan(for: graph(templates: [template], todos: [earlier]))
+        #expect(plan.mutations.isEmpty)
+        #expect(plan.pendingTemplates == [SyncPendingTemplate(
+            templateID: templateID, reason: .waitingForCurrentSequence(expected: 2, highestAvailable: 1)
+        )])
     }
 
     @Test func inputPermutationDoesNotChangeThePlan() {
@@ -307,7 +441,8 @@ struct SyncReconciliationPlannerTests {
         completedAt: Date? = nil,
         sequence: Int? = nil,
         templateID: UUID? = nil,
-        createdAt: Date? = nil
+        createdAt: Date? = nil,
+        modifiedAt: Date? = nil
     ) -> SyncTodoSnapshot {
         SyncTodoSnapshot(
             metadata: metadata(
@@ -315,7 +450,8 @@ struct SyncReconciliationPlannerTests {
                 localID: localID,
                 semanticID: id,
                 physicalID: physicalID ?? id,
-                createdAt: createdAt
+                createdAt: createdAt,
+                modifiedAt: modifiedAt
             ),
             completedAt: completedAt,
             recurrenceSequence: sequence,
@@ -329,14 +465,15 @@ struct SyncReconciliationPlannerTests {
         localID: String,
         semanticID: UUID,
         physicalID: UUID? = nil,
-        createdAt: Date? = nil
+        createdAt: Date? = nil,
+        modifiedAt: Date? = nil
     ) -> SyncRecordMetadata {
         SyncRecordMetadata(
             reference: SyncRecordReference(kind: kind, localID: localID),
             semanticID: semanticID,
             physicalID: physicalID ?? semanticID,
             createdAt: createdAt ?? timestamp,
-            modifiedAt: timestamp,
+            modifiedAt: modifiedAt ?? timestamp,
             stableTieBreaker: [localID]
         )
     }

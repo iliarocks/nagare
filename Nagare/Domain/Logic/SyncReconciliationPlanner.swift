@@ -9,20 +9,33 @@ nonisolated enum SyncReconciliationPlanner {
         var report = ReportAccumulator()
         var mergeMutations: [SyncReconciliationMutation] = []
 
-        let projects = deduplicating(snapshot.projects, metadata: \.metadata)
+        let projects = deduplicating(snapshot.projects, metadata: \.metadata) {
+            SyncProjectSnapshot(metadata: $1)
+        }
         mergeMutations += projects.mutations
-        report.duplicateProjectsRemoved = projects.mutations.count
+        report.duplicateProjectsRemoved = projects.removedCount
 
         let templates = deduplicating(
             snapshot.recurrenceTemplates,
             metadata: \.metadata
-        )
+        ) { record, metadata in
+            SyncRecurrenceTemplateSnapshot(
+                metadata: metadata, currentItemID: record.currentItemID,
+                currentSequence: record.currentSequence, projectID: record.projectID
+            )
+        }
         mergeMutations += templates.mutations
-        report.duplicateTemplatesRemoved = templates.mutations.count
+        report.duplicateTemplatesRemoved = templates.removedCount
 
-        let todos = deduplicating(snapshot.todos, metadata: \.metadata)
+        let todos = deduplicating(snapshot.todos, metadata: \.metadata) { record, metadata in
+            SyncTodoSnapshot(
+                metadata: metadata, completedAt: record.completedAt,
+                recurrenceSequence: record.recurrenceSequence,
+                recurrenceTemplateID: record.recurrenceTemplateID, projectID: record.projectID
+            )
+        }
         mergeMutations += todos.mutations
-        report.duplicateTodosRemoved = todos.mutations.count
+        report.duplicateTodosRemoved = todos.removedCount
 
         var recurrenceMutations: [SyncReconciliationMutation] = []
         var pending: [SyncPendingTemplate] = []
@@ -36,9 +49,19 @@ nonisolated enum SyncReconciliationPlanner {
         )
 
         for template in templates.survivors.sorted(by: semanticIDOrder) {
+            let templateID = template.metadata.semanticID
+            let linked = todosByTemplate[templateID] ?? []
+            if templates.pendingIDs.contains(templateID)
+                || todos.pendingIDs.contains(template.currentItemID)
+                || linked.contains(where: { todos.pendingIDs.contains($0.metadata.semanticID) }) {
+                if !pending.contains(where: { $0.templateID == templateID }) {
+                    pending.append(SyncPendingTemplate(templateID: templateID, reason: .ambiguousDuplicateRecords))
+                }
+                continue
+            }
             reconcileTodoTemplate(
                 template,
-                linked: todosByTemplate[template.metadata.semanticID] ?? [],
+                linked: linked,
                 matchingCurrent: (todosByID[template.currentItemID] ?? []).filter {
                     $0.recurrenceSequence == template.currentSequence
                 },
@@ -79,7 +102,8 @@ nonisolated enum SyncReconciliationPlanner {
             recurrenceLinksRepaired: report.recurrenceLinksRepaired,
             syncRecordIDsAssigned:
                 assignments.count - removedWithMissingIdentity,
-            pendingTemplates: pending.count
+            pendingTemplates: pending.count,
+            pendingDuplicates: projects.pendingIDs.count + templates.pendingIDs.count + todos.pendingIDs.count
         )
 
         return SyncReconciliationPlan(
@@ -145,14 +169,13 @@ nonisolated enum SyncReconciliationPlanner {
             return
         }
 
-        let current: SyncTodoSnapshot
+        let highest = bySequence[highestSequence, default: []]
         if template.currentSequence == highestSequence {
-            let candidates = bySequence[highestSequence, default: []]
-                .filter {
-                    $0.metadata.semanticID == template.currentItemID
-                        && $0.completedAt == nil
-                }
-            guard !candidates.isEmpty else {
+            let hasCurrent = highest.contains {
+                $0.metadata.semanticID == template.currentItemID
+                    && $0.completedAt == nil
+            }
+            guard hasCurrent else {
                 let hasCompletedCurrent = matchingCurrent.contains {
                     $0.completedAt != nil
                 }
@@ -169,27 +192,19 @@ nonisolated enum SyncReconciliationPlanner {
                 )
                 return
             }
-            current = SyncRecordOrdering.canonical(
-                candidates,
-                metadata: \.metadata
-            )
-        } else {
-            let activeHighest = bySequence[highestSequence, default: []]
-                .filter { $0.completedAt == nil }
-            guard !activeHighest.isEmpty else {
-                pending.append(
-                    SyncPendingTemplate(
-                        templateID: templateID,
-                        reason: .noActiveTodoAtCurrentSequence(highestSequence)
-                    )
-                )
-                return
-            }
-            current = SyncRecordOrdering.canonical(
-                activeHighest,
-                metadata: \.metadata
-            )
         }
+        // A completion can arrive before its successor or template deletion.
+        // Do not delete that evidence while the transition is still importing.
+        guard highest.allSatisfy({ $0.completedAt == nil }) else {
+            pending.append(
+                SyncPendingTemplate(
+                    templateID: templateID,
+                    reason: .noActiveTodoAtCurrentSequence(highestSequence)
+                )
+            )
+            return
+        }
+        let current = canonicalOccurrence(highest)
 
         attachTodoIfNeeded(
             current,
@@ -227,13 +242,10 @@ nonisolated enum SyncReconciliationPlanner {
                 continue
             }
 
-            let completed = occurrences.filter { $0.completedAt != nil }
-            let survivor = SyncRecordOrdering.canonical(
-                completed.isEmpty ? occurrences : completed,
-                metadata: \.metadata
-            )
+            let survivor = canonicalOccurrence(occurrences)
             if survivor.completedAt == nil {
-                let completionDate = laterCreationDates[sequence]
+                let completionDate = occurrences.compactMap(\.completedAt).min()
+                    ?? laterCreationDates[sequence]
                     ?? template.metadata.revisionDate
                 mutations.append(
                     .completeTodo(
@@ -263,6 +275,17 @@ nonisolated enum SyncReconciliationPlanner {
         }
     }
 
+    // Concurrent devices can hold different template pointers, completion
+    // flags, or revisions. A survivor's immutable UUID must decide which
+    // physical occurrence is deleted, or replicas can delete each other's.
+    private static func canonicalOccurrence(
+        _ occurrences: [SyncTodoSnapshot]
+    ) -> SyncTodoSnapshot {
+        occurrences.max {
+            $0.metadata.semanticID.uuidString < $1.metadata.semanticID.uuidString
+        }!
+    }
+
     private static func attachTodoIfNeeded(
         _ todo: SyncTodoSnapshot,
         to template: SyncRecurrenceTemplateSnapshot,
@@ -281,24 +304,53 @@ nonisolated enum SyncReconciliationPlanner {
 
     private static func deduplicating<Record>(
         _ records: [Record],
-        metadata: KeyPath<Record, SyncRecordMetadata>
-    ) -> (survivors: [Record], mutations: [SyncReconciliationMutation]) {
+        metadata: KeyPath<Record, SyncRecordMetadata>,
+        replacingMetadata: (Record, SyncRecordMetadata) -> Record
+    ) -> (survivors: [Record], mutations: [SyncReconciliationMutation], removedCount: Int, pendingIDs: Set<UUID>) {
         let groups = Dictionary(
             grouping: records,
             by: { $0[keyPath: metadata].semanticID }
         )
-        var removed: Set<SyncRecordReference> = []
+        var survivors: [Record] = []
         var mutations: [SyncReconciliationMutation] = []
+        var removedCount = 0
+        var pendingIDs: Set<UUID> = []
 
         for semanticID in groups.keys.sorted(by: uuidOrder) {
-            guard let group = groups[semanticID], group.count > 1 else {
+            guard let group = groups[semanticID] else { continue }
+            guard group.count > 1 else {
+                survivors += group
                 continue
             }
-            let survivor = SyncRecordOrdering.canonical(
+            let physicalIDs = group.compactMap { $0[keyPath: metadata].physicalID }
+            guard physicalIDs.count == group.count,
+                  Set(physicalIDs).count == group.count else {
+                // A store-local object address cannot identify the same
+                // survivor on another device. Keep ambiguous rows intact.
+                survivors += group
+                pendingIDs.insert(semanticID)
+                continue
+            }
+            let survivor = group.max {
+                $0[keyPath: metadata].resolvedPhysicalID.uuidString
+                    < $1[keyPath: metadata].resolvedPhysicalID.uuidString
+            }!
+            let content = SyncRecordOrdering.canonical(
                 group,
                 metadata: metadata
             )
-            let survivorReference = survivor[keyPath: metadata].reference
+            let identity = survivor[keyPath: metadata]
+            let latest = content[keyPath: metadata]
+            let mergedMetadata = SyncRecordMetadata(
+                reference: identity.reference, semanticID: semanticID,
+                physicalID: identity.physicalID, createdAt: latest.createdAt,
+                modifiedAt: latest.modifiedAt, stableTieBreaker: latest.stableTieBreaker
+            )
+            survivors.append(replacingMetadata(content, mergedMetadata))
+            let survivorReference = identity.reference
+            if latest.reference != survivorReference {
+                mutations.append(.copyValues(from: latest.reference, to: survivorReference))
+            }
             for duplicate in group
                 .filter({ $0[keyPath: metadata].reference != survivorReference })
                 .sorted(by: { metadataReferenceOrder(
@@ -306,7 +358,7 @@ nonisolated enum SyncReconciliationPlanner {
                     $1[keyPath: metadata]
                 ) }) {
                 let duplicateReference = duplicate[keyPath: metadata].reference
-                removed.insert(duplicateReference)
+                removedCount += 1
                 mutations.append(
                     .mergeDuplicate(
                         duplicate: duplicateReference,
@@ -316,10 +368,7 @@ nonisolated enum SyncReconciliationPlanner {
             }
         }
 
-        return (
-            records.filter { !removed.contains($0[keyPath: metadata].reference) },
-            mutations
-        )
+        return (survivors, mutations, removedCount, pendingIDs)
     }
 
     private static func semanticIDOrder(

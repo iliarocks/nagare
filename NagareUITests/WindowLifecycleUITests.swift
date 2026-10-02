@@ -98,6 +98,23 @@ final class WindowLifecycleUITests: XCTestCase {
     }
 
     @MainActor
+    func testMainWindowReturnsAfterQuitAndRelaunch() async throws {
+        let app = launchApp()
+        let process = try XCTUnwrap(
+            NSRunningApplication.runningApplications(withBundleIdentifier: "ilia.page.nagare.dev").first
+        )
+        let appURL = try XCTUnwrap(process.bundleURL)
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
+
+        let relaunched = try await relaunch(app, at: appURL)
+        XCTAssertNotEqual(process.processIdentifier, relaunched.processIdentifier)
+        XCTAssertEqual(app.windows.containing(.outline, identifier: "Sidebar").count, 1)
+        close(mainWindow(in: app))
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
+    }
+
+    @MainActor
     func testProjectTitleAndNotesPersistAfterClosingMainWindow() async throws {
         let app = launchApp()
         let originalProcess = try XCTUnwrap(
@@ -123,21 +140,8 @@ final class WindowLifecycleUITests: XCTestCase {
         close(mainWindow(in: app))
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
 
-        app.launchArguments = ["--use-reorder-ui-test-store"]
-        app.launch()
-        let relaunchedProcess = try XCTUnwrap(
-            NSRunningApplication.runningApplications(withBundleIdentifier: "ilia.page.nagare.dev").first
-        )
+        let relaunchedProcess = try await relaunch(app, at: appURL)
         XCTAssertNotEqual(originalProcess.processIdentifier, relaunchedProcess.processIdentifier)
-        // XCTest launches the process with the isolated store argument. Send
-        // the normal Dock/open event to that same process to present its window.
-        let reopenedProcess = try await NSWorkspace.shared.openApplication(
-            at: appURL,
-            configuration: NSWorkspace.OpenConfiguration()
-        )
-        XCTAssertEqual(reopenedProcess.processIdentifier, relaunchedProcess.processIdentifier)
-        app.activate()
-        XCTAssertTrue(mainWindow(in: app).waitForExistence(timeout: 5))
         openProject(named: savedTitle, in: app)
 
         XCTAssertEqual(app.textFields["Project Title"].value as? String, savedTitle)
@@ -183,6 +187,26 @@ final class WindowLifecycleUITests: XCTestCase {
     @MainActor
     private func mainWindow(in app: XCUIApplication) -> XCUIElement {
         app.windows.containing(.outline, identifier: "Sidebar").firstMatch
+    }
+
+    @MainActor
+    private func relaunch(_ app: XCUIApplication, at appURL: URL) async throws -> NSRunningApplication {
+        // Let XCTest own the process, then send the normal Dock/open event to
+        // that same process. Leave ApplePersistenceIgnoreState unset so this
+        // exercises normal restoration rather than a second application.
+        app.launchArguments = ["--use-reorder-ui-test-store"]
+        app.launch()
+        let process = try XCTUnwrap(
+            NSRunningApplication.runningApplications(withBundleIdentifier: "ilia.page.nagare.dev").first
+        )
+        let reopened = try await NSWorkspace.shared.openApplication(
+            at: appURL, configuration: NSWorkspace.OpenConfiguration()
+        )
+        XCTAssertEqual(reopened.processIdentifier, process.processIdentifier)
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        XCTAssertTrue(mainWindow(in: app).waitForExistence(timeout: 5))
+        return process
     }
 
     @MainActor

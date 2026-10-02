@@ -45,9 +45,31 @@ struct SnapshotStoreIntegrationTests {
             }
         )
 
-        #expect(!monitor.isObservingHistory)
+        #expect(attempts == 1)
         monitor.applicationDidBecomeActive()
-        #expect(monitor.isObservingHistory)
+        #expect(attempts == 2)
+    }
+
+    @Test func failedSnapshotPublicationRetriesOnNextActivation() async throws {
+        let storeURL = temporaryStoreURL()
+        defer { removeStoreFiles(at: storeURL) }
+        let observer = TestSyncHistoryObserver()
+        var attempts = 0
+        let monitor = SyncIntegrityMonitor(
+            modelContainer: try makeContainer(at: storeURL),
+            requiresReconciliation: false,
+            onPersistedChange: {
+                attempts += 1
+                if attempts == 1 { throw TestHistoryObserverError.unavailable }
+            },
+            historyObserverFactory: { _ in observer }
+        )
+        defer { monitor.stop() }
+        try await waitUntil { attempts == 1 }
+        monitor.applicationDidBecomeActive()
+        try await waitUntil { attempts == 2 }
+        monitor.applicationDidBecomeActive()
+        try await Task.sleep(for: .milliseconds(100))
         #expect(attempts == 2)
     }
 
@@ -183,7 +205,7 @@ struct SnapshotStoreIntegrationTests {
         let store = try makeStore(in: readerContainer)
         let monitor = SyncIntegrityMonitor(
             modelContainer: readerContainer,
-            onPersistedChange: { _ = try? store.reload() }
+            onPersistedChange: { _ = try store.reload() }
         )
         _ = monitor
         #expect(store.todos.map(\.title) == ["Original"])
@@ -201,6 +223,75 @@ struct SnapshotStoreIntegrationTests {
         }
     }
 
+    @Test func successfulImportPublishesCleanChangesWithoutAHistoryEvent() async throws {
+        let storeURL = temporaryStoreURL()
+        defer { removeStoreFiles(at: storeURL) }
+        let readerContainer = try makeContainer(at: storeURL)
+        let context = ModelContext(readerContainer)
+        context.insert(Todo(title: "Before import", order: "a"))
+        try context.save()
+        let store = try makeStore(in: readerContainer)
+        let observer = TestSyncHistoryObserver()
+        var publications = 0
+        let monitor = SyncIntegrityMonitor(
+            modelContainer: readerContainer,
+            onPersistedChange: {
+                publications += 1
+                _ = try store.reload()
+            },
+            historyObserverFactory: { _ in observer }
+        )
+        defer { monitor.stop() }
+        try await waitUntil { publications == 1 }
+
+        let writerContainer = try makeContainer(at: storeURL)
+        let writerContext = ModelContext(writerContainer)
+        let todo = try #require(try writerContext.fetch(FetchDescriptor<Todo>()).first)
+        todo.title = "Imported without repairs"
+        try writerContext.save()
+        let graph = try SwiftDataSyncReconciliationAdapter(
+            context: ModelContext(readerContainer)
+        ).loadSyncGraph()
+        #expect(!SyncReconciliationPlanner.plan(for: graph).report.madeChanges)
+
+        monitor.cloudImportDidFinish()
+        monitor.cloudImportDidFinish()
+        try await waitUntil { store.todos.first?.title == "Imported without repairs" }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(observer.eventCounter == 0)
+        #expect(publications == 2)
+    }
+
+    @Test func historyObservationDoesNotSubscribeToThePublishedSnapshot() async throws {
+        let storeURL = temporaryStoreURL()
+        defer { removeStoreFiles(at: storeURL) }
+        let container = try makeContainer(at: storeURL)
+        let context = ModelContext(container)
+        let todo = Todo(title: "Original", order: "a")
+        context.insert(todo)
+        try context.save()
+        let store = try makeStore(in: container)
+        let observer = TestSyncHistoryObserver()
+        var publications = 0
+        let monitor = SyncIntegrityMonitor(
+            modelContainer: container,
+            onPersistedChange: {
+                publications += 1
+                _ = try store.reload()
+            },
+            historyObserverFactory: { _ in observer }
+        )
+        defer { monitor.stop() }
+        try await waitUntil { publications == 1 }
+
+        try store.updateNote(.todo(todo.id), changes: [.title("Local edit")])
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(store.todos.first?.title == "Local edit")
+        #expect(publications == 1)
+        observer.eventCounter += 1
+        try await waitUntil { publications == 2 }
+    }
+
     @Test func historyEventPublishesExternalReorder() async throws {
         let storeURL = temporaryStoreURL()
         defer { removeStoreFiles(at: storeURL) }
@@ -216,7 +307,7 @@ struct SnapshotStoreIntegrationTests {
         let store = try makeStore(in: readerContainer)
         let monitor = SyncIntegrityMonitor(
             modelContainer: readerContainer,
-            onPersistedChange: { _ = try? store.reload() }
+            onPersistedChange: { _ = try store.reload() }
         )
         _ = monitor
 
@@ -254,7 +345,7 @@ struct SnapshotStoreIntegrationTests {
         let store = try makeStore(in: readerContainer)
         let monitor = SyncIntegrityMonitor(
             modelContainer: readerContainer,
-            onPersistedChange: { _ = try? store.reload() }
+            onPersistedChange: { _ = try store.reload() }
         )
         _ = monitor
 

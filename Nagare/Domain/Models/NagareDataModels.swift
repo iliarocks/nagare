@@ -242,8 +242,13 @@ nonisolated struct NagareDataSnapshot: Equatable, Sendable {
     func currentItem(
         for template: RecurrenceTemplateRecordSnapshot
     ) -> TodoRecordSnapshot? {
-        todos.first {
-            $0.id == template.currentItemID && $0.completedAt == nil
+        todos.filter {
+            $0.id == template.currentItemID
+                && $0.recurrenceSequence == template.currentSequence
+                && ($0.recurrenceTemplateID == nil || $0.recurrenceTemplateID == template.id)
+                && $0.completedAt == nil
+        }.reduce(nil as TodoRecordSnapshot?) { current, candidate in
+            current.map { preferredTodo($0, candidate) } ?? candidate
         }
     }
 
