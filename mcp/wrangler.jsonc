@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nagare-mcp-dev",
   "main": "src/index.ts",
+  "assets": { "directory": "./public" },
   "account_id": "8e3172bb96e48f04494d3dabc82ff02b",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
