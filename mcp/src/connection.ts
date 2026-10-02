@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { AuthEnvironment } from './auth.js';
 import { CloudKitClient, CloudKitError, type CloudKitRecord, type CloudKitZoneID } from './cloudkit.js';
-import { Nagare, NagareError, type CreateTask, type TaskChanges } from './nagare.js';
+import { Nagare, NagareError, type CreateTask, type TaskChanges, type TaskQuery, type TaskMove, type RecurrenceChanges } from './nagare.js';
+import type { Projects, CreateProject, ProjectChanges, ProjectMove } from './projects.js';
 
 export const ORIGIN = 'https://mcp.dev.nagare.page';
 
@@ -15,12 +16,27 @@ export interface Env extends AuthEnvironment {
 
 export type Operation =
   | { name: 'list_projects' }
-  | { name: 'list_tasks'; options: { completed?: boolean; projectId?: string; date?: string } }
+  | { name: 'create_project'; input: CreateProject }
+  | { name: 'update_project'; id: string; changes: ProjectChanges; revision: string }
+  | { name: 'delete_project'; id: string; revision: string }
+  | { name: 'reorder_projects'; input: ProjectMove }
+  | { name: 'list_tasks'; options: TaskQuery }
+  | { name: 'list_completed_tasks'; options: Omit<TaskQuery, 'date'> }
   | { name: 'create_task'; input: CreateTask }
   | { name: 'update_task'; id: string; changes: TaskChanges; revision: string }
-  | { name: 'complete_task'; id: string; revision: string };
+  | { name: 'complete_task'; id: string; revision: string }
+  | { name: 'delete_task'; id: string; revision: string }
+  | { name: 'reinstate_task'; id: string; revision: string; date?: string }
+  | { name: 'reorder_tasks'; input: TaskMove }
+  | { name: 'list_recurrences'; options?: { projectId?: string | null } }
+  | { name: 'update_recurrence'; id: string; changes: RecurrenceChanges; revision: string }
+  | { name: 'stop_recurrence'; id: string; revision: string };
 
-type NagareData = Awaited<ReturnType<Nagare['listProjects'] | Nagare['listTasks'] | Nagare['createTask'] | Nagare['updateTask'] | Nagare['completeTask']>>;
+type NagareData = Awaited<ReturnType<
+  Projects['list' | 'create' | 'update' | 'delete' | 'reorder']
+  | Nagare['listTasks' | 'listCompletedTasks' | 'createTask' | 'updateTask' | 'completeTask'
+    | 'deleteTask' | 'reinstateTask' | 'reorderTasks' | 'listRecurrences' | 'updateRecurrence' | 'stopRecurrence']
+>>;
 export type OperationResult = { ok: true; data: NagareData } | { ok: false; code: string; message: string };
 type Settings = { token: string; timeZone: string; zoneID: CloudKitZoneID; expiresAt: number };
 
@@ -87,18 +103,15 @@ export class Connection extends DurableObject<Env> {
           settings.token = token;
           await this.ctx.storage.put('connection', settings);
         });
+        let snapshot: Promise<CloudKitRecord[]> | undefined;
         const nagare = new Nagare({
-          async list(recordType) {
-            const records: CloudKitRecord[] = [];
-            let continuationMarker: string | undefined;
-            do {
-              const page = await client.query({
-                recordType, zoneID: settings.zoneID, continuationMarker,
-                filterBy: [{ fieldName: 'CD_entityName', comparator: 'EQUALS', fieldValue: { value: recordType.slice(3), type: 'STRING' } }],
-              });
-              records.push(...page.records);
-              continuationMarker = page.continuationMarker;
-            } while (continuationMarker);
+          async list(recordType, text = 'all') {
+            snapshot ??= client.snapshot(settings.zoneID);
+            const records = (await snapshot).filter(record => record.recordType === recordType
+              && record.fields.CD_entityName?.value === recordType.slice(3));
+            const needsText = records.filter(record => text === 'all' || (text === 'active' && record.fields.CD_completedAt?.value == null)
+              || (text === 'completed' && record.fields.CD_completedAt?.value != null));
+            await client.hydrate(needsText);
             return records;
           },
           async lookup(recordName) {
@@ -109,15 +122,29 @@ export class Connection extends DurableObject<Env> {
               throw error;
             }
           },
-          modify: operations => client.modify({ operations, zoneID: settings.zoneID }),
+          async modify(operations) {
+            try { return await client.modify({ operations, zoneID: settings.zoneID }); }
+            finally { snapshot = undefined; }
+          },
         }, settings.timeZone);
         let data: NagareData;
         switch (operation.name) {
           case 'list_projects': data = await nagare.listProjects(); break;
+          case 'create_project': data = await nagare.projects.create(operation.input); break;
+          case 'update_project': data = await nagare.projects.update(operation.id, operation.changes, operation.revision); break;
+          case 'delete_project': data = await nagare.projects.delete(operation.id, operation.revision); break;
+          case 'reorder_projects': data = await nagare.projects.reorder(operation.input); break;
           case 'list_tasks': data = await nagare.listTasks(operation.options); break;
+          case 'list_completed_tasks': data = await nagare.listCompletedTasks(operation.options); break;
           case 'create_task': data = await nagare.createTask(operation.input); break;
           case 'update_task': data = await nagare.updateTask(operation.id, operation.changes, operation.revision); break;
           case 'complete_task': data = await nagare.completeTask(operation.id, operation.revision); break;
+          case 'delete_task': data = await nagare.deleteTask(operation.id, operation.revision); break;
+          case 'reinstate_task': data = await nagare.reinstateTask(operation.id, operation.revision, operation.date); break;
+          case 'reorder_tasks': data = await nagare.reorderTasks(operation.input); break;
+          case 'list_recurrences': data = await nagare.listRecurrences(operation.options); break;
+          case 'update_recurrence': data = await nagare.updateRecurrence(operation.id, operation.changes, operation.revision); break;
+          case 'stop_recurrence': data = await nagare.stopRecurrence(operation.id, operation.revision); break;
         }
         await this.retain(settings);
         return { ok: true, data };
@@ -125,8 +152,10 @@ export class Connection extends DurableObject<Env> {
         if (error instanceof NagareError) return { ok: false, code: error.code, message: error.message };
         if (error instanceof CloudKitError) {
           return { ok: false, code: error.code, message: error.code === 'CONFLICT'
-            ? 'The task changed. Read it again before deciding what to edit.'
-            : `CloudKit could not complete the operation (${error.code}).` };
+            ? 'The item changed. Read it again before deciding what to edit.'
+            : error.code === 'TRANSACTION_TOO_LARGE'
+              ? 'This operation exceeds CloudKit’s 200-record atomic transaction limit. No records were changed. Use smaller task selections, or perform this bulk operation in Nagare.'
+              : `CloudKit could not complete the operation (${error.code}).` };
         }
         return { ok: false, code: 'UNEXPECTED_ERROR', message: 'The operation could not be completed. Read the task before retrying.' };
       }

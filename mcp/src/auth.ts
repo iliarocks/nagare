@@ -26,7 +26,9 @@ export function createAuthHandler<Env extends AuthEnvironment>(dependencies: Aut
       const oauth = env.OAUTH_PROVIDER;
       try {
         if (url.pathname === '/auth.js' && request.method === 'GET') {
-          return new Response(browserScript, { headers: { 'Content-Type': 'text/javascript; charset=utf-8' } });
+          return new Response(browserScript, { headers: {
+            'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store',
+          } });
         }
         if (url.pathname === '/authorize' && request.method === 'GET') {
           const auth = await oauth.parseAuthRequest(request);
@@ -117,7 +119,7 @@ function escapeHTML(value: string): string {
 
 function consentPage(client: ConsentDescription, handle: string): string {
   return `<h1>Connect Nagare</h1>
-    <p><strong>${escapeHTML(client.clientName)}</strong>${client.clientDomain ? ` (${escapeHTML(client.clientDomain)})` : ''} will be able to read your projects and tasks, and create, edit, reschedule, and complete ordinary tasks.</p>
+    <p><strong>${escapeHTML(client.clientName)}</strong>${client.clientDomain ? ` (${escapeHTML(client.clientDomain)})` : ''} will be able to read and manage your tasks, projects, and repeats, including completing and deleting them.</p>
     <p>You can disconnect Nagare in your agent’s settings. Your Apple password stays with Apple.</p>
     <p class="detail">You’ll return to <strong>${escapeHTML(client.redirectHost)}</strong>.${client.redirectIsLoopback ? ' This is a local app; any process on your computer could receive this connection.' : ''}</p>
     <form id="connect" action="/authorize" method="post">
@@ -133,9 +135,52 @@ function page(content: string, headers = new Headers(), status = 200): Response 
   headers.set('Referrer-Policy', 'no-referrer');
   headers.set('X-Frame-Options', 'DENY');
   headers.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
-  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Nagare</title><style>
-    :root{color-scheme:light dark;font:17px/1.5 system-ui}body{max-width:30rem;margin:10vh auto;padding:1.5rem}h1{font-size:1.7rem;letter-spacing:-.04em}p{margin:1.2rem 0}.detail{font-size:.85rem;opacity:.7}button{font:inherit;border:0;border-radius:.7rem;padding:.75rem 1rem;cursor:pointer;background:#526654;color:white}.secondary{background:transparent;color:inherit}button:disabled{opacity:.5;cursor:wait}#status{font-size:.9rem}
-    </style><main>${content}</main></html>`, { status, headers });
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Nagare</title><style>
+    :root {
+      color-scheme: light dark;
+      --accent: #607d8b;
+      --background: #f7f8fa;
+      --surface: #ffffff;
+      --text: #151719;
+      --secondary: #676c70;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      display: grid;
+      align-items: center;
+      background: var(--background);
+      color: var(--text);
+      font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { width: min(480px, calc(100% - 48px)); margin-inline: auto; padding-block: 64px; }
+    h1 { margin: 0 0 32px; font-size: clamp(3rem, 9vw, 3.7rem); line-height: 1.02; letter-spacing: -.055em; font-weight: 730; }
+    p { margin: 20px 0; color: var(--secondary); overflow-wrap: anywhere; }
+    strong { color: var(--text); font-weight: 650; }
+    .detail, #status { font-size: .875rem; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+    button {
+      min-height: 54px;
+      padding: 13px 24px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--text);
+      color: var(--surface);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:hover { opacity: .88; }
+    button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .secondary { background: transparent; color: var(--secondary); }
+    #status { min-height: 1.55em; margin-bottom: 0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --accent: #86a3b3; --background: #080808; --surface: #1c1c1c; --text: #f5f5f5; --secondary: #b0b0b0; }
+    }
+    </style></head><body><main>${content}</main></body></html>`, { status, headers });
 }
 
 // CloudKit's popup response has no OAuth state. Keep the state in this page and

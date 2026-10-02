@@ -131,15 +131,53 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
     assert.equal(tokens.status, 200);
     const token = await tokens.json() as { access_token: string; refresh_token: string };
     assert.ok(token.refresh_token);
-    const tools = await request('/mcp', {
+    const rpc = (method: string, params: unknown = {}) => request('/mcp', {
       method: 'POST', headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     });
+    const tools = await rpc('tools/list');
     const body = await tools.text();
     assert.equal(tools.status, 200, body);
-    assert.match(body, /list_projects/);
-    assert.match(body, /complete_task/);
-    assert.match(body, /securitySchemes/);
+    const message = JSON.parse(body.trim().startsWith('{') ? body : body.split('\n').find(line => line.startsWith('data: '))!.slice(6)) as {
+      result: { tools: { name: string; description: string; inputSchema: {
+        properties: Record<string, { maxLength?: number; properties?: Record<string, unknown> }>;
+      }; annotations: Record<string, boolean>; _meta: { securitySchemes: unknown } }[] };
+    };
+    const definitions = new Map(message.result.tools.map(tool => [tool.name, tool]));
+    assert.deepEqual([...definitions.keys()].sort(), [
+      'list_projects', 'create_project', 'update_project', 'delete_project', 'reorder_projects',
+      'list_tasks', 'list_completed_tasks', 'create_task', 'update_task', 'complete_task',
+      'delete_task', 'reinstate_task', 'reorder_tasks', 'list_recurrences', 'update_recurrence', 'stop_recurrence',
+    ].sort());
+    for (const tool of definitions.values()) {
+      assert.deepEqual(tool._meta.securitySchemes, [{ type: 'oauth2', scopes: ['nagare:read', 'nagare:write'] }]);
+      assert.equal(tool.annotations.readOnlyHint, tool.name.startsWith('list_'), tool.name);
+      assert.equal(tool.annotations.destructiveHint, tool.name.startsWith('delete_'), tool.name);
+      assert.equal(tool.annotations.openWorldHint, false, tool.name);
+      if (!tool.name.startsWith('list_')) assert.equal(tool.annotations.idempotentHint, true, tool.name);
+    }
+    const active = definitions.get('list_tasks')!;
+    assert.equal('completed' in active.inputSchema.properties, false);
+    assert.deepEqual(Object.keys(active.inputSchema.properties).sort(), ['date', 'from', 'through', 'projectId', 'query'].sort());
+    assert.deepEqual(Object.keys(definitions.get('list_completed_tasks')!.inputSchema.properties).sort(), ['from', 'through', 'projectId', 'query'].sort());
+    assert.match(active.description, /projected/i);
+    assert.match(active.description, /read-only/);
+    assert.match(definitions.get('delete_project')!.description, /retained/);
+    assert.match(definitions.get('stop_recurrence')!.description, /Retains/);
+    assert.ok(definitions.get('create_task')!.inputSchema.properties.recurrence);
+    assert.ok(definitions.get('update_task')!.inputSchema.properties.changes.properties!.recurrence);
+    assert.equal(definitions.get('create_task')!.inputSchema.properties.title.maxLength, undefined);
+    assert.equal(definitions.get('create_project')!.inputSchema.properties.notes.maxLength, undefined);
+
+    // Input validation runs before the unconfigured connection is invoked.
+    const id = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
+    for (const context of [{}, { date: '2026-10-02', projectId: id }]) {
+      const invalid = await rpc('tools/call', { name: 'reorder_tasks', arguments: { ids: [id], revisions: { [id]: 'v1' }, ...context } });
+      const error = await invalid.text();
+      assert.equal(invalid.status, 200, error);
+      assert.match(error, /Choose exactly one list context/);
+      assert.doesNotMatch(error, /AUTHENTICATION_REQUIRED/);
+    }
   } finally {
     await harness.close();
     await rm(directory, { recursive: true, force: true });

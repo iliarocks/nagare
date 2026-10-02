@@ -59,7 +59,7 @@ launches retain data and sync. On Mac, use the normal app launcher, such as
 The fixture contains 3 projects, 15 items, and 3 recurring series. Stable logical
 IDs do not make separately seeded CloudKit records identical.
 
-## Cloud MCP prototype
+## Cloud MCP
 
 `mcp/` contains the development Cloudflare Worker. With Node 26, run `npm ci`,
 `npm run check`, and `npm test` there. Tests use isolated storage and fake Apple
@@ -67,15 +67,18 @@ responses; they never touch an iCloud account. `npm run deploy` publishes the
 development endpoint at `https://mcp.dev.nagare.page/mcp`.
 
 The Worker uses one OAuth KV namespace and a Durable Object per connected user
-for credentials, timezone, and serialized CloudKit calls. Idle credentials expire
+for credentials, calendar interpretation, and serialized CloudKit calls. Idle credentials expire
 after 30 days. Tasks remain in CloudKit. `CLOUDKIT_API_TOKEN` is a Worker secret;
 local development uses ignored `.dev.vars`. The CloudKit token uses Post Message
 sign-in and allows only the Worker origin. Keep it in development while testing.
 
-The initial tools read projects and saved tasks, and create, edit, reschedule,
-and complete ordinary tasks. Updates require the latest record revision; create
-retries reuse a UUID. Recurring edits and projected occurrences are deferred.
-Verify real web writes import into both development apps before widening scope.
+Tools manage tasks, projects, ordering, priority, and recurring series. Ordinary
+queries include active tasks and projected repeats; completed history is separate.
+Today carries overdue items forward even when the apps are closed. Reads use a
+fresh CloudKit zone snapshot; commands require current revisions and commit atomically
+(up to CloudKit’s 200-operation limit). Large day rollovers run in ordered batches
+before the requested command. Create retries reuse a UUID. Verify changes
+through both development apps, including recurrence and large-note round trips.
 
 ## Release and assets
 
@@ -86,5 +89,6 @@ metadata live in `.build/releases`; keep submitted archives and dSYMs. Archiving
 does not upload or publish. Validate the distribution build's production CloudKit
 schema and sync separately before submission.
 
-`docs/` is the public website. Screenshot originals, render inputs, final exports,
-and rebuild instructions live in `screenshots/`; retain asset licenses and provenance.
+`docs/` is the public website; `docs/CNAME` binds GitHub Pages to `nagare.page`.
+`screenshots/` holds original captures and App Store exports. Rebuild the exports
+with `swift screenshots/render.swift`; the Apple bezel and its license are adjacent.
