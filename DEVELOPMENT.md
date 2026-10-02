@@ -61,19 +61,23 @@ IDs do not make separately seeded CloudKit records identical.
 
 ## Cloud MCP
 
-`mcp/` contains the development Cloudflare Worker. With Node 26, run `npm ci`,
+`mcp/` contains the Cloudflare Worker. With Node 26, run `npm ci`,
 `npm run check`, and `npm test` there. Tests use isolated storage and fake Apple
 responses; they never touch an iCloud account. `npm run deploy` publishes the
 development endpoint at `https://mcp.development.nagare.page`.
 
-The production endpoint will be `https://mcp.nagare.page`, with its own Worker,
-OAuth storage, and production CloudKit API token. Both environments serve MCP at the root URL.
+`npm run deploy -- --env production` publishes `https://mcp.nagare.page`.
+Production has its own Worker, OAuth storage, and CloudKit API token.
+Both environments serve MCP at the root URL.
 
 The Worker uses one OAuth KV namespace and a Durable Object per connected user
-for credentials, calendar interpretation, and serialized CloudKit calls. Idle credentials expire
-after 30 days. Tasks remain in CloudKit. `CLOUDKIT_API_TOKEN` is a Worker secret;
+for credentials, calendar interpretation, and serialized CloudKit calls. OAuth refreshes
+reset the grant's idle expiry to 30 days; successful tool operations retain the stored
+CloudKit credentials for another 30 days. Apple can expire its session sooner and require
+reconnection. Tasks remain in CloudKit. `CLOUDKIT_API_TOKEN` is a Worker secret;
 local development uses ignored `.dev.vars`. The CloudKit token uses Post Message
-sign-in and allows only the Worker origin. Keep it in development while testing.
+sign-in and allows only the matching Worker origin. Use development for routine
+testing and temporary items for production verification.
 
 Tools manage tasks, projects, ordering, priority, and recurring series. Ordinary
 queries include active tasks and projected repeats; completed history is separate.

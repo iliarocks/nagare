@@ -15,5 +15,17 @@
   },
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "5f180aec9b8f4c5eb29a9a7a396b76f7" }],
   "durable_objects": { "bindings": [{ "name": "CONNECTIONS", "class_name": "Connection" }] },
-  "exports": { "Connection": { "type": "durable-object", "storage": "sqlite" } }
+  "exports": { "Connection": { "type": "durable-object", "storage": "sqlite" } },
+  "env": {
+    "production": {
+      "name": "nagare-mcp",
+      "routes": [{ "pattern": "mcp.nagare.page", "custom_domain": true, "zone_name": "nagare.page" }],
+      "vars": {
+        "CLOUDKIT_CONTAINER": "iCloud.ilia.page.nagare",
+        "CLOUDKIT_ENVIRONMENT": "production"
+      },
+      "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "9ebb915cd888492eac09c7d9d7014201" }],
+      "durable_objects": { "bindings": [{ "name": "CONNECTIONS", "class_name": "Connection" }] }
+    }
+  }
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createTestHarness } from 'wrangler';
-import type { OAuthProtectedResourceMetadata } from '@cloudflare/workers-oauth-provider';
+import type { Grant, OAuthProtectedResourceMetadata } from '@cloudflare/workers-oauth-provider';
 
 // The helper only needs KV and Web Crypto; WorkerEntrypoint is unused here.
 registerHooks({ resolve(specifier, context, next) {
@@ -18,7 +18,7 @@ const { getOAuthApi } = await import('@cloudflare/workers-oauth-provider');
 for (const [environment, origin, name] of [
   ['development', 'https://mcp.development.nagare.page', 'Nagare Development'],
   ['production', 'https://mcp.nagare.page', 'Nagare'],
-] as const) test(`${environment} Worker enforces OAuth discovery, PKCE, resource binding, and scopes`, { timeout: 60_000 }, async () => {
+] as const) test(`${environment} Worker enforces OAuth discovery, PKCE, resource binding, scopes, renewal, and revocation`, { timeout: 60_000 }, async () => {
   const metadataPath = '/.well-known/oauth-protected-resource';
   const directory = await mkdtemp(join(tmpdir(), 'nagare-oauth-test-'));
   const entrypoint = join(directory, 'worker.ts');
@@ -142,8 +142,8 @@ for (const [environment, origin, name] of [
     assert.equal(tokens.status, 200);
     const token = await tokens.json() as { access_token: string; refresh_token: string };
     assert.ok(token.refresh_token);
-    const rpc = (method: string, params: unknown = {}) => request('/', {
-      method: 'POST', headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    const rpc = (method: string, params: unknown = {}, accessToken = token.access_token) => request('/', {
+      method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     });
     const initialized = await rpc('initialize', {
@@ -199,6 +199,45 @@ for (const [environment, origin, name] of [
       assert.match(error, /Choose exactly one list context/);
       assert.doesNotMatch(error, /AUTHENTICATION_REQUIRED/);
     }
+
+    // Simulate a grant near expiry without waiting a month. A refresh must
+    // restore the full idle window, not inherit the original expiry.
+    const [userId, grantId] = token.refresh_token.split(':');
+    const grantKey = `grant:${userId}:${grantId}`;
+    const grant = await env.OAUTH_KV.get<Grant>(grantKey, 'json');
+    assert.ok(grant);
+    const beforeRefresh = Math.floor(Date.now() / 1000);
+    await env.OAUTH_KV.put(grantKey, JSON.stringify({ ...grant, expiresAt: beforeRefresh + 3600 }), { expirationTtl: 3600 });
+    const refresh = (refreshToken: string) => request('/oauth/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', client_id: client.client_id,
+        refresh_token: refreshToken, resource: resource.resource }).toString(),
+    });
+    const renewed = await refresh(token.refresh_token);
+    assert.equal(renewed.status, 200);
+    const renewedToken = await renewed.json() as { access_token: string; refresh_token: string; expires_in: number };
+    assert.notEqual(renewedToken.access_token, token.access_token);
+    assert.notEqual(renewedToken.refresh_token, token.refresh_token);
+    assert.equal(renewedToken.expires_in, 3600);
+    const renewedGrant = await env.OAUTH_KV.get<Grant>(grantKey, 'json');
+    const idleSeconds = 30 * 24 * 60 * 60;
+    assert.ok(renewedGrant?.expiresAt);
+    assert.ok(renewedGrant.expiresAt >= beforeRefresh + idleSeconds);
+    assert.ok(renewedGrant.expiresAt <= Math.floor(Date.now() / 1000) + idleSeconds);
+    assert.equal((await rpc('tools/list', {}, renewedToken.access_token)).status, 200);
+
+    const revoked = await request('/oauth/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: client.client_id,
+        token: renewedToken.refresh_token, token_type_hint: 'refresh_token' }).toString(),
+    });
+    assert.equal(revoked.status, 200);
+    for (const accessToken of [token.access_token, renewedToken.access_token]) {
+      assert.equal((await rpc('tools/list', {}, accessToken)).status, 401);
+    }
+    const deniedRefresh = await refresh(renewedToken.refresh_token);
+    assert.equal(deniedRefresh.status, 400);
+    assert.equal((await deniedRefresh.json() as { error: string }).error, 'invalid_grant');
   } finally {
     await harness.close();
     await rm(directory, { recursive: true, force: true });
