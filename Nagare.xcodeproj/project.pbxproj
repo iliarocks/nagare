@@ -112,7 +112,7 @@
 				000000000000000000000010 /* Nagare */,
 			);
 			name = Nagare;
-			productName = MyApp;
+			productName = Nagare;
 			productReference = 000000000000000000000120 /* Nagare.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -428,11 +428,10 @@
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Nagare/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Nagare Dev";
-				INFOPLIST_KEY_CFBundleName = "Nagare Dev";
+				INFOPLIST_KEY_CFBundleDisplayName = "Nagare Development";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -449,10 +448,10 @@
 				MARKETING_VERSION = 1.0;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				NAGARE_APS_ENVIRONMENT = development;
+				NAGARE_CLOUDKIT_ENVIRONMENT = Development;
 				PRODUCT_BUNDLE_IDENTIFIER = ilia.page.nagare.dev;
 				PRODUCT_MODULE_NAME = Nagare;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				"PRODUCT_NAME[sdk=macosx*]" = "Nagare Dev";
+				PRODUCT_NAME = "Nagare Development";
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -485,8 +484,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nagare.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nagare";
-				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/Nagare Dev.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nagare Dev";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nagare Development.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nagare Development";
 			};
 			name = Debug;
 		};
@@ -524,7 +522,7 @@
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Nagare/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -543,6 +541,7 @@
 				MARKETING_VERSION = 1.0;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				NAGARE_APS_ENVIRONMENT = production;
+				NAGARE_CLOUDKIT_ENVIRONMENT = Production;
 				PRODUCT_BUNDLE_IDENTIFIER = ilia.page.nagare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;

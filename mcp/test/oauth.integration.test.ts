@@ -15,9 +15,11 @@ registerHooks({ resolve(specifier, context, next) {
     : next(specifier, context);
 } });
 const { getOAuthApi } = await import('@cloudflare/workers-oauth-provider');
-const origin = 'https://mcp.dev.nagare.page';
-
-test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes', { timeout: 60_000 }, async () => {
+for (const [environment, origin, name] of [
+  ['development', 'https://mcp.development.nagare.page', 'Nagare Development'],
+  ['production', 'https://mcp.nagare.page', 'Nagare'],
+] as const) test(`${environment} Worker enforces OAuth discovery, PKCE, resource binding, and scopes`, { timeout: 60_000 }, async () => {
+  const metadataPath = '/.well-known/oauth-protected-resource';
   const directory = await mkdtemp(join(tmpdir(), 'nagare-oauth-test-'));
   const entrypoint = join(directory, 'worker.ts');
   const source = fileURLToPath(new URL('../src/index.ts', import.meta.url).href);
@@ -35,7 +37,7 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
     main: entrypoint,
     compatibility_date: '2026-10-01',
     compatibility_flags: ['nodejs_compat', 'global_fetch_strictly_public'],
-    vars: { CLOUDKIT_CONTAINER: 'test-only', CLOUDKIT_ENVIRONMENT: 'development', CLOUDKIT_API_TOKEN: 'unused-test-token' },
+    vars: { CLOUDKIT_CONTAINER: 'test-only', CLOUDKIT_ENVIRONMENT: environment, CLOUDKIT_API_TOKEN: 'unused-test-token' },
     kv_namespaces: [{ binding: 'OAUTH_KV' }],
     durable_objects: { bindings: [{ name: 'CONNECTIONS', class_name: 'Connection' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['Connection'] }],
@@ -50,11 +52,12 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
       assert.equal(response.status, 200);
       return response.json() as Promise<T>;
     };
-    const unauthenticated = await request('/mcp');
+    const unauthenticated = await request('/');
     assert.equal(unauthenticated.status, 401);
     assert.match(unauthenticated.headers.get('WWW-Authenticate')!, /resource_metadata=/);
-    const resource = await json<OAuthProtectedResourceMetadata & { scopes_supported: string[] }>('/.well-known/oauth-protected-resource/mcp');
-    assert.equal(resource.resource, `${origin}/mcp`);
+    const resource = await json<OAuthProtectedResourceMetadata & { scopes_supported: string[] }>(metadataPath);
+    assert.equal(resource.resource, origin);
+    assert.equal(resource.resource_name, name);
     assert.deepEqual(resource.authorization_servers, [origin]);
     assert.deepEqual(resource.scopes_supported, ['nagare:read', 'nagare:write']);
     const metadata = await json<{
@@ -66,6 +69,13 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
     assert.ok(metadata.code_challenge_methods_supported.includes('S256'));
     assert.equal(metadata.client_id_metadata_document_supported, true);
     assert.equal(metadata.authorization_response_iss_parameter_supported, true);
+    assert.equal((await request('/auth.js')).status, 200);
+    assert.equal((await request('/mcp')).status, 404);
+    const invalidCallback = await request('/callback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: 'invalid', token: 'unused-token' }),
+    });
+    assert.equal(invalidCallback.status, 400, await invalidCallback.text());
 
     const registration = await request('/oauth/register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -94,13 +104,13 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
     const withoutPKCE = new URLSearchParams(params);
     withoutPKCE.delete('code_challenge');
     assert.equal((await request(`/authorize?${withoutPKCE}`)).status, 400);
-    assert.equal((await request('/mcp', { headers: { Authorization: 'Bearer invalid' } })).status, 401);
+    assert.equal((await request('/', { headers: { Authorization: 'Bearer invalid' } })).status, 401);
 
     // Stand in only for successful Apple authentication. The package creates
     // the real grant in the harness's KV; workerd handles the entire protocol.
     const env = await worker.getEnv();
     const oauth = getOAuthApi({
-      apiRoute: '/mcp', apiHandler: { fetch: () => new Response() }, defaultHandler: { fetch: () => new Response() },
+      apiRoute: '/', apiHandler: { fetch: () => new Response() }, defaultHandler: { fetch: () => new Response() },
       authorizeEndpoint: metadata.authorization_endpoint, tokenEndpoint: metadata.token_endpoint,
       scopesSupported: metadata.scopes_supported, resourceMetadata: resource,
     }, env);
@@ -117,13 +127,14 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
     });
     const wrongVerifier = await exchange(await issue(['nagare:read', 'nagare:write']), resource.resource, 'b'.repeat(64));
     assert.equal(wrongVerifier.status, 400);
-    const wrongResource = await exchange(await issue(['nagare:read', 'nagare:write']), 'https://other.example/mcp');
+    const otherEnvironment = environment === 'development' ? 'https://mcp.nagare.page' : 'https://mcp.development.nagare.page';
+    const wrongResource = await exchange(await issue(['nagare:read', 'nagare:write']), otherEnvironment);
     assert.equal(wrongResource.status, 400);
 
     const readOnly = await exchange(await issue(['nagare:read']));
     assert.equal(readOnly.status, 200);
     const readOnlyToken = await readOnly.json() as { access_token: string };
-    const denied = await request('/mcp', { headers: { Authorization: `Bearer ${readOnlyToken.access_token}` } });
+    const denied = await request('/', { headers: { Authorization: `Bearer ${readOnlyToken.access_token}` } });
     assert.equal(denied.status, 403);
     assert.match(denied.headers.get('WWW-Authenticate')!, /insufficient_scope/);
 
@@ -131,10 +142,20 @@ test('real Worker enforces OAuth discovery, PKCE, resource binding, and scopes',
     assert.equal(tokens.status, 200);
     const token = await tokens.json() as { access_token: string; refresh_token: string };
     assert.ok(token.refresh_token);
-    const rpc = (method: string, params: unknown = {}) => request('/mcp', {
+    const rpc = (method: string, params: unknown = {}) => request('/', {
       method: 'POST', headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     });
+    const initialized = await rpc('initialize', {
+      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'integration-test', version: '1' },
+    });
+    assert.equal(initialized.status, 200);
+    assert.match(await initialized.text(), new RegExp(`"name":"${name}"`));
+    const disconnected = await rpc('tools/call', { name: 'list_projects', arguments: {} });
+    const disconnectedBody = await disconnected.text();
+    assert.equal(disconnected.status, 200);
+    assert.ok(disconnectedBody.includes(origin + metadataPath));
+    assert.match(disconnectedBody, /AUTHENTICATION_REQUIRED/);
     const tools = await rpc('tools/list');
     const body = await tools.text();
     assert.equal(tools.status, 200, body);

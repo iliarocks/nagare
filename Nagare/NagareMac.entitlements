@@ -4,6 +4,8 @@
 <dict>
 	<key>com.apple.developer.aps-environment</key>
 	<string>$(NAGARE_APS_ENVIRONMENT)</string>
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>$(NAGARE_CLOUDKIT_ENVIRONMENT)</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
 		<string>iCloud.ilia.page.nagare</string>
@@ -12,8 +14,6 @@
 	<array>
 		<string>CloudKit</string>
 	</array>
-	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
-	<string>$(TeamIdentifierPrefix)ilia.page.nagare</string>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<key>com.apple.security.network.client</key>

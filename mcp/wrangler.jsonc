@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "nagare-mcp-dev",
+  "name": "nagare-mcp-development",
   "main": "src/index.ts",
   "assets": { "directory": "./public" },
   "account_id": "8e3172bb96e48f04494d3dabc82ff02b",
@@ -8,12 +8,12 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [{ "pattern": "mcp.dev.nagare.page", "custom_domain": true, "zone_name": "nagare.page" }],
+  "routes": [{ "pattern": "mcp.development.nagare.page", "custom_domain": true, "zone_name": "nagare.page" }],
   "vars": {
     "CLOUDKIT_CONTAINER": "iCloud.ilia.page.nagare",
     "CLOUDKIT_ENVIRONMENT": "development"
   },
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "5f180aec9b8f4c5eb29a9a7a396b76f7" }],
   "durable_objects": { "bindings": [{ "name": "CONNECTIONS", "class_name": "Connection" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Connection"] }]
+  "exports": { "Connection": { "type": "durable-object", "storage": "sqlite" } }
 }

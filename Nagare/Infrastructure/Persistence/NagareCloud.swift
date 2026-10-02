@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 
 enum NagareCloud {
-    /// One container is shared by iOS and macOS. Development-signed builds use
-    /// CloudKit's development environment; App Store builds use production.
+    /// iOS and macOS share one container. Build entitlements select Development
+    /// for Debug and Production for Release.
     static let containerIdentifier = "iCloud.ilia.page.nagare"
 
 #if DEBUG

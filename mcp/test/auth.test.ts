@@ -13,7 +13,7 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 const { createAuthHandler, OAUTH_SCOPES } = await import('../src/auth.js');
 
-const origin = 'https://nagare-mcp-dev.example.workers.dev';
+const origin = 'https://mcp.development.nagare.page';
 const authRequest = { clientId: 'client', redirectUri: 'https://chatgpt.com/callback', scope: OAUTH_SCOPES } as AuthRequest;
 const client: ConsentDescription = {
   clientId: 'client', clientName: 'ChatGPT', redirectUri: authRequest.redirectUri,

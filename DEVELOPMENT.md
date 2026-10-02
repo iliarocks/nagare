@@ -55,7 +55,7 @@ files, and preferences. Seed **one device**, then let iCloud deliver to the othe
 
 Launch the receiver with only `--enable-development-cloud-sync`; ordinary later
 launches retain data and sync. On Mac, use the normal app launcher, such as
-`open -a "Nagare Dev" --args ...`, so system background-task registration works.
+`open -a "Nagare Development" --args ...`, so system background-task registration works.
 The fixture contains 3 projects, 15 items, and 3 recurring series. Stable logical
 IDs do not make separately seeded CloudKit records identical.
 
@@ -64,7 +64,10 @@ IDs do not make separately seeded CloudKit records identical.
 `mcp/` contains the development Cloudflare Worker. With Node 26, run `npm ci`,
 `npm run check`, and `npm test` there. Tests use isolated storage and fake Apple
 responses; they never touch an iCloud account. `npm run deploy` publishes the
-development endpoint at `https://mcp.dev.nagare.page/mcp`.
+development endpoint at `https://mcp.development.nagare.page`.
+
+The production endpoint will be `https://mcp.nagare.page`, with its own Worker,
+OAuth storage, and production CloudKit API token. Both environments serve MCP at the root URL.
 
 The Worker uses one OAuth KV namespace and a Durable Object per connected user
 for credentials, calendar interpretation, and serialized CloudKit calls. Idle credentials expire

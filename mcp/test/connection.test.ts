@@ -32,7 +32,7 @@ function gate() {
   return { promise, open };
 }
 
-function setup() {
+function setup(environment: Env['CLOUDKIT_ENVIRONMENT'] = 'development') {
   const values = new Map<string, unknown>();
   const storage = {
     alarmAt: null as number | null,
@@ -48,7 +48,7 @@ function setup() {
       return action(storage as unknown as Pick<DurableObjectStorage, 'put' | 'setAlarm'>);
     },
   };
-  const connection = new Connection({ storage } as unknown as DurableObjectState, env);
+  const connection = new Connection({ storage } as unknown as DurableObjectState, { ...env, CLOUDKIT_ENVIRONMENT: environment });
   const settings = () => values.get('connection') as { token: string; timeZone: string; zoneID: typeof zoneID; expiresAt?: number } | undefined;
   return { connection, values, storage, settings };
 }
@@ -66,6 +66,19 @@ function response(body: unknown, token: string) {
 function snapshot(records: unknown[], token: string, syncToken = 'end', moreComing = false) {
   return response({ zones: [{ zoneID, records, syncToken, moreComing }] }, token);
 }
+
+test('each deployment sends its own origin and CloudKit environment', async t => {
+  const requests: { origin: string | null; path: string }[] = [];
+  t.mock.method(globalThis, 'fetch', (input: unknown, init?: RequestInit) => {
+    requests.push({ origin: new Headers(init?.headers).get('Origin'), path: new URL(String(input)).pathname });
+    return response({ zones: [{ zoneID }] }, 'configured');
+  });
+  await setup('development').connection.configure('development-token', 'UTC');
+  await setup('production').connection.configure('production-token', 'UTC');
+  assert.deepEqual(requests.map(request => request.origin), ['https://mcp.development.nagare.page', 'https://mcp.nagare.page']);
+  assert.match(requests[0].path, /\/development\/private\//);
+  assert.match(requests[1].path, /\/production\/private\//);
+});
 
 test('overlapping calls wait for the preceding operation and persisted token rotation', async t => {
   const { connection, storage, settings } = setup();
@@ -382,6 +395,16 @@ test('only configuration and successful operations extend the 30-day idle deadli
   assert.equal((await connection.run({ name: 'list_projects' })).ok, true);
   assert.equal(settings()?.expiresAt, now + month);
   assert.equal(storage.alarmAt, now + month);
+});
+
+test('legacy credentials without an idle deadline require reconnection before contacting CloudKit', async t => {
+  const { connection, values } = setup();
+  values.set('connection', { token: 'legacy-token', timeZone: 'UTC', zoneID });
+  intercept(t, () => { assert.fail('Expired credentials must not be sent to CloudKit.'); });
+  assert.deepEqual(await connection.run({ name: 'list_projects' }), {
+    ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.',
+  });
+  assert.equal(values.size, 0);
 });
 
 for (const trigger of ['run', 'alarm'] as const) {

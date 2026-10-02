@@ -4,7 +4,7 @@ import { createMcpHandler } from 'agents/mcp/server';
 import { z } from 'zod';
 import { createAuthHandler, OAUTH_SCOPES, type AuthProps } from './auth.js';
 import { CloudKitError } from './cloudkit.js';
-import { cloudKit, ORIGIN, type Env, type Operation } from './connection.js';
+import { cloudKit, deployment, type Env, type Operation } from './connection.js';
 
 export { Connection } from './connection.js';
 
@@ -55,7 +55,8 @@ const taskMove = z.object({
 });
 
 function createServer(env: Env, connectionId: string) {
-  const server = new McpServer({ name: 'Nagare Development', version: '0.2.0' }, {
+  const profile = deployment(env.CLOUDKIT_ENVIRONMENT);
+  const server = new McpServer({ name: profile.name, version: '0.2.0' }, {
     instructions: 'Ordinary task queries return active tasks, including projected repeats. Completed history is queried separately. Preserve the provided order unless the user asks to organize tasks differently. For a normal task list, show titles and times when present; omit routine labels such as ‘incomplete’ or ‘anytime.’ Add notes, project context, or other details when they help answer the request.',
   });
   const connection = env.CONNECTIONS.get(env.CONNECTIONS.idFromName(connectionId));
@@ -66,7 +67,7 @@ function createServer(env: Env, connectionId: string) {
         isError: true,
         content: [{ type: 'text' as const, text: `${result.code}: ${result.message}` }],
         ...(['AUTHENTICATION_REQUIRED', 'AUTHENTICATION_FAILED'].includes(result.code) ? {
-          _meta: { 'mcp/www_authenticate': [`Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp", error="invalid_token", error_description="Reconnect Nagare with iCloud"`] },
+          _meta: { 'mcp/www_authenticate': [`Bearer resource_metadata="${profile.origin}/.well-known/oauth-protected-resource", error="invalid_token", error_description="Reconnect Nagare with iCloud"`] },
         } : {}),
       };
     }
@@ -166,44 +167,59 @@ function createServer(env: Env, connectionId: string) {
   return server;
 }
 
-export default new OAuthProvider<Env>({
-  apiRoute: '/mcp',
-  apiHandler: {
-    async fetch(request, env, ctx) {
-      const { props, auth } = ctx as typeof ctx & { props: AuthProps; auth: OAuthResourceAuth };
-      if (!requiredScopes.every(scope => auth.scope.includes(scope))) return insufficientScope(auth, requiredScopes);
-      if (!props.connectionId) return new Response('Invalid connection', { status: 401 });
-      return createMcpHandler(() => createServer(env, props.connectionId), {
-        allowedHostnames: [new URL(ORIGIN).hostname],
-        allowedOriginHostnames: [new URL(ORIGIN).hostname],
-      })(request, env, ctx);
+function createProvider(environment: Env['CLOUDKIT_ENVIRONMENT']) {
+  const profile = deployment(environment);
+  return new OAuthProvider<Env>({
+    apiRoute: '/',
+    apiHandler: {
+      async fetch(request, env, ctx) {
+        const { props, auth } = ctx as typeof ctx & { props: AuthProps; auth: OAuthResourceAuth };
+        if (!requiredScopes.every(scope => auth.scope.includes(scope))) return insufficientScope(auth, requiredScopes);
+        if (!props.connectionId) return new Response('Invalid connection', { status: 401 });
+        return createMcpHandler(() => createServer(env, props.connectionId), {
+          route: '/',
+          allowedHostnames: [new URL(profile.origin).hostname],
+          allowedOriginHostnames: [new URL(profile.origin).hostname],
+        })(request, env, ctx);
+      },
     },
+    defaultHandler: createAuthHandler<Env>({
+      async getAppleSignInURL(env) {
+        try { await cloudKit(env).currentUser(); }
+        catch (error) {
+          if (error instanceof CloudKitError && error.code === 'AUTHENTICATION_REQUIRED' && error.redirectURL) return error.redirectURL;
+          throw error;
+        }
+        throw new Error('Apple did not return a sign-in URL.');
+      },
+      async connect(env, webAuthToken, timezone) {
+        const client = cloudKit(env, webAuthToken, async token => { webAuthToken = token; });
+        const user = await client.currentUser();
+        const identity = `${env.CLOUDKIT_CONTAINER}:${env.CLOUDKIT_ENVIRONMENT}:${user.userRecordName}`;
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+        const connectionId = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+        await env.CONNECTIONS.get(env.CONNECTIONS.idFromName(connectionId)).configure(webAuthToken, timezone);
+        return { connectionId, userId: connectionId };
+      },
+    }),
+    authorizeEndpoint: '/authorize',
+    tokenEndpoint: '/oauth/token',
+    clientRegistrationEndpoint: '/oauth/register',
+    clientIdMetadataDocumentEnabled: true,
+    refreshTokenIdleTTL: 30 * 24 * 60 * 60,
+    scopesSupported: OAUTH_SCOPES,
+    requiredScopes,
+    resourceMetadata: { resource: profile.origin, authorization_servers: [profile.origin], resource_name: profile.name },
+  });
+}
+
+const providers = {
+  development: createProvider('development'),
+  production: createProvider('production'),
+};
+
+export default {
+  fetch(request, env, ctx) {
+    return providers[env.CLOUDKIT_ENVIRONMENT].fetch(request, env, ctx);
   },
-  defaultHandler: createAuthHandler<Env>({
-    async getAppleSignInURL(env) {
-      try { await cloudKit(env).currentUser(); }
-      catch (error) {
-        if (error instanceof CloudKitError && error.code === 'AUTHENTICATION_REQUIRED' && error.redirectURL) return error.redirectURL;
-        throw error;
-      }
-      throw new Error('Apple did not return a sign-in URL.');
-    },
-    async connect(env, webAuthToken, timezone) {
-      const client = cloudKit(env, webAuthToken, async token => { webAuthToken = token; });
-      const user = await client.currentUser();
-      const identity = `${env.CLOUDKIT_CONTAINER}:${env.CLOUDKIT_ENVIRONMENT}:${user.userRecordName}`;
-      const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
-      const connectionId = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-      await env.CONNECTIONS.get(env.CONNECTIONS.idFromName(connectionId)).configure(webAuthToken, timezone);
-      return { connectionId, userId: connectionId };
-    },
-  }),
-  authorizeEndpoint: '/authorize',
-  tokenEndpoint: '/oauth/token',
-  clientRegistrationEndpoint: '/oauth/register',
-  clientIdMetadataDocumentEnabled: true,
-  refreshTokenIdleTTL: 30 * 24 * 60 * 60,
-  scopesSupported: OAUTH_SCOPES,
-  requiredScopes,
-  resourceMetadata: { resource: `${ORIGIN}/mcp`, authorization_servers: [ORIGIN], resource_name: 'Nagare Development' },
-});
+} satisfies ExportedHandler<Env>;

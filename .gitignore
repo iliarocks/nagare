@@ -4,4 +4,4 @@ xcuserdata/
 __pycache__/
 node_modules/
 .wrangler/
-.dev.vars
+.dev.vars*

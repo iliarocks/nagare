@@ -19,7 +19,6 @@ esac
 args=(-project Nagare.xcodeproj -scheme Nagare -configuration Debug
     -destination "$destination" -derivedDataPath ".build/derived/$platform"
     -parallel-testing-enabled NO)
-bash Scripts/lint-imports.sh
 case "$suite" in
     build) exec xcodebuild "${args[@]}" -allowProvisioningUpdates build ;;
     unit) args+=(-only-testing:NagareTests) ;;

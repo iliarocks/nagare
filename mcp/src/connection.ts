@@ -4,14 +4,21 @@ import { CloudKitClient, CloudKitError, type CloudKitRecord, type CloudKitZoneID
 import { Nagare, NagareError, type CreateTask, type TaskChanges, type TaskQuery, type TaskMove, type RecurrenceChanges } from './nagare.js';
 import type { Projects, CreateProject, ProjectChanges, ProjectMove } from './projects.js';
 
-export const ORIGIN = 'https://mcp.dev.nagare.page';
-
 export interface Env extends AuthEnvironment {
   OAUTH_KV: KVNamespace;
   CONNECTIONS: DurableObjectNamespace<Connection>;
   CLOUDKIT_CONTAINER: string;
   CLOUDKIT_ENVIRONMENT: 'development' | 'production';
   CLOUDKIT_API_TOKEN: string;
+}
+
+export function deployment(environment: Env['CLOUDKIT_ENVIRONMENT']) {
+  if (!['development', 'production'].includes(environment)) throw new Error('Unknown CloudKit environment.');
+  const production = environment === 'production';
+  return {
+    origin: production ? 'https://mcp.nagare.page' : 'https://mcp.development.nagare.page',
+    name: production ? 'Nagare' : 'Nagare Development',
+  };
 }
 
 export type Operation =
@@ -45,7 +52,7 @@ export function cloudKit(env: Env, token?: string, saveToken?: (token: string) =
     container: env.CLOUDKIT_CONTAINER,
     environment: env.CLOUDKIT_ENVIRONMENT,
     apiToken: env.CLOUDKIT_API_TOKEN,
-    origin: ORIGIN,
+    origin: deployment(env.CLOUDKIT_ENVIRONMENT).origin,
     webAuthToken: token,
     onWebAuthToken: saveToken,
   });
@@ -95,7 +102,7 @@ export class Connection extends DurableObject<Env> {
     return this.serialized(async () => {
       try {
         const settings = await this.ctx.storage.get<Settings>('connection');
-        if (!settings || settings.expiresAt <= Date.now()) {
+        if (!settings || !Number.isFinite(settings.expiresAt) || settings.expiresAt <= Date.now()) {
           await this.ctx.storage.deleteAll();
           return { ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.' };
         }

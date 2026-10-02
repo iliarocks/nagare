@@ -73,9 +73,6 @@ export function createAuthHandler<Env extends AuthEnvironment>(dependencies: Aut
           });
           return Response.json({ redirectTo }, { headers: resumed.headers });
         }
-        if (url.pathname === '/' && request.method === 'GET') {
-          return page('<h1>Nagare</h1><p>Connect Nagare from your agent using this server’s <code>/mcp</code> endpoint.</p>');
-        }
         return new Response('Not found', { status: 404 });
       } catch (error) {
         const expected = error instanceof AuthorizationError;
