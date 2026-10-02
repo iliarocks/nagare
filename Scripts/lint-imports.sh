@@ -10,80 +10,38 @@ report_failure() {
     failure_count=$((failure_count + 1))
 }
 
-lint_imports() {
-    local relative_directory="$1"
-    shift
-    local directory="${repository_root}/${relative_directory}"
-    local allowed_modules=" $* "
-    local source_files
-
-    [[ -d "${directory}" ]] || return 0
-
-    if ! source_files="$(find "${directory}" -type f -name '*.swift' -print)"; then
-        report_failure \
-            "${directory}" \
-            0 \
-            "Architecture lint could not scan this directory"
+scan() {
+    local callback="$1" detail="$2" relative_directory="$3" pattern="$4"
+    shift 4
+    local directory="${repository_root}/${relative_directory}" matches grep_status=0
+    matches="$(grep -RInE --include='*.swift' "$@" -- "$pattern" "$directory")" || grep_status=$?
+    if (( grep_status > 1 )); then
+        report_failure "$directory" 0 "Architecture lint could not scan this directory"
         return
     fi
-
-    while IFS= read -r source_file; do
-        [[ -n "${source_file}" ]] || continue
-        local import_lines
-        local grep_status=0
-        import_lines="$(
-            grep -nE '^[[:space:]]*import[[:space:]]+' "${source_file}"
-        )" || grep_status=$?
-        if (( grep_status > 1 )); then
-            report_failure \
-                "${source_file}" \
-                0 \
-                "Architecture lint could not read this source file"
-            continue
-        fi
-
-        while IFS=: read -r line_number import_line; do
-            [[ -n "${line_number}" ]] || continue
-            local module
-            module="$(sed -E 's/^[[:space:]]*import[[:space:]]+([A-Za-z0-9_]+).*$/\1/' <<< "${import_line}")"
-            if [[ "${allowed_modules}" != *" ${module} "* ]]; then
-                report_failure \
-                    "${source_file}" \
-                    "${line_number}" \
-                    "${relative_directory} may not import ${module}; allowed imports: $*"
-            fi
-        done <<< "${import_lines}"
-    done <<< "${source_files}"
+    while IFS=: read -r source_file line_number source_line; do
+        [[ -n "$source_file" ]] || continue
+        "$callback" "$relative_directory" "$detail" "$source_file" "$line_number" "$source_line"
+    done <<< "${matches}"
 }
 
-lint_forbidden_symbols() {
-    local relative_directory="$1"
-    local forbidden_pattern="$2"
-    local explanation="$3"
-    local directory="${repository_root}/${relative_directory}"
-    local matches
-    local grep_status=0
-
-    [[ -d "${directory}" ]] || return 0
-
-    matches="$(
-        grep -RInE \
-            --include='*.swift' \
-            "${forbidden_pattern}" \
-            "${directory}"
-    )" || grep_status=$?
-    if (( grep_status > 1 )); then
-        report_failure \
-            "${directory}" \
-            0 \
-            "Architecture lint could not scan this directory"
-        return
+check_import() {
+    local relative_directory="$1" allowed_modules="$2" source_file="$3" line_number="$4" source_line="$5"
+    [[ "$source_line" =~ ^[[:space:]]*import[[:space:]]+([A-Za-z0-9_]+) ]]
+    local module="${BASH_REMATCH[1]}"
+    if [[ " $allowed_modules " != *" $module "* ]]; then
+        report_failure "$source_file" "$line_number" "$relative_directory may not import $module; allowed imports: $allowed_modules"
     fi
+}
 
-    while IFS=: read -r source_file line_number _; do
-        [[ -n "${source_file}" ]] || continue
-        report_failure "${source_file}" "${line_number}" "${explanation}"
-    done <<< "${matches}"
+report_forbidden() { report_failure "$3" "$4" "$2"; }
+lint_imports() {
+    local directory="$1"; shift
+    scan check_import "$*" "$directory" '^[[:space:]]*import[[:space:]]+'
+}
+lint_forbidden_symbols() {
+    local directory="$1" pattern="$2" explanation="$3"; shift 3
+    scan report_forbidden "$explanation" "$directory" "$pattern" "$@"
 }
 
 # Inner layers only know the standard library/Foundation. Framework-specific
@@ -99,31 +57,10 @@ lint_forbidden_symbols \
 
 # Domain structs are values, not mutable bags shared between planners. Local
 # variables inside pure functions may mutate; stored properties may not.
-domain_stored_var_matches=""
-domain_stored_var_status=0
-domain_stored_var_matches="$(
-    grep -RInE \
-        --include='*.swift' \
-        '^[[:space:]]{4}(private[[:space:]]+)?var[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(:|=).*(\{|get[[:space:]]*\{)?[[:space:]]*$' \
-        "${repository_root}/Nagare/Domain/Models"
-)" || domain_stored_var_status=$?
-if (( domain_stored_var_status > 1 )); then
-    report_failure \
-        "${repository_root}/Nagare/Domain/Models" \
-        0 \
-        "Architecture lint could not scan immutable Domain models"
-fi
-while IFS=: read -r source_file line_number _; do
-    [[ -n "${source_file}" ]] || continue
-    source_line="$(sed -n "${line_number}p" "${source_file}")"
-    if [[ "${source_line}" == *"{"* ]]; then
-        continue
-    fi
-    report_failure \
-        "${source_file}" \
-        "${line_number}" \
-        "Domain model stored properties must be immutable let values"
-done <<< "${domain_stored_var_matches}"
+lint_forbidden_symbols \
+    "Nagare/Domain/Models" \
+    '^[[:space:]]{4}(private[[:space:]]+)?var[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(:|=)[^{]*$' \
+    "Domain model stored properties must be immutable let values"
 
 lint_forbidden_symbols \
     "Nagare/Application" \
@@ -154,58 +91,19 @@ lint_forbidden_symbols \
     "Feature commands must not silently disappear when composition is invalid"
 # Only the composition root, schema bootstrap, and history bridge may know
 # SwiftData in App. SwiftUI delivery views and observable stores are values-only.
-app_swiftdata_matches=""
-app_swiftdata_status=0
-app_swiftdata_matches="$(
-    grep -RInE \
-        --include='*.swift' \
-        'import[[:space:]]+SwiftData' \
-        "${repository_root}/Nagare/App"
-)" || app_swiftdata_status=$?
-if (( app_swiftdata_status > 1 )); then
-    report_failure \
-        "${repository_root}/Nagare/App" \
-        0 \
-        "Architecture lint could not scan App SwiftData imports"
-fi
-while IFS=: read -r source_file line_number _; do
-    [[ -n "${source_file}" ]] || continue
-    case "$(basename "${source_file}")" in
-        NagareApp.swift|NagareCloudSchemaInitializer.swift|SyncIntegrityMonitor.swift)
-            continue
-            ;;
-    esac
-    report_failure \
-        "${source_file}" \
-        "${line_number}" \
-        "Only App composition and history bridge files may import SwiftData"
-done <<< "${app_swiftdata_matches}"
+lint_forbidden_symbols \
+    "Nagare/App" \
+    'import[[:space:]]+SwiftData' \
+    "Only App composition and history bridge files may import SwiftData" \
+    --exclude=NagareApp.swift --exclude=NagareCloudSchemaInitializer.swift --exclude=SyncIntegrityMonitor.swift
 
 # Save/rollback and sync-metadata semantics belong to one transaction adapter.
 # A second save path can silently bypass modification stamps or rollback.
-direct_save_matches=""
-direct_save_grep_status=0
-direct_save_matches="$(
-    grep -RInE \
-        --include='*.swift' \
-        --exclude='SwiftDataTransaction.swift' \
-        '(modelContext|context)\.save\(' \
-        "${repository_root}/Nagare"
-)" || direct_save_grep_status=$?
-if (( direct_save_grep_status > 1 )); then
-    report_failure \
-        "${repository_root}/Nagare" \
-        0 \
-        "Architecture lint could not scan for direct persistence calls"
-fi
-
-while IFS=: read -r source_file line_number _; do
-    [[ -n "${source_file}" ]] || continue
-    report_failure \
-        "${source_file}" \
-        "${line_number}" \
-        "Direct ModelContext saves must use SwiftDataTransaction"
-done <<< "${direct_save_matches}"
+lint_forbidden_symbols \
+    "Nagare" \
+    '(modelContext|context)\.save\(' \
+    "Direct ModelContext saves must use SwiftDataTransaction" \
+    --exclude=SwiftDataTransaction.swift
 
 # SwiftData and CloudKit policy belongs in Domain planners, never in an
 # Infrastructure adapter or mutable record type.

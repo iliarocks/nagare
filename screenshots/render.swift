@@ -3,33 +3,15 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-// Deterministic composition: the app pixels come exclusively from originals/.
-// Usage: swift render.swift [path/to/layout.json]
-struct Layout: Decodable {
-    let app: String
-    let background: String
-    let phone: Phone
-    let mac: Mac?
-    let sets: [PageSet]
-}
-struct Phone: Decodable {
-    let width: Int, height: Int
-    let deviceWidth: Double
-    let frame: Frame
-}
-struct Frame: Decodable {
-    let asset: String
-    let screenX: Int, screenY: Int, screenWidth: Int, screenHeight: Int
-}
-struct Mac: Decodable {
-    let width: Int, height: Int
-    let maxWindowWidth: Double, maxWindowHeight: Double
-}
-struct PageSet: Decodable { let platform: String; let pages: [String] }
-let configURL = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "layout.json").standardizedFileURL
-let layout = try JSONDecoder().decode(Layout.self, from: Data(contentsOf: configURL))
-let design = configURL.deletingLastPathComponent()
-let root = design.deletingLastPathComponent()
+// Rebuild App Store exports from originals/: swift screenshots/render.swift [iPhone|Mac]
+// iPhone originals must be 1206 × 2622; Mac originals are window captures.
+// Apple's unmodified iPhone 17 White bezel: https://developer.apple.com/design/resources/#product-bezels
+// Source: https://devimages-cdn.apple.com/design/resources/download/Bezel-iPhone-17.dmg
+// See the adjacent Apple-License.rtf for its license.
+let root = URL(fileURLWithPath: #filePath).standardizedFileURL.deletingLastPathComponent()
+let platforms = CommandLine.arguments.count > 1 ? [CommandLine.arguments[1]] : ["iPhone", "Mac"]
+precondition(platforms.allSatisfy { ["iPhone", "Mac"].contains($0) }, "Expected iPhone or Mac")
+let pages = ["01-today", "02-upcoming", "03-project", "04-task-notes"]
 let space = CGColorSpace(name: CGColorSpace.sRGB)!
 
 func color(_ hex: String) -> CGColor {
@@ -89,30 +71,29 @@ func screenMask(_ image: CGImage) -> CGImage {
     let data = Data(mask) as CFData
     return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: CGDataProvider(data: data)!, decode: nil, shouldInterpolate: true, intent: .defaultIntent)!
 }
-let appleFrame = loadImage(design.appendingPathComponent(layout.phone.frame.asset))
+let appleFrame = loadImage(root.appendingPathComponent("iPhone-17.png"))
 let appleScreenMask = screenMask(appleFrame)
 
 func phone(_ c: CGContext, _ raw: CGImage) {
-    let p = layout.phone; let w = CGFloat(p.width); let h = CGFloat(p.height)
-    let outerWidth = w * p.deviceWidth
+    let w = CGFloat(c.width); let h = CGFloat(c.height)
+    let outerWidth = w * 0.89
     let scale = outerWidth / CGFloat(appleFrame.width)
     let outerHeight = CGFloat(appleFrame.height) * scale
     let x = (w - outerWidth) / 2
     let y = (h - outerHeight) / 2
     precondition(y >= 0 && y + outerHeight <= h, "Device extends outside the canvas")
-    let frame = p.frame
-    precondition(raw.width == frame.screenWidth && raw.height == frame.screenHeight, "Screenshot must match the official device screen")
+    precondition(raw.width == 1206 && raw.height == 2622, "Screenshot must match the official device screen")
     c.saveGState()
     c.translateBy(x: x, y: y + outerHeight); c.scaleBy(x: scale, y: -scale)
     c.clip(to: CGRect(x: 0, y: 0, width: appleFrame.width, height: appleFrame.height), mask: appleScreenMask)
-    c.draw(raw, in: CGRect(x: frame.screenX, y: appleFrame.height - frame.screenY - frame.screenHeight, width: frame.screenWidth, height: frame.screenHeight))
+    c.draw(raw, in: CGRect(x: 72, y: appleFrame.height - 69 - 2622, width: 1206, height: 2622))
     c.restoreGState()
     drawImage(c, appleFrame, CGRect(x: x, y: y, width: outerWidth, height: outerHeight))
 }
 func mac(_ c: CGContext, _ raw: CGImage) {
-    let p = layout.mac!; let w = CGFloat(p.width); let h = CGFloat(p.height)
+    let w = CGFloat(c.width); let h = CGFloat(c.height)
     let ratio = CGFloat(raw.height) / CGFloat(raw.width)
-    let windowWidth = min(w * p.maxWindowWidth, h * p.maxWindowHeight / ratio)
+    let windowWidth = min(w * 0.85, h * 0.85 / ratio)
     let windowHeight = windowWidth * ratio
     let rect = CGRect(x: (w - windowWidth) / 2, y: (h - windowHeight) / 2, width: windowWidth, height: windowHeight)
     let radius = windowWidth * 0.021
@@ -121,29 +102,17 @@ func mac(_ c: CGContext, _ raw: CGImage) {
     c.saveGState(); c.addPath(rounded(rect, radius)); c.clip(); drawImage(c, raw, rect); c.restoreGState()
 
 }
-for set in layout.sets where CommandLine.arguments.count < 3 || set.platform == CommandLine.arguments[2] {
-    let isMac = set.platform == "Mac"
-    let width = isMac ? layout.mac!.width : layout.phone.width
-    let height = isMac ? layout.mac!.height : layout.phone.height
-    for page in set.pages {
-        let rawURL = root.appendingPathComponent("originals/\(set.platform)/\(page).png")
-        let output = root.appendingPathComponent("app-store/\(set.platform)/\(page).png")
+for platform in platforms {
+    let isMac = platform == "Mac"
+    let width = isMac ? 2880 : 1320
+    let height = isMac ? 1800 : 2868
+    for page in pages {
+        let rawURL = root.appendingPathComponent("originals/\(platform)/\(page).png")
+        let output = root.appendingPathComponent("app-store/\(platform)/\(page).png")
         let c = canvas(width, height)
-        fill(c, CGRect(x: 0, y: 0, width: width, height: height), 0, layout.background)
+        fill(c, CGRect(x: 0, y: 0, width: width, height: height), 0, "#607D8B")
         if isMac { mac(c, loadImage(rawURL)) } else { phone(c, loadImage(rawURL)) }
         try save(c, output)
     }
-    // A separate contact sheet for review; never mixed with upload-ready pages.
-    let thumbWidth = isMac ? 760 : 330
-    let thumbHeight = Int(Double(thumbWidth) * Double(height) / Double(width))
-    let gap = 24, margin = 32
-    let columns = isMac ? 2 : 4, rows = isMac ? 2 : 1
-    let sheet = canvas(margin * 2 + columns * thumbWidth + (columns - 1) * gap, margin * 2 + rows * thumbHeight + (rows - 1) * gap)
-    fill(sheet, CGRect(x: 0, y: 0, width: sheet.width, height: sheet.height), 0, "#F0F1F2")
-    for (index, page) in set.pages.enumerated() {
-        let image = loadImage(root.appendingPathComponent("app-store/\(set.platform)/\(page).png"))
-        drawImage(sheet, image, CGRect(x: margin + (index % columns) * (thumbWidth + gap), y: margin + (index / columns) * (thumbHeight + gap), width: thumbWidth, height: thumbHeight))
-    }
-    try save(sheet, design.appendingPathComponent("Previews/\(layout.app)-\(set.platform).png"))
-    print("Rendered \(layout.app) \(set.platform): \(set.pages.count) pages")
+    print("Rendered \(platform): \(pages.count) pages")
 }
