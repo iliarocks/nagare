@@ -191,7 +191,7 @@ private struct NagarePriorityGlow: ViewModifier {
     func body(content: Content) -> some View {
         content
             .shadow(color: glow, radius: 2)
-            .shadow(color: glow.opacity(0.45), radius: 5)
+            .shadow(color: glow.opacity(0.45), radius: 6.5)
     }
 }
 
