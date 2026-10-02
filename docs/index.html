@@ -116,6 +116,7 @@
     }
 
     .download:focus-visible,
+    .server-url button:focus-visible,
     footer a:focus-visible,
     .details a:focus-visible {
       outline: 3px solid var(--accent);
@@ -156,6 +157,34 @@
       color: var(--accent);
       font-weight: 600;
       text-underline-offset: 0.18em;
+    }
+
+    .server-url {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin: 24px 0;
+      padding: 16px 20px;
+      border-radius: 16px;
+      background: var(--surface);
+    }
+
+    .server-url code {
+      flex: 1;
+      overflow-wrap: anywhere;
+      font-size: .9rem;
+    }
+
+    .server-url button {
+      min-height: 44px;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
     }
 
     footer {
@@ -249,18 +278,51 @@
     </section>
 
     <div class="details">
+      <section id="agents" aria-labelledby="agents-title">
+        <h2 id="agents-title">Agents</h2>
+        <p>
+          To connect your agent to Nagare, enable Sync with iCloud in Nagare's
+          settings and reopen the app. Then add the MCP server URL to your agent:
+        </p>
+        <div class="server-url">
+          <code id="mcp-url">https://mcp.nagare.page</code>
+          <button id="copy-server-url" type="button" aria-live="polite">Copy</button>
+        </div>
+        <p>
+          Follow the connection prompt and sign in with Apple. You can disconnect
+          Nagare at any time in your agent's settings.
+        </p>
+      </section>
+
       <section id="privacy" aria-labelledby="privacy-title">
         <h2 id="privacy-title">Privacy</h2>
         <p>
           Nagare stores your tasks, projects, notes, schedules, and repeat
-          settings on your device. If you enable iCloud sync, this data is
-          stored in your private iCloud database and synchronized by Apple.
-          Nagare does not send this data to the developer and does not use
+          settings on your device. If you enable Sync with iCloud, Apple stores
+          and synchronizes this data in your private iCloud database.
+          The Nagare app does not use
           advertising or analytics services.
         </p>
         <p>
-          You can delete your data by deleting Nagare and disabling iCloud
-          sync in Settings. If you contact support, your email address and
+          You can remove Nagare’s cloud data through Apple’s iCloud storage
+          settings. Turning off sync does not delete data already stored in iCloud.
+        </p>
+        <p>
+          If you connect an agent, you authorize it to read, create, edit, and
+          delete your Nagare data. Requests pass through Nagare’s connector,
+          hosted on Cloudflare. To keep your agent connected, the connector
+          stores an authorization token for Nagare and basic connection settings.
+          Your Apple Account password is never shared with Nagare. The stored
+          token is deleted after 30 days without use. The connector does not
+          maintain a separate database of your tasks.
+        </p>
+        <p>
+          Your agent provider handles information it receives according to its
+          own privacy policy. You can disconnect Nagare in your agent’s settings.
+          Disconnecting does not erase information the provider has already received.
+        </p>
+        <p>
+          If you contact support, your email address and
           message are used only to respond to you. For privacy questions, contact
           <a href="mailto:support@nagare.page">support@nagare.page</a>.
         </p>
@@ -280,5 +342,17 @@
     <span>Made by <a href="https://ilia.page">Ilia</a></span>
     <a href="https://github.com/iliarocks/nagare">Source code</a>
   </footer>
+  <script>
+    const copyButton = document.getElementById('copy-server-url');
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById('mcp-url').textContent);
+        copyButton.textContent = 'Copied';
+      } catch {
+        copyButton.textContent = 'Copy unavailable';
+      }
+      setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
+    });
+  </script>
 </body>
 </html>

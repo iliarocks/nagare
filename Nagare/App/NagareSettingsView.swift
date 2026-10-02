@@ -6,6 +6,9 @@ import AppKit
 #endif
 
 struct NagareSettingsView: View {
+    private static let agentsURL = URL(
+        string: "https://nagare.page/#agents"
+    )!
     private static let privacyURL = URL(
         string: "https://nagare.page/#privacy"
     )!
@@ -180,6 +183,11 @@ struct NagareSettingsView: View {
             }
 
             Section {
+                externalLinkRow(
+                    "Agents",
+                    systemImage: "sparkles",
+                    destination: Self.agentsURL
+                )
                 externalLinkRow(
                     "Privacy Policy",
                     systemImage: "hand.raised",
