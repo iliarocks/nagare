@@ -5,8 +5,8 @@ import UniformTypeIdentifiers
 
 // Rebuild App Store exports from originals/: swift screenshots/render.swift [iPhone|Mac]
 // iPhone originals must be 1206 × 2622; Mac originals are window captures.
-// Apple's unmodified iPhone 17 White bezel: https://developer.apple.com/design/resources/#product-bezels
-// Source: https://devimages-cdn.apple.com/design/resources/download/Bezel-iPhone-17.dmg
+// Apple's unmodified iPhone 18 Pro Silver bezel: https://developer.apple.com/design/resources/#product-bezels
+// Source: https://devimages-cdn.apple.com/design/resources/download/Bezel-iPhone-18.dmg
 // See the adjacent Apple-License.rtf for its license.
 let root = URL(fileURLWithPath: #filePath).standardizedFileURL.deletingLastPathComponent()
 let platforms = CommandLine.arguments.count > 1 ? [CommandLine.arguments[1]] : ["iPhone", "Mac"]
@@ -71,7 +71,7 @@ func screenMask(_ image: CGImage) -> CGImage {
     let data = Data(mask) as CFData
     return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: CGDataProvider(data: data)!, decode: nil, shouldInterpolate: true, intent: .defaultIntent)!
 }
-let appleFrame = loadImage(root.appendingPathComponent("iPhone-17.png"))
+let appleFrame = loadImage(root.appendingPathComponent("iPhone-18-Pro.png"))
 let appleScreenMask = screenMask(appleFrame)
 
 func phone(_ c: CGContext, _ raw: CGImage) {
