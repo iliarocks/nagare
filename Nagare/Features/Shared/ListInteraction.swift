@@ -184,14 +184,14 @@ private struct NagarePriorityGlow: ViewModifier {
 
     private var glow: Color {
         let opacity: Double = contrast == .increased
-            ? 0.8 : (colorScheme == .dark ? 0.6 : 0.45)
+            ? 0.8 : (colorScheme == .dark ? 0.7 : 0.55)
         return Color.accentColor.opacity(isPrioritized ? opacity : 0)
     }
 
     func body(content: Content) -> some View {
         content
-            .shadow(color: glow, radius: 2)
-            .shadow(color: glow.opacity(0.45), radius: 6.5)
+            .shadow(color: glow, radius: 2.5)
+            .shadow(color: glow.opacity(0.5), radius: 8.5)
     }
 }
 
