@@ -422,7 +422,7 @@
 				CODE_SIGN_ENTITLEMENTS = Nagare/Nagare.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nagare/NagareMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = 978R47NCN9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -445,7 +445,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				NAGARE_APS_ENVIRONMENT = development;
 				NAGARE_CLOUDKIT_ENVIRONMENT = Development;
@@ -516,7 +516,7 @@
 				CODE_SIGN_ENTITLEMENTS = Nagare/Nagare.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nagare/NagareMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = 978R47NCN9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -538,7 +538,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				NAGARE_APS_ENVIRONMENT = production;
 				NAGARE_CLOUDKIT_ENVIRONMENT = Production;
