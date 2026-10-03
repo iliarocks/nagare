@@ -30,8 +30,8 @@ final class DesktopInteractionUITests: XCTestCase {
         XCTAssertTrue(first.waitForExistence(timeout: 5))
 
         XCUIElement.perform(withKeyModifiers: .command) {
-            first.click()
-            second.click()
+            first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+            second.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         }
         first.rightClick()
         XCTAssertTrue(app.menuItems["Delete 2 Items"].waitForExistence(timeout: 3))
