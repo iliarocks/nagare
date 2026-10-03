@@ -12,7 +12,7 @@ fi
 platform="${1:-macos}"
 suite="${2:-unit}"
 case "$platform" in
-    ios) destination="${TEST_DESTINATION:-platform=iOS Simulator,name=iPhone 17}" ;;
+    ios) destination="${TEST_DESTINATION:-platform=iOS Simulator,name=iPhone 18 Pro}" ;;
     macos) destination="${TEST_DESTINATION:-platform=macOS}" ;;
     *) echo "Unsupported platform: $platform" >&2; exit 2 ;;
 esac

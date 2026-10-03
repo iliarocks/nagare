@@ -13,7 +13,7 @@ Scripts/check.sh macos build
 ```
 
 The second argument accepts `unit`, `ui`, `all`, or `build`. iOS defaults to the
-iPhone 17 simulator. Output goes to ignored `.build/derived` and `.build/results`.
+iPhone 18 Pro simulator. Output goes to ignored `.build/derived` and `.build/results`.
 Quit the installed Mac development copy before UI tests to avoid two running
 apps with the same bundle ID. Tests use isolated stores; the frozen upgrade
 fixture and its provenance live in `NagareTests/Fixtures`.
