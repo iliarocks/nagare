@@ -67,6 +67,66 @@ function snapshot(records: unknown[], token: string, syncToken = 'end', moreComi
   return response({ zones: [{ zoneID, records, syncToken, moreComing }] }, token);
 }
 
+test('credential diagnostics distinguish missing, invalid, and idle-expired storage before calling Apple', async t => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  intercept(t, () => { assert.fail('Expired credentials must not reach Apple.'); });
+  for (const expiresAt of [undefined, NaN, Date.now() - 1]) {
+    const { connection, values } = setup();
+    if (expiresAt !== undefined) values.set('connection', { token: 'private-token', timeZone: 'UTC', zoneID, expiresAt });
+    assert.deepEqual(await connection.run({ name: 'list_projects' }), {
+      ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.',
+    });
+  }
+  assert.deepEqual(warn.mock.calls.map(call => call.arguments[0]), [
+    { event: 'nagare_connection_failure', source: 'connection', reason: 'missing_credentials' },
+    { event: 'nagare_connection_failure', source: 'connection', reason: 'invalid_expiry' },
+    { event: 'nagare_connection_failure', source: 'connection', reason: 'idle_expired' },
+  ]);
+});
+
+for (const failure of ['upstream', 'network', 'persistence'] as const) {
+  test(`${failure} diagnostics preserve the failure layer without credentials or task contents`, async t => {
+    const warn = t.mock.method(console, 'warn', () => {});
+    const { connection, storage } = setup();
+    const secret = 'private-task-user-and-token';
+    intercept(t, url => {
+      if (url.pathname.endsWith('zones/list')) return response({ zones: [{ zoneID }] }, secret);
+      if (failure === 'network') throw new Error(`https://apple.example?ckWebAuthToken=${secret}`);
+      if (failure === 'upstream') return Response.json({
+        serverErrorCode: 'AUTHENTICATION_REQUIRED', reason: secret,
+        redirectURL: `https://apple.example?ckWebAuthToken=${secret}`,
+      }, { status: 401 });
+      return snapshot([project(firstId, secret)], secret);
+    });
+    await connection.configure(secret, 'UTC');
+    if (failure === 'persistence') storage.beforePut = async () => { throw new Error(secret); };
+    const result = await connection.run({ name: 'list_projects' });
+    const code = { upstream: 'AUTHENTICATION_REQUIRED', network: 'NETWORK_ERROR', persistence: 'AUTH_PERSIST_ERROR' }[failure];
+    assert.deepEqual(result, { ok: false, code, message: `CloudKit could not complete the operation (${code}).` });
+    assert.deepEqual(warn.mock.calls.map(call => call.arguments[0]), [{
+      event: 'nagare_tool_failure', source: 'cloudkit', code,
+      reason: { upstream: 'upstream_authentication', network: 'upstream_network', persistence: 'credential_persistence' }[failure],
+      ...(failure === 'upstream' ? { status: 401 } : failure === 'persistence' ? { status: 200 } : {}),
+    }]);
+    assert.equal(JSON.stringify(warn.mock.calls.map(call => call.arguments)).includes(secret), false);
+  });
+}
+
+test('retention storage errors keep the existing user response and log only storage provenance', async t => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const { connection, storage } = setup();
+  intercept(t, url => url.pathname.endsWith('zones/list') ? response({ zones: [{ zoneID }] }, 'private-token')
+    : Response.json({ zones: [{ zoneID, records: [], syncToken: 'end', moreComing: false }] }));
+  await connection.configure('private-token', 'UTC');
+  storage.beforePut = async () => { throw new Error('private-storage-error'); };
+  assert.deepEqual(await connection.run({ name: 'list_projects' }), {
+    ok: false, code: 'UNEXPECTED_ERROR', message: 'The operation could not be completed. Read the task before retrying.',
+  });
+  assert.deepEqual(warn.mock.calls.map(call => call.arguments[0]), [{
+    event: 'nagare_tool_failure', source: 'connection', reason: 'credential_storage',
+  }]);
+});
+
 test('each deployment sends its own origin and CloudKit environment', async t => {
   const requests: { origin: string | null; path: string }[] = [];
   t.mock.method(globalThis, 'fetch', (input: unknown, init?: RequestInit) => {

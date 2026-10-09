@@ -8,6 +8,12 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": false,
   "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "invocation_logs": false, "persist": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": false }
+  },
   "routes": [{ "pattern": "mcp.development.nagare.page", "custom_domain": true, "zone_name": "nagare.page" }],
   "vars": {
     "CLOUDKIT_CONTAINER": "iCloud.ilia.page.nagare",

@@ -3,6 +3,7 @@ import type { AuthEnvironment } from './auth.js';
 import { CloudKitClient, CloudKitError, type CloudKitRecord, type CloudKitZoneID } from './cloudkit.js';
 import { Nagare, NagareError, type CreateTask, type TaskChanges, type TaskQuery, type TaskMove, type RecurrenceChanges } from './nagare.js';
 import type { Projects, CreateProject, ProjectChanges, ProjectMove } from './projects.js';
+import { logCredentialFailure, logToolFailure } from './diagnostics.js';
 
 export interface Env extends AuthEnvironment {
   OAUTH_KV: KVNamespace;
@@ -83,6 +84,7 @@ export class Connection extends DurableObject<Env> {
         await this.ctx.storage.setAlarm(settings.expiresAt);
         return;
       }
+      if (settings) logCredentialFailure(Number.isFinite(settings.expiresAt) ? 'idle_expired' : 'invalid_expiry');
       await this.ctx.storage.deleteAll();
     });
   }
@@ -100,12 +102,16 @@ export class Connection extends DurableObject<Env> {
 
   run(operation: Operation): Promise<OperationResult> {
     return this.serialized(async () => {
+      let accessingStorage = true;
       try {
         const settings = await this.ctx.storage.get<Settings>('connection');
         if (!settings || !Number.isFinite(settings.expiresAt) || settings.expiresAt <= Date.now()) {
+          logCredentialFailure(!settings ? 'missing_credentials'
+            : !Number.isFinite(settings.expiresAt) ? 'invalid_expiry' : 'idle_expired');
           await this.ctx.storage.deleteAll();
           return { ok: false, code: 'AUTHENTICATION_REQUIRED', message: 'Reconnect Nagare to your agent.' };
         }
+        accessingStorage = false;
         const client = cloudKit(this.env, settings.token, async token => {
           settings.token = token;
           await this.ctx.storage.put('connection', settings);
@@ -153,9 +159,11 @@ export class Connection extends DurableObject<Env> {
           case 'update_recurrence': data = await nagare.updateRecurrence(operation.id, operation.changes, operation.revision); break;
           case 'stop_recurrence': data = await nagare.stopRecurrence(operation.id, operation.revision); break;
         }
+        accessingStorage = true;
         await this.retain(settings);
         return { ok: true, data };
       } catch (error) {
+        logToolFailure(error, accessingStorage);
         if (error instanceof NagareError) return { ok: false, code: error.code, message: error.message };
         if (error instanceof CloudKitError) {
           return { ok: false, code: error.code, message: error.code === 'CONFLICT'

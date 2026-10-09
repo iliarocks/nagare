@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createAuthHandler, OAUTH_SCOPES, type AuthProps } from './auth.js';
 import { CloudKitError } from './cloudkit.js';
 import { cloudKit, deployment, type Env, type Operation } from './connection.js';
+import { logOAuthFailure } from './diagnostics.js';
 
 export { Connection } from './connection.js';
 
@@ -207,6 +208,7 @@ function createProvider(environment: Env['CLOUDKIT_ENVIRONMENT']) {
     clientRegistrationEndpoint: '/oauth/register',
     clientIdMetadataDocumentEnabled: true,
     refreshTokenIdleTTL: 30 * 24 * 60 * 60,
+    onError: logOAuthFailure,
     scopesSupported: OAUTH_SCOPES,
     requiredScopes,
     resourceMetadata: { resource: profile.origin, authorization_servers: [profile.origin], resource_name: profile.name },

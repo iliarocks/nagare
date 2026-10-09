@@ -23,13 +23,18 @@ for (const [environment, origin, name] of [
   const directory = await mkdtemp(join(tmpdir(), 'nagare-oauth-test-'));
   const entrypoint = join(directory, 'worker.ts');
   const source = fileURLToPath(new URL('../src/index.ts', import.meta.url).href);
-  // The local harness rewrites Host to 127.0.0.1. Restore the URL's host as the
-  // edge does, so the MCP SDK can perform its normal DNS-rebinding check.
+  // The local harness rewrites Host and rejects non-local Origin headers before
+  // dispatch. Restore those inside this test-only entrypoint, so application
+  // host and same-origin checks run against the real deployment URLs.
   await writeFile(entrypoint, `import worker from ${JSON.stringify(source)};
     export { Connection } from ${JSON.stringify(source)};
     export default { fetch(request, env, ctx) {
       const headers = new Headers(request.headers);
       headers.set('Host', new URL(request.url).host);
+      if (headers.has('X-Test-Origin')) {
+        headers.set('Origin', headers.get('X-Test-Origin'));
+        headers.delete('X-Test-Origin');
+      }
       return worker.fetch(new Request(request, { headers }), env, ctx);
     } };`);
   const harness = createTestHarness({ workers: [{ config: {
@@ -46,7 +51,14 @@ for (const [environment, origin, name] of [
     await harness.listen();
     const worker = harness.getWorker<{ OAUTH_KV: KVNamespace }>();
     const service = await worker.getExport();
-    const request = (path: string, init?: RequestInit) => service.fetch(`${origin}${path}`, init);
+    const request = (path: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      if (headers.has('Origin')) {
+        headers.set('X-Test-Origin', headers.get('Origin')!);
+        headers.delete('Origin');
+      }
+      return service.fetch(`${origin}${path}`, { ...init, headers });
+    };
     const json = async <T>(path: string): Promise<T> => {
       const response = await request(path);
       assert.equal(response.status, 200);
@@ -114,6 +126,31 @@ for (const [environment, origin, name] of [
       authorizeEndpoint: metadata.authorization_endpoint, tokenEndpoint: metadata.token_endpoint,
       scopesSupported: metadata.scopes_supported, resourceMetadata: resource,
     }, env);
+    // Browser failure reports use the same one-use, cookie-bound transactions as
+    // successful sign-in. They must never turn a forged report into a grant.
+    const authForReport = await oauth.parseAuthRequest(new Request(`${origin}/authorize?${params}`));
+    const cookieHeader = (headers: Headers) => headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+    const upstream = await oauth.beginUpstream(authForReport, { data: { timezone: 'America/Los_Angeles' } });
+    const report = (cookie?: string) => request('/callback', {
+      method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify({ state: upstream.state, error: 'popup_closed' }),
+    });
+    const unboundReport = await report();
+    assert.equal(unboundReport.status, 400, `a report without its browser cookie is rejected: ${await unboundReport.text()}`);
+    const otherBrowser = await oauth.beginUpstream(authForReport, { data: {} });
+    assert.equal((await report(cookieHeader(otherBrowser.headers))).status, 400, 'another browser cannot consume the transaction');
+    assert.equal((await report(cookieHeader(upstream.headers))).status, 204);
+    assert.equal((await report(cookieHeader(upstream.headers))).status, 400, 'the failure report consumes its transaction once');
+    const blocked = await oauth.beginConsent(authForReport);
+    const blockedRequest = (cookie?: string) => request('/authorize', {
+      method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/x-www-form-urlencoded', ...(cookie ? { Cookie: cookie } : {}) },
+      body: new URLSearchParams({ handle: blocked.handle, decision: 'popup_blocked' }).toString(),
+    });
+    assert.equal((await blockedRequest()).status, 400);
+    const blockedResponse = await blockedRequest(cookieHeader(blocked.headers));
+    assert.equal(blockedResponse.status, 204);
+    assert.equal(blockedResponse.headers.has('Location'), false, 'a diagnostic report must not redirect the browser');
+    assert.equal((await blockedRequest(cookieHeader(blocked.headers))).status, 400);
     const issue = async (scope: string[]) => {
       const auth = await oauth.parseAuthRequest(new Request(`${origin}/authorize?${params}`));
       const result = await oauth.completeAuthorization({ request: auth, userId: 'test-user', metadata: {}, scope, props: { connectionId: 'test-user' } });

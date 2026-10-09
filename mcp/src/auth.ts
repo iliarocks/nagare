@@ -3,7 +3,10 @@ import {
   type ConsentDescription,
   type OAuthHelpers,
 } from '@cloudflare/workers-oauth-provider';
-import { CloudKitError } from './cloudkit.js';
+import {
+  browserSignInFailures, logAuthorizationFailure, logBrowserSignInFailure, logSignInEvent,
+  type BrowserSignInFailure, type SignInStage,
+} from './diagnostics.js';
 
 export const OAUTH_SCOPES = ['nagare:read', 'nagare:write', 'offline_access'];
 export type AuthProps = { connectionId: string };
@@ -24,6 +27,7 @@ export function createAuthHandler<Env extends AuthEnvironment>(dependencies: Aut
     async fetch(request: Request, env: Env): Promise<Response> {
       const url = new URL(request.url);
       const oauth = env.OAUTH_PROVIDER;
+      let stage: SignInStage = 'consent';
       try {
         if (url.pathname === '/auth.js' && request.method === 'GET') {
           return new Response(browserScript, { headers: {
@@ -31,17 +35,29 @@ export function createAuthHandler<Env extends AuthEnvironment>(dependencies: Aut
           } });
         }
         if (url.pathname === '/authorize' && request.method === 'GET') {
+          logSignInEvent(stage, 'started');
           const auth = await oauth.parseAuthRequest(request);
           const client = await oauth.describeConsent(auth);
           const consent = await oauth.beginConsent(auth);
+          logSignInEvent(stage, 'succeeded');
           return page(consentPage(client, consent.handle), consent.headers);
         }
         if (url.pathname === '/authorize' && request.method === 'POST') {
+          stage = 'authorize';
+          logSignInEvent(stage, 'started');
           requireSameOrigin(request);
           const form = await request.formData();
           const handle = requiredString(form.get('handle'));
+          if (form.get('decision') === 'popup_blocked') {
+            // Verify and consume the browser-bound consent before accepting a report.
+            const denied = await oauth.denyConsent(request, handle);
+            logBrowserSignInFailure('popup_blocked');
+            denied.headers.delete('Location');
+            return new Response(null, { status: 204, headers: denied.headers });
+          }
           if (form.get('decision') === 'deny') {
             const denied = await oauth.denyConsent(request, handle);
+            logSignInEvent(stage, 'failed');
             return new Response(null, { status: 303, headers: denied.headers });
           }
           const timezone = requiredString(form.get('timezone'));
@@ -54,16 +70,30 @@ export function createAuthHandler<Env extends AuthEnvironment>(dependencies: Aut
           });
           const appleURL = new URL(await dependencies.getAppleSignInURL(env));
           if (!isAppleOrigin(appleURL.origin)) throw new Error('Unexpected Apple sign-in origin');
+          logSignInEvent(stage, 'succeeded');
+          upstream.headers.set('Cache-Control', 'no-store');
           return Response.json({ state: upstream.state, url: appleURL.href }, { headers: upstream.headers });
         }
         if (url.pathname === '/callback' && request.method === 'POST') {
+          stage = 'callback';
+          logSignInEvent(stage, 'started');
           requireSameOrigin(request);
           const body = await request.json() as Record<string, unknown>;
           const state = requiredString(body.state);
-          const token = requiredString(body.token);
+          const failure = body.error;
+          if (failure !== undefined && !browserSignInFailures.includes(failure as BrowserSignInFailure)) {
+            throw new AuthorizationError('invalid_request', { description: 'Invalid connection details.' });
+          }
+          const token = failure === undefined ? requiredString(body.token) : undefined;
           url.searchParams.set('state', state);
           const resumed = await oauth.finishUpstream<{ timezone: string }>(new Request(url, { headers: request.headers }));
-          const connection = await dependencies.connect(env, token, resumed.data.timezone);
+          if (failure !== undefined) {
+            logBrowserSignInFailure(failure as BrowserSignInFailure);
+            return new Response(null, { status: 204, headers: resumed.headers });
+          }
+          const connection = await dependencies.connect(env, token!, resumed.data.timezone);
+          logSignInEvent(stage, 'succeeded');
+          stage = 'complete';
           const { redirectTo } = await oauth.completeAuthorization({
             request: resumed.request,
             userId: encodeURIComponent(connection.userId),
@@ -71,14 +101,14 @@ export function createAuthHandler<Env extends AuthEnvironment>(dependencies: Aut
             scope: resumed.request.scope,
             props: { connectionId: connection.connectionId } satisfies AuthProps,
           });
+          logSignInEvent(stage, 'succeeded');
+          resumed.headers.set('Cache-Control', 'no-store');
           return Response.json({ redirectTo }, { headers: resumed.headers });
         }
         return new Response('Not found', { status: 404 });
       } catch (error) {
         const expected = error instanceof AuthorizationError;
-        if (!expected) console.error('Nagare connection failed', {
-          code: error instanceof CloudKitError ? error.code : 'CONNECTION_ERROR',
-        });
+        logAuthorizationFailure(error, stage);
         const message = expected ? error.description : 'Connection failed. Return to your agent and try connecting again.';
         // Never return upstream errors: they can contain a CloudKit token or URL.
         if (request.method === 'POST') {
@@ -189,12 +219,23 @@ const status = document.querySelector('#status');
 let retry = false;
 button.addEventListener('click', async () => {
   if (retry) { window.location.reload(); return; }
-  const popup = window.open('about:blank', '_blank', 'popup,width=640,height=640');
-  if (!popup) { status.textContent = 'Allow pop-ups to sign in with iCloud.'; return; }
+  let popup;
+  try { popup = window.open('about:blank', '_blank', 'popup,width=640,height=640'); } catch {}
+  if (!popup) {
+    status.textContent = 'Allow pop-ups to sign in with iCloud.';
+    button.textContent = 'Try again';
+    retry = true;
+    const body = new FormData(form);
+    body.set('decision', 'popup_blocked');
+    void fetch('/authorize', { method: 'POST', body, keepalive: true }).catch(() => {});
+    return;
+  }
   button.disabled = true;
   let state;
   let received = false;
-  let closedOnce = false;
+  let closedAt;
+  let failureReason;
+  let reported = false;
   let timeout;
   let closed;
   const cleanup = () => {
@@ -202,26 +243,36 @@ button.addEventListener('click', async () => {
     clearTimeout(timeout);
     clearInterval(closed);
   };
-  const fail = message => {
+  const reportFailure = () => {
+    if (!state || !failureReason || reported) return;
+    reported = true;
+    void fetch('/callback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ state, error: failureReason }),
+    }).catch(() => {});
+  };
+  const fail = (message, reason) => {
     if (retry) return;
+    failureReason = reason;
     cleanup();
-    popup.close();
+    try { popup.close(); } catch {}
     status.textContent = message;
     button.disabled = false;
     button.textContent = 'Try again';
     retry = true;
+    reportFailure();
   };
   const receive = async event => {
     if (received || !state || event.source !== popup) return;
     let origin;
     try { origin = new URL(event.origin); } catch { return; }
     if (origin.protocol !== 'https:' || !['apple.com', 'icloud.com', 'apple-cloudkit.com'].some(domain => origin.hostname === domain || origin.hostname.endsWith('.' + domain))) return;
-    if (event.data?.errorMessage) { fail('Apple sign-in didn’t complete. Please try again.'); return; }
+    if (event.data?.errorMessage) { fail('Apple sign-in didn’t complete. Please try again.', 'apple_error'); return; }
     const token = event.data?.ckSession ?? event.data?.ckWebAuthToken;
     if (typeof token !== 'string' || !token) return;
     received = true;
     cleanup();
-    popup.close();
+    try { popup.close(); } catch {}
     status.textContent = 'Connecting…';
     try {
       const response = await fetch('/callback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state, token }) });
@@ -231,21 +282,24 @@ button.addEventListener('click', async () => {
     } catch (error) { fail(error.message); }
   };
   window.addEventListener('message', receive);
-  // Give Apple's final postMessage time to arrive after its window closes.
+  // Mobile browsers can deliver the final message after the Apple window closes.
+  // Allow a short grace period, including after the original page resumes.
   closed = setInterval(() => {
-    if (!popup.closed) return;
-    if (closedOnce) fail('Sign-in was cancelled. You can try again.');
-    closedOnce = true;
+    let isClosed;
+    try { isClosed = popup.closed; } catch { return; }
+    if (!isClosed) { closedAt = undefined; return; }
+    closedAt ??= Date.now();
+    if (Date.now() - closedAt >= 3000) fail('Sign-in was cancelled. You can try again.', 'popup_closed');
   }, 500);
-  timeout = setTimeout(() => fail('This connection expired. Please try again.'), 600000);
+  timeout = setTimeout(() => fail('This connection expired. Please try again.', 'popup_timeout'), 600000);
   try {
     const body = new FormData(form);
     body.set('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
     const response = await fetch('/authorize', { method: 'POST', body });
     const result = await response.json();
-    if (retry) return;
     if (!response.ok) throw new Error(result.error);
     state = result.state;
+    if (retry) { reportFailure(); return; }
     popup.location = result.url;
     status.textContent = 'Finish signing in with Apple in the pop-up window.';
   } catch (error) {

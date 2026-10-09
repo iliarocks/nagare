@@ -79,6 +79,41 @@ local development uses ignored `.dev.vars`. The CloudKit token uses Post Message
 sign-in and allows only the matching Worker origin. Use development for routine
 testing and temporary items for production verification.
 
+Connection diagnostics are retained in Cloudflare **Workers & Pages →
+nagare-mcp** (or **nagare-mcp-development**) **→ Observability**. Filter structured
+logs by `event`: `nagare_oauth_failure` identifies OAuth failures;
+`nagare_connection_failure` identifies missing/expired stored credentials;
+`nagare_tool_failure` identifies CloudKit, network, and persistence failures.
+`nagare_sign_in` records consent, Apple handoff, callback, and grant-completion
+stages. `nagare_authorization_failure` distinguishes missing/mismatched browser
+cookies, expired/used transactions, and upstream failures.
+In the events table, use **Fields** to add `event`, `stage`, `outcome`, `reason`,
+and `code`; structured events can have an empty default Message column.
+
+`nagare_sign_in_failure` records blocked/closed/timed-out Apple pop-ups and Apple
+sign-in errors using fixed reason codes. Reports must pass the same origin and
+one-use browser-binding checks as sign-in; a delayed report after transaction
+expiry can instead appear as an authorization failure. Nagare's diagnostic
+events exclude credentials, URLs, account identifiers, and task contents.
+Invocation logs and traces are disabled, and runtime URL queries are redacted.
+The OAuth dependency can separately warn about client metadata fetch/storage
+failures, so avoid putting secrets in OAuth client metadata URLs. Retention is
+Cloudflare-plan dependent; investigate a reported failure promptly.
+
+Sign-in retains Apple's Post Message flow with exact Apple-origin and opened-window
+checks. A three-second grace period allows the final message to arrive after the
+Apple window closes. Before calling a sign-in change mobile-verified, exercise
+disconnect/reconnect from the actual ChatGPT iOS app, complete Apple sign-in,
+return to the originating chat, and successfully call a read tool. Also verify
+cancel/retry and desktop sign-in. Automated tests use synthetic Apple messages
+and real local OAuth transactions; they do not verify ChatGPT's iOS browser UI.
+
+On 2026-10-09, development deployment `e7e6d709` passed desktop Safari sign-in.
+The user also confirmed disconnect/reconnect entirely in ChatGPT on a real iPhone
+and a successful project read. Retained logs show grant completion at 08:41:30 UTC
+(desktop) and 08:43:21 UTC (iPhone). Physical-device cancel/retry and long-term
+session longevity were not established by this check.
+
 Tools manage tasks, projects, ordering, priority, and recurring series. Ordinary
 queries include active tasks and projected repeats; completed history is separate.
 Today carries overdue items forward even when the apps are closed. Reads use a
